@@ -433,6 +433,7 @@ TabChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
         data.AppendPrintf(" }");
     data.AppendPrintf(" }");
 
+    LOG_FM(aFrameMetrics);
     RecvAsyncMessage(NS_LITERAL_STRING("Viewport:Change"), data);
   }
 
@@ -452,6 +453,7 @@ TabChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
   // set the resolution
   LayoutDeviceToLayerScale resolution = aFrameMetrics.mZoom
     / aFrameMetrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
+  LOGC("EmbedLiteViewPort", "set resolution :%g", resolution.scale);
   utils->SetResolution(resolution.scale, resolution.scale);
 
   // and set the display port
@@ -880,9 +882,12 @@ TabChildHelper::HandlePossibleViewportChange()
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
 
+  LOGC("EmbedLiteViewPort", "mInnerSize w:%d h:%d", mInnerSize.width, mInnerSize.height);
+
   float screenW = mInnerSize.width;
   float screenH = mInnerSize.height;
   CSSSize viewport(viewportInfo.GetSize());
+  LOGC("EmbedLiteViewPort", "viewport w:%g h:%g", viewport.width, viewport.height);
 
   // We're not being displayed in any way; don't bother doing anything because
   // that will just confuse future adjustments.
@@ -953,6 +958,11 @@ TabChildHelper::HandlePossibleViewportChange()
   minScale = clamped(minScale, viewportInfo.GetMinZoom(), viewportInfo.GetMaxZoom());
   NS_ENSURE_TRUE(minScale.scale, false); // (return early rather than divide by 0)
 
+  LOGC("EmbedLiteViewPort", "viewport info zoom contraints %d %.3f %.3f send min scale %.3f", viewportInfo.IsZoomAllowed(), \
+                                                                                              viewportInfo.GetMinZoom().scale, \
+                                                                                              viewportInfo.GetMaxZoom().scale, \
+                                                                                              minScale.scale);
+
   // Update zoom contraints with clamped minimum scale so that zooming below page width is not possible.
   mView->SendUpdateZoomConstraints(viewportInfo.IsZoomAllowed(),
                                    minScale.scale,
@@ -961,6 +971,7 @@ TabChildHelper::HandlePossibleViewportChange()
 
   viewport.height = std::max(viewport.height, screenH / minScale.scale);
   SetCSSViewport(viewport);
+  LOGC("EmbedLiteViewPort", "viewport sz: [%g, %g], screen sz: [%g, %g]", viewport.width, viewport.height, screenW, screenH);
 
   float oldScreenWidth = mLastMetrics.mCompositionBounds.width;
   if (!oldScreenWidth) {
@@ -969,6 +980,9 @@ TabChildHelper::HandlePossibleViewportChange()
 
   FrameMetrics metrics(mLastMetrics);
   metrics.mViewport = CSSRect(CSSPoint(), viewport);
+
+  LOGC("EmbedLiteViewPort", "viewport metrics sz: [%g, %g]", metrics.mViewport.width, metrics.mViewport.height);
+
   metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
   metrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);
 
