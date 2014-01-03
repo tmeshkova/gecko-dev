@@ -175,6 +175,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
   }
 
   rv = baseWindow->InitWindow(0, mWidget, 0, 0, mViewSize.width, mViewSize.height);
+  LOGT("window sz[%g, %g]", mViewSize.width, mViewSize.height);
   if (NS_FAILED(rv)) {
     return;
   }
@@ -492,14 +493,18 @@ bool
 EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
 {
   mViewResized = aSize != mViewSize;
+
+  LOGT("old sz[%g,%g], new sz[%g,%g], view resized: %d pointer: %p", mViewSize.width, mViewSize.height, aSize.width, aSize.height, mViewResized, this);
   mViewSize = aSize;
-  LOGT("sz[%g,%g]", mViewSize.width, mViewSize.height);
 
   if (!mWebBrowser) {
     return true;
   }
 
   mHelper->mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
+
+  LOGT("mInnerSize w:%d h:%d", mHelper->mInnerSize.width, mHelper->mInnerSize.height);
+
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
   baseWindow->SetVisibility(true);
@@ -888,6 +893,7 @@ EmbedLiteViewThreadChild::OnFirstPaint(int32_t aX, int32_t aY)
     unused << SendSetBackgroundColor(bgcolor);
   }
 
+  LOGT("viewSize[%g,%g]", mViewSize.width, mViewSize.height);
   unused << RecvSetViewSize(mViewSize);
 
   return SendOnFirstPaint(aX, aY) ? NS_OK : NS_ERROR_FAILURE;
