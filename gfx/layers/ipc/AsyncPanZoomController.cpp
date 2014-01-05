@@ -1000,7 +1000,7 @@ void AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
     }
   }
 
-  if (fabs(overscroll.x) > EPSILON || fabs(overscroll.y) > EPSILON) {
+  if (mTreeManager && (fabs(overscroll.x) > EPSILON || fabs(overscroll.y) > EPSILON)) {
     // "+ overscroll" rather than "- overscroll" because "overscroll" is what's
     // left of "displacement", and "displacement" is "start - end".
     CallDispatchScroll(aEndPoint + overscroll, aEndPoint, aOverscrollHandoffChainIndex + 1);
@@ -1016,6 +1016,8 @@ void AsyncPanZoomController::CallDispatchScroll(const ScreenPoint& aStartPoint, 
   if (treeManagerLocal) {
     treeManagerLocal->DispatchScroll(this, aStartPoint, aEndPoint,
                                      aOverscrollHandoffChainIndex);
+  } else {
+    AttemptScroll(aStartPoint, aEndPoint, aOverscrollHandoffChainIndex);
   }
 }
 
@@ -1672,6 +1674,8 @@ void AsyncPanZoomController::SendAsyncScrollEvent() {
   bool isRoot;
   CSSRect contentRect;
   CSSSize scrollableSize;
+  CSSToScreenScale resolution;
+  CSSPoint scrollOffset;
   {
     ReentrantMonitorAutoEnter lock(mMonitor);
 
@@ -1679,9 +1683,12 @@ void AsyncPanZoomController::SendAsyncScrollEvent() {
     scrollableSize = mFrameMetrics.mScrollableRect.Size();
     contentRect = mFrameMetrics.CalculateCompositedRectInCssPixels();
     contentRect.MoveTo(mCurrentAsyncScrollOffset);
+    resolution = mFrameMetrics.mZoom;
+    scrollOffset = mFrameMetrics.mScrollOffset;
   }
 
   controller->SendAsyncScrollDOMEvent(isRoot, contentRect, scrollableSize);
+  controller->ScrollUpdate(scrollOffset, resolution.scale);
 }
 
 void AsyncPanZoomController::UpdateScrollOffset(const CSSPoint& aScrollOffset)

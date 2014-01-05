@@ -1,0 +1,128 @@
+<html>
+ <head>
+  <script type="application/javascript">
+function draw() {
+  startup();
+  var canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d");
+  ctx.mozImageSmoothingEnabled = false;
+  ctx.globalAlpha = 1.0;
+  ctx.globalCompositeOperation ="source";
+  ctx.fillStyle = "black";
+  ctx.font = "8pt Arial";
+  var k = false;
+  var i = 50;
+  var odd = true;
+  var fullWidth = canvas.width;
+  var fullHeight = canvas.height;
+  // Fill vertical lines with colored 50pixels odd wide lines
+  while (!k) {
+    if (odd) {
+      ctx.fillStyle = "rgba(170,150,180, 0.3)";
+      ctx.fillRect(i - 50, 0, 50, fullHeight);
+
+    }
+    odd = !odd;
+    ctx.fillStyle = "red";
+    ctx.fillRect(i, 0, 1, fullHeight);
+    ctx.fillStyle = "black";
+//    ctx.fillText(i, i + 5, 47);
+    i += 50;
+    if (i > fullWidth) {
+      k = true;
+      break;
+    }
+  }
+  // Fille vert middle lines on left side
+  k = false;
+  i = 0;
+  while (!k) {
+    ctx.fillRect(0, i, 10, 1);
+    i += 10;
+    if (i > fullHeight) {
+      k = true;
+      break;
+    }
+  }
+  // Fille vert small lines on left side
+  k = false;
+  i = 0;
+  while (!k) {
+    ctx.fillRect(0, i, 5, 1);
+    i += 2;
+    if (i > fullHeight) {
+      k = true;
+      break;
+    }
+  }
+  k = false;
+  i = 50;
+  ctx.textAlign = "right";
+  while (!k) {
+    ctx.fillRect(0, i, fullWidth, 1);
+//    ctx.fillText(i, 47, i + 12);
+    i += 50;
+    if (i > fullHeight) {
+      k = true;
+      break;
+    }
+  }
+  // Fille hor middle lines on top side
+  k = false;
+  i = 0;
+  while (!k) {
+    ctx.fillRect(i, 0, 1, 10);
+    i += 10;
+    if (i > fullWidth) {
+      k = true;
+      break;
+    }
+  }
+  // Fille hor small lines on top side
+  k = false;
+  i = 0;
+  while (!k) {
+    ctx.fillRect(i, 0, 1, 5);
+    i += 2;
+    if (i > fullWidth) {
+      k = true;
+      break;
+    }
+  }
+  for (var i = 50; i < fullHeight * 2;) {
+    for (var j = 50; j < fullWidth * 2;) {
+      ctx.textAlign = "left";
+      ctx.fillText(i, i + 3, j - 2);
+      ctx.textAlign = "right";
+      ctx.fillText(j, i - 2, j + 12);
+      j+= 50;
+    }
+    i+= 50;
+  }
+
+
+  }
+
+    function handleMStart(evt) {
+        window.dump("handleMStart: " + evt.clientX + "," + evt.clientY + "\n");
+    }
+
+    function handleTStart(evt) {
+//        evt.preventDefault();
+        var touches = evt.changedTouches;
+        window.dump("handleTStart: " + touches[0].pageX + "," + touches[0].pageY + "\n");
+    }
+
+    function startup() {
+      var el = document.getElementById("canvas");
+      el.addEventListener("touchstart", handleTStart, false);
+      el.addEventListener("mousedown", handleMStart, false);
+    }
+
+  </script>
+ </head>
+ <body bgcolor=white onload="draw()" leftmargin="0" topmargin="0" marginwidth="0" marginheight="0">
+   <canvas id="canvas" width="1000" height="2000"></canvas>
+</div>
+ </body>
+</html>

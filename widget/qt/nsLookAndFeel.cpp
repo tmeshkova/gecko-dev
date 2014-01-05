@@ -9,6 +9,9 @@
 #include <QFont>
 #include <QPalette>
 #include <QStyle>
+#include "nsStyleConsts.h"
+#include "gfxFontConstants.h"
+#include "mozilla/gfx/2D.h"
 
 #undef NS_LOOKANDFEEL_DEBUG
 #ifdef NS_LOOKANDFEEL_DEBUG

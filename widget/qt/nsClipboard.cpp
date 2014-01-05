@@ -125,7 +125,7 @@ nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
 
                 nsAutoString utf16string;
                 wideString->GetData(utf16string);
-                QString str = QString::fromUtf16(utf16string.get());
+                QString str = QString::fromUtf16((const ushort*)utf16string.get());
 
                 // Add text to the mimeData
                 mimeData->setText(str);
@@ -142,7 +142,7 @@ nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
 
                 nsAutoString utf16string;
                 wideString->GetData(utf16string);
-                QString str = QString::fromUtf16(utf16string.get());
+                QString str = QString::fromUtf16((const ushort*)utf16string.get());
 
                 // Add html to the mimeData
                 mimeData->setHtml(str);

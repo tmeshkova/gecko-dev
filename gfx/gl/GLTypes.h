@@ -60,6 +60,7 @@ typedef uint64_t GLuint64;
 // OES_EGL_image (GLES)
 typedef void* GLeglImage;
 
+#ifndef GLdouble_defined
 // KHR_debug
 typedef void (GLAPIENTRY *GLDEBUGPROC)(GLenum source,
                                        GLenum type,
@@ -68,6 +69,7 @@ typedef void (GLAPIENTRY *GLDEBUGPROC)(GLenum source,
                                        GLsizei length,
                                        const GLchar* message,
                                        const GLvoid* userParam);
+#endif
 
 // EGL types
 typedef void* EGLImage;

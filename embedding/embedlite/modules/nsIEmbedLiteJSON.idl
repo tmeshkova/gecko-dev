@@ -1,0 +1,30 @@
+/* -*- Mode: IDL; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+#include "nsISupports.idl"
+#include "nsIPropertyBag2.idl"
+#include "nsIWritablePropertyBag2.idl"
+
+%{ C++
+#include "nsStringGlue.h" // needed for AString -> nsAString, unfortunately
+%}
+
+/**
+ * An optional interface for embedding clients wishing to receive
+ * notifications for when a tooltip should be displayed or removed.
+ * The embedder implements this interface on the web browser chrome
+ * object associated with the window that notifications are required
+ * for.
+ *
+ * @see nsIEmbedLiteJSON
+ */
+
+[scriptable, uuid(40c612f8-6b80-11e2-bd12-5f5e1c40dd30)]
+interface nsIEmbedLiteJSON : nsISupports
+{
+    void createObject([retval] out nsIWritablePropertyBag2 aObject);
+    void ParseJSON(in AString aJSON, [retval] out nsIPropertyBag2 aRoot);
+    void CreateJSON(in nsIPropertyBag aRoot, [retval] out AString outJson);
+};

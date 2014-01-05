@@ -171,7 +171,8 @@ class SurfaceFactory_Basic
 public:
     SurfaceFactory_Basic(GLContext* gl, const SurfaceCaps& caps)
         : SurfaceFactory_GL(gl, SharedSurfaceType::Basic, caps)
-    {}
+    {
+    }
 
     virtual SharedSurface* CreateShared(const gfxIntSize& size) {
         bool hasAlpha = mReadCaps.alpha;

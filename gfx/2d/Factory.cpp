@@ -27,7 +27,6 @@
 #include "ScaledFontMac.h"
 #endif
 
-
 #ifdef XP_MACOSX
 #include "DrawTargetCG.h"
 #endif
@@ -388,6 +387,19 @@ Factory::CreateScaledFontWithCairo(const NativeFont& aNativeFont, Float aSize, c
 #else
   return nullptr;
 #endif
+}
+
+TemporaryRef<ScaledFont>
+Factory::GetScaledFontForFontWithCairoSkia(DrawTarget* aTarget, cairo_scaled_font_t* aCairoFont, double aAdjustedSize)
+{
+     NativeFont nativeFont;
+     if (aTarget->GetType() == BACKEND_CAIRO || aTarget->GetType() == BACKEND_SKIA) {
+         nativeFont.mType = NATIVE_FONT_CAIRO_FONT_FACE;
+         nativeFont.mFont = aCairoFont;
+         return Factory::CreateScaledFontForNativeFont(nativeFont, aAdjustedSize);
+     }
+
+     return nullptr;
 }
 
 TemporaryRef<DrawTarget>

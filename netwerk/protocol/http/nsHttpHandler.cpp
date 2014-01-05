@@ -678,6 +678,8 @@ nsHttpHandler::InitUserAgentComponents()
     "Macintosh"
 #elif defined(MOZ_X11)
     "X11"
+#elif defined(XP_UNIX)
+    "Unix"
 #endif
     );
 #endif

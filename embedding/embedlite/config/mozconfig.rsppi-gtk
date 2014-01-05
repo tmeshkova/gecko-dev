@@ -1,0 +1,80 @@
+export WHROOTFS=/home/romaxa/wheezy-armhf
+export SYSROOT=/opt/cross/x-tools/arm-unknown-linux-gnueabi/arm-unknown-linux-gnueabi/sysroot
+
+export PKG_CONFIG_SYSROOT_DIR=$WHROOTFS
+export PKG_CONFIG_PATH=$WHROOTFS/usr/lib/arm-linux-gnueabihf/pkgconfig
+export CPPFLAGS=""
+export CPPFLAGS="$CPPFLAGS -I$WHROOTFS/usr/include/arm-linux-gnueabihf"
+export CPPFLAGS="$CPPFLAGS -I$WHROOTFS/usr/include"
+export CFLAGS="$CPPFLAGS"
+mk_add_options  CPPFLAGS="$CPPFLAGS"
+mk_add_options  CFLAGS="$CFLAGS"
+
+CROSS_COMPILE=1
+
+export CROSS_COMPILER_PATH=/opt/cross/x-tools/arm-unknown-linux-gnueabi/bin/arm-unknown-linux-gnueabi
+export CROSS_COMPILE=1
+export CC=$CROSS_COMPILER_PATH-gcc
+export CPP=$CROSS_COMPILER_PATH-cpp
+export CXX=$CROSS_COMPILER_PATH-g++
+export STRIP=$CROSS_COMPILER_PATH-strip
+export LD=$CROSS_COMPILER_PATH-ld
+export AR=$CROSS_COMPILER_PATH-ar
+export AS=$CROSS_COMPILER_PATH-as
+
+export HOST_CC=gcc
+export HOST_CFLAGS="-g `pkg-config --cflags glib-2.0`"
+export HOST_CXX=g++
+export HOST_CXXFLAGS=-g
+export CFLAGS=-g
+export CXXFLAGS=-g
+export FFLAGS="-g -O2"
+
+FIX_LINK_LDFLAGS=""
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS -L$SYSROOT/lib -Wl,-rpath-link=$WHROOTFS/lib"
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS -L$SYSROOT/usr/lib -Wl,-rpath-link=$WHROOTFS/usr/lib"
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS -L$WHROOTFS/usr/arm-linux-gnueabihf/lib -Wl,-rpath-link=$WHROOTFS/usr/arm-linux-gnueabihf/lib"
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS -L$WHROOTFS/lib/arm-linux-gnueabihf -Wl,-rpath-link=$WHROOTFS/lib/arm-linux-gnueabihf"
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS -L$WHROOTFS/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link=$WHROOTFS/usr/lib/arm-linux-gnueabihf"
+export LDFLAGS="$FIX_LINK_LDFLAGS"
+LDFLAGS="$FIX_LINK_LDFLAGS"
+export WRAP_LDFLAGS="$FIX_LINK_LDFLAGS"
+mk_add_options LDFLAGS="$FIX_LINK_LDFLAGS"
+
+export ac_cv_have_usable_wchar_option_v2="no"
+ac_add_options --enable-application=browser
+ac_add_options --disable-tests
+ac_add_options --disable-dbus
+ac_add_options --disable-accessibility
+ac_add_options --disable-webrtc
+ac_add_options --enable-logging
+ac_add_options --enable-default-toolkit=cairo-gtk2
+ac_add_options --enable-mobile-optimize
+ac_add_options --enable-optimize
+ac_add_options --enable-system-ffi
+ac_add_options --disable-necko-wifi
+ac_add_options --disable-dbus
+ac_add_options --disable-updater
+
+export MOZ_DEBUG_SYMBOLS=1
+ac_add_options --enable-debug-symbols="-gdwarf-2"
+export MOZILLA_OFFICIAL=1
+mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
+
+export CXXFLAGS="$CXXFLAGS -DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1 "
+
+ac_add_options --disable-elf-hack
+ac_add_options --enable-libjpeg-turbo
+ac_add_options --with-gl-provider=EGL
+
+mk_add_options MOZ_MAKE_FLAGS="-j4"
+mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/objdir-arm-rasppi-gtk2-cr"
+
+ac_add_options --target=arm-unknown-linux-gnueabi
+ac_add_options --with-arm-kuser
+ac_add_options --with-thumb=toolchain-default
+ac_add_options --with-arch=armv6
+ac_add_options --with-float-abi=hard
+ac_add_options --with-thumb=no
+ac_add_options --with-fpu=vfp
+ac_add_options --with-arm-kuser

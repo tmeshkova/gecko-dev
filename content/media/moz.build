@@ -142,6 +142,11 @@ UNIFIED_SOURCES += [
     'WebVTTListener.cpp',
 ]
 
+if CONFIG['HAS_NEMO_RESOURCE']:
+    SOURCES += [
+        'NemoResourceHandler.cpp',
+    ]
+
 # DecoderTraits.cpp needs to be built separately because of Mac OS X headers.
 # Latency.cpp needs to be built separately because it forces NSPR logging.
 SOURCES += [

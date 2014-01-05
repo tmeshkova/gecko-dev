@@ -12,6 +12,7 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/ThreadHangStats.h"
 #include "mozilla/ThreadLocal.h"
+#include "nsStringGlue.h"
 #ifdef MOZ_NUWA_PROCESS
 #include "ipc/Nuwa.h"
 #endif

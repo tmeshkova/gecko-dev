@@ -1,0 +1,80 @@
+export PKG_CONFIG_SYSROOT_DIR=$TARGET_ROOTFS
+export PKG_CONFIG_PATH=$TARGET_ROOTFS/usr/lib/pkgconfig
+export CPPFLAGS=" -DQT_NO_DEBUG=1 "
+export CPPFLAGS="$CPPFLAGS -I$TARGET_ROOTFS/usr/include"
+export CFLAGS="$CPPFLAGS"
+mk_add_options  CPPFLAGS="$CPPFLAGS"
+mk_add_options  CFLAGS="$CFLAGS"
+
+CROSS_COMPILE=1
+export CROSS_COMPILE=1
+export CC=$CROSS_COMPILER_PATH-gcc
+export CPP=$CROSS_COMPILER_PATH-cpp
+export CXX=$CROSS_COMPILER_PATH-g++
+export STRIP=$CROSS_COMPILER_PATH-strip
+export LD=$CROSS_COMPILER_PATH-ld
+export AR=$CROSS_COMPILER_PATH-ar
+export AS=$CROSS_COMPILER_PATH-as
+
+export HOST_CC=gcc
+export HOST_CFLAGS="-g `pkg-config --cflags glib-2.0`"
+export HOST_CXX=g++
+export HOST_CXXFLAGS=" -g "
+export CFLAGS=" -g "
+export CXXFLAGS=" -g "
+export FFLAGS="-g -O2"
+
+FIX_LINK_LDFLAGS=""
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS --sysroot=$TARGET_ROOTFS"
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS -Wl,-rpath-link=$TARGET_ROOTFS/lib -Wl,-rpath-link=$TARGET_ROOTFS/usr/lib"
+
+export LDFLAGS="$FIX_LINK_LDFLAGS"
+LDFLAGS="$FIX_LINK_LDFLAGS"
+export WRAP_LDFLAGS="$FIX_LINK_LDFLAGS"
+mk_add_options LDFLAGS="$FIX_LINK_LDFLAGS"
+
+ac_add_options --x-includes=$TARGET_ROOTFS/usr/include
+ac_add_options --x-libraries=$TARGET_ROOTFS/usr/lib
+
+ac_add_options --enable-cpp-rtti
+
+export ac_cv_have_usable_wchar_option_v2="no"
+ac_add_options --enable-application=xulrunner
+ac_add_options --disable-tests
+ac_add_options --disable-dbus
+ac_add_options --disable-accessibility
+ac_add_options --enable-webrtc
+ac_add_options --enable-logging
+ac_add_options --enable-default-toolkit=cairo-qt
+ac_add_options --enable-mobile-optimize
+ac_add_options --enable-optimize="-O2 -Wno-psabi"
+ac_add_options --disable-necko-wifi
+ac_add_options --disable-jemalloc
+ac_add_options --enable-webapp-runtime
+ac_add_options --enable-gstreamer
+ac_add_options --enable-skia
+ac_add_options --disable-dbus
+ac_add_options --disable-updater
+ac_add_options --disable-gamepad
+
+export MOZ_DEBUG_SYMBOLS=1
+ac_add_options --enable-debug-symbols="-gdwarf-2"
+export MOZILLA_OFFICIAL=1
+mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
+
+export CXXFLAGS="$CXXFLAGS -DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1 "
+
+ac_add_options --disable-elf-hack
+ac_add_options --enable-libjpeg-turbo
+ac_add_options --with-gl-provider=EGL
+
+mk_add_options MOZ_MAKE_FLAGS="-j4"
+mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/obj-build-n9-qt"
+
+ac_add_options --target=arm-none-linux-gnueabi
+ac_add_options --with-arm-kuser
+ac_add_options --with-thumb=yes
+ac_add_options --with-arch=armv7-a
+ac_add_options --with-float-abi=softfp
+ac_add_options --with-fpu=neon
+

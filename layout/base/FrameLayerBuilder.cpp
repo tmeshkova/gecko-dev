@@ -1368,7 +1368,7 @@ ContainerState::CreateOrRecycleThebesLayer(const nsIFrame* aAnimatedGeometryRoot
   // We need a new thebes layer
   nsRefPtr<ThebesLayer> layer;
   ThebesDisplayItemLayerUserData* data;
-#ifndef MOZ_ANDROID_OMTC
+#if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
   bool didResetScrollPositionForLayerPixelAlignment = false;
 #endif
   if (mNextFreeRecycledThebesLayer < mRecycledThebesLayers.Length()) {
@@ -1395,7 +1395,7 @@ ContainerState::CreateOrRecycleThebesLayer(const nsIFrame* aAnimatedGeometryRoot
         !FuzzyEqual(data->mYScale, mParameters.mYScale, 0.00001f) ||
         data->mAppUnitsPerDevPixel != mAppUnitsPerDevPixel) {
       InvalidateEntireThebesLayer(layer, aAnimatedGeometryRoot);
-#ifndef MOZ_ANDROID_OMTC
+#if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
       didResetScrollPositionForLayerPixelAlignment = true;
 #endif
     }
@@ -1437,7 +1437,7 @@ ContainerState::CreateOrRecycleThebesLayer(const nsIFrame* aAnimatedGeometryRoot
     data = new ThebesDisplayItemLayerUserData();
     layer->SetUserData(&gThebesDisplayItemLayerUserData, data);
     ResetScrollPositionForLayerPixelAlignment(aAnimatedGeometryRoot);
-#ifndef MOZ_ANDROID_OMTC
+#if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
     didResetScrollPositionForLayerPixelAlignment = true;
 #endif
   }
@@ -1468,7 +1468,7 @@ ContainerState::CreateOrRecycleThebesLayer(const nsIFrame* aAnimatedGeometryRoot
   layer->SetBaseTransform(gfx3DMatrix::From2D(matrix));
 
   // FIXME: Temporary workaround for bug 681192 and bug 724786.
-#ifndef MOZ_ANDROID_OMTC
+#if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
   // Calculate exact position of the top-left of the active scrolled root.
   // This might not be 0,0 due to the snapping in ScaleToNearestPixels.
   gfxPoint animatedGeometryRootTopLeft = scaledOffset - matrix.GetTranslation() + mParameters.mOffset;

@@ -1,0 +1,19 @@
+<html>
+<head>
+<script>
+function disp_prompt()
+  {
+  var fname=prompt("Please enter your name:","Your name")
+  document.getElementById("msg").innerHTML="Greetings " + fname
+  }
+</script>
+</head>
+<body>
+
+<input type="button" onclick="disp_prompt()" value="Display a prompt box">
+<br><br>
+
+<div id="msg"></div>
+
+</body>
+</html> 

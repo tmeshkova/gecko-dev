@@ -1,0 +1,152 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+package=xulrunner
+prefix=usr
+
+# These are used for cross-compiling and for saving the configure script
+# from having to guess our platform (since we know it already)
+DEB_HOST_GNU_TYPE   ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
+DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
+
+CFLAGS = -Wall -g
+configopts =
+
+ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -O0
+else
+	CFLAGS += -O2
+endif
+
+ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+	INSTALL_PROGRAM += -s
+endif
+
+NJOBS:=-j4
+ifneq (,$(findstring parallel,$(DEB_BUILD_OPTIONS)))
+	PARALLEL_JOBS := $(shell echo $(DEB_BUILD_OPTIONS) | \
+	sed -e 's/.*parallel=\([0-9]\+\).*/\1/')
+ifeq ($(DEB_BUILD_OPTIONS),$(PARALLEL_JOBS))
+	PARALLEL_JOBS := $(shell if [ -f /proc/cpuinfo ]; \
+	then echo `cat /proc/cpuinfo | grep '^processor.*:' | wc -l`; \
+	else echo 1; fi)
+endif
+NJOBS:=-j$(PARALLEL_JOBS)
+endif
+
+ifneq (,$(findstring CodeSourcery,$(shell gcc --version)))
+GCCENV:=.cs
+endif
+
+MAKEFLAGS += $(NJOBS)
+DEST_OBJ_DIR=objdir-$(DEB_HOST_ARCH)
+ifneq (,$(findstring cs2009q3-hard-67-sb16,$(shell gcc --version)))
+MOZCONFIG_FILE=mozconfig.qtN9-qt
+else
+ifneq (,$(findstring Maemo 5,$(shell cat /etc/issue)))
+MOZCONFIG_FILE=mozconfig.qtN900-qt
+else
+MOZCONFIG_FILE=mozconfig.qtdesktop
+endif
+endif
+GREVERSION=$(shell cat $(CURDIR)/config/milestone.txt | sed '/^\#/d' | sed '/^$$/d')
+
+configure: configure-$(DEB_HOST_ARCH)-stamp
+configure-$(DEB_HOST_ARCH)-stamp:
+	dh_testdir
+	cp $(CURDIR)/embedding/embedlite/config/$(MOZCONFIG_FILE) $(CURDIR)/$(MOZCONFIG_FILE)
+ifneq (,$(findstring cs2009q3-hard-67-sb16,$(shell gcc --version)))
+endif
+ifneq (,$(findstring $(DEB_HOST_ARCH),arm armel))
+	echo "ac_add_options --with-gl-provider=EGL" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	echo "ac_add_options --disable-webrtc" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	echo "ac_add_options --with-arm-kuser" >> $(CURDIR)/$(MOZCONFIG_FILE)
+ifneq (,$(findstring thumb,$(DEB_BUILD_OPTIONS)))
+	echo "ac_add_options --with-thumb=yes" >> $(CURDIR)/$(MOZCONFIG_FILE)
+else
+	echo "ac_add_options --with-thumb=toolchain-default" >> $(CURDIR)/$(MOZCONFIG_FILE)
+endif
+	echo "ac_add_options --with-float-abi=toolchain-default" >> $(CURDIR)/$(MOZCONFIG_FILE)
+endif
+	echo "ac_add_options --prefix=/$(prefix)" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	echo "ac_add_options --disable-tests" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	echo "ac_add_options --disable-valgrind" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	echo "ac_add_options --disable-profiling" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	echo "mk_add_options MOZ_OBJDIR=\"$(DEST_OBJ_DIR)\"" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	echo "mk_add_options MOZ_MAKE_FLAGS=\"$(NJOBS)\"" >> $(CURDIR)/$(MOZCONFIG_FILE)
+	MOZCONFIG=$(CURDIR)/$(MOZCONFIG_FILE) $(MAKE) -f client.mk configure
+
+	touch configure-$(DEB_HOST_ARCH)-stamp
+
+build: build-$(DEB_HOST_ARCH)-stamp
+build-$(DEB_HOST_ARCH)-stamp: configure-$(DEB_HOST_ARCH)-stamp
+	dh_testdir
+	MOZCONFIG=$(CURDIR)/$(MOZCONFIG_FILE) $(MAKE) -f client.mk build_all
+
+	touch build-$(DEB_HOST_ARCH)-stamp
+
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f build-$(DEB_HOST_ARCH)-stamp
+	rm -f configure-$(DEB_HOST_ARCH)-stamp
+#	$(MAKE) distclean
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k 
+	dh_installdirs -s
+
+        # Add here commands to install the package into debian/tmp
+	cat $(CURDIR)/debian/xulrunner.install.in | sed 's/%GRE_VERSION%/$(GREVERSION)/g' > $(CURDIR)/debian/xulrunner.install
+	cat $(CURDIR)/debian/xulrunner-dev.install.in | sed 's/%GRE_VERSION%/$(GREVERSION)/g' > $(CURDIR)/debian/xulrunner-dev.install
+#       make -C $(CURDIR)/$(DEST_OBJ_DIR) install/package does not work on some environments due to missing recent python, let's do it manually
+	$(MAKE) -C $(CURDIR)/$(DEST_OBJ_DIR)/xulrunner/installer libxul.pc libxul-embedding.pc mozilla-nspr.pc mozilla-js.pc mozilla-nss.pc mozilla-plugin.pc
+	install -d $(CURDIR)/debian/tmp/$(prefix)/bin
+	install -d $(CURDIR)/debian/tmp/$(prefix)/include
+	install -d $(CURDIR)/debian/tmp/$(prefix)/lib/pkgconfig
+	install -d $(CURDIR)/debian/tmp/$(prefix)/share/idl
+	install -d $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)
+	install -m 0664 $(CURDIR)/$(DEST_OBJ_DIR)/dist/bin/xulrunner  $(CURDIR)/debian/tmp/$(prefix)/bin
+	cp -rfL $(CURDIR)/$(DEST_OBJ_DIR)/xulrunner/installer/*.pc $(CURDIR)/debian/tmp/$(prefix)/lib/pkgconfig
+	cp -rfL $(CURDIR)/$(DEST_OBJ_DIR)/dist/bin $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-$(GREVERSION)
+	cp -rfL $(CURDIR)/$(DEST_OBJ_DIR)/dist/include $(CURDIR)/debian/tmp/$(prefix)/include/xulrunner-$(GREVERSION)
+	cp -rfL $(CURDIR)/$(DEST_OBJ_DIR)/dist/idl $(CURDIR)/debian/tmp/$(prefix)/share/idl/xulrunner-$(GREVERSION)
+	ln -s /$(prefix)/include/xulrunner-$(GREVERSION) $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/include
+	ln -s /$(prefix)/share/idl/xulrunner-$(GREVERSION) $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/idl
+	ln -s /$(prefix)/lib/xulrunner-$(GREVERSION) $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/bin
+	cp -rfL $(CURDIR)/$(DEST_OBJ_DIR)/dist/sdk $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/sdk
+	rm -f $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/sdk/lib/libxul.so
+	ln -s sdk/lib $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/lib
+	ln -s /$(prefix)/lib/xulrunner-$(GREVERSION)/libxul.so $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/sdk/lib/libxul.so
+	
+#	MOZCONFIG=$(CURDIR)/$(MOZCONFIG_FILE) $(MAKE) -f client.mk install DESTDIR=$(CURDIR)/debian/tmp
+	
+	dh_install --sourcedir=debian/tmp
+
+# Build architecture-independent files here.
+binary-indep: build install
+# We have nothing to do by default.
+
+# Build architecture-dependent files here.
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_link
+	dh_compress
+	dh_fixperms
+	dh_strip --dbg-package=$(package)-dbg
+	dh_makeshlibs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary install 

@@ -1123,6 +1123,10 @@ gst/gst.h
 gst/app/gstappsink.h
 gst/app/gstappsrc.h
 gst/video/video.h
+resource/qt5/policy/audio-resource.h
+resource/qt5/policy/resource-set.h
+resource/qt5/policy/resource.h
+resource/qt5/policy/resources.h
 sys/msg.h
 sys/ipc.h
 sys/thr.h

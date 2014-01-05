@@ -245,12 +245,12 @@ nsFilePicker::Show(int16_t* aReturn)
             targetFile->Exists(&exists);
             if (exists) {
                 // file exists already create temporary filename
-                QTemporaryFile temp(QString::fromUtf16(targetPath.get()));
+                QTemporaryFile temp(QString::fromUtf16((const ushort*)targetPath.get()));
                 temp.open();
                 selected = temp.fileName();
                 temp.close();
             } else {
-                selected = QString::fromUtf16(targetPath.get());
+                selected = QString::fromUtf16((const ushort*)targetPath.get());
             }
         }
     }
@@ -292,6 +292,6 @@ void nsFilePicker::InitNative(nsIWidget *aParent, const nsAString &aTitle)
 {
     PR_LOG(sFilePickerLog, PR_LOG_DEBUG, ("nsFilePicker::InitNative"));
     nsAutoString str(aTitle);
-    mCaption = QString::fromUtf16(str.get());
+    mCaption = QString::fromUtf16((const ushort*)str.get());
     mParent = aParent;
 }

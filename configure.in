@@ -4618,6 +4618,30 @@ incorrect])
        ])
     fi
 
+    MOZ_ENABLE_QT5FEEDBACK=
+    PKG_CHECK_MODULES(_QT5FEEDBACK, Qt0Feedback,
+                      MOZ_ENABLE_QT5FEEDBACK=1,
+                      MOZ_ENABLE_QT5FEEDBACK=)
+    if test "$MOZ_ENABLE_QT5FEEDBACK"; then
+       MOZ_ENABLE_QT5FEEDBACK=1
+       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $_QT5FEEDBACK_CFLAGS"
+       MOZ_QT_LIBS="$MOZ_QT_LIBS $_QT5FEEDBACK_LIBS"
+       AC_DEFINE(MOZ_ENABLE_QT5FEEDBACK)
+       AC_SUBST(MOZ_ENABLE_QT5FEEDBACK)
+    fi
+
+    MOZ_ENABLE_QT5GEOPOSITION=
+    PKG_CHECK_MODULES(_QT5GEOPOSITION, Qt5Positioning,
+                      MOZ_ENABLE_QT5GEOPOSITION=1,
+                      MOZ_ENABLE_QT5GEOPOSITION=)
+    if test "$MOZ_ENABLE_QT5GEOPOSITION"; then
+       MOZ_ENABLE_QT5GEOPOSITION=1
+       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $_QT5GEOPOSITION_CFLAGS"
+       MOZ_QT_LIBS="$MOZ_QT_LIBS $_QT5GEOPOSITION_LIBS"
+       AC_DEFINE(MOZ_ENABLE_QT5GEOPOSITION)
+       AC_SUBST(MOZ_ENABLE_QT5GEOPOSITION)
+    fi
+
     if test "$MOZ_ENABLE_CONTENTACTION"; then
       MOZ_ENABLE_CONTENTACTION=1
       AC_DEFINE(MOZ_ENABLE_CONTENTACTION)
@@ -5623,6 +5647,18 @@ if test "$MOZ_GSTREAMER"; then
                       gstreamer-app-$GST_API_VERSION
                       gstreamer-plugins-base-$GST_API_VERSION, ,
                       AC_MSG_ERROR([gstreamer and gstreamer-plugins-base development packages are needed to build gstreamer backend. Install them or disable gstreamer support with --disable-gstreamer]))
+
+    PKG_CHECK_MODULES(NEMO_RESOURCE, libresourceqt5,
+                      HAS_NEMO_RESOURCE=1,
+                      HAS_NEMO_RESOURCE=)
+
+    if test "$HAS_NEMO_RESOURCE"; then
+        HAS_NEMO_RESOURCE=1
+        AC_DEFINE(HAS_NEMO_RESOURCE)
+        AC_SUBST(NEMO_RESOURCE_LIBS)
+        AC_SUBST(NEMO_RESOURCE_CFLAGS)
+    fi
+
     if test -n "$GSTREAMER_LIBS"; then
        _SAVE_LDFLAGS=$LDFLAGS
        LDFLAGS="$LDFLAGS $GSTREAMER_LIBS -lgstvideo-$GST_API_VERSION"
@@ -5640,6 +5676,7 @@ fi
 AC_SUBST(GSTREAMER_CFLAGS)
 AC_SUBST(GSTREAMER_LIBS)
 AC_SUBST(MOZ_GSTREAMER)
+AC_SUBST(HAS_NEMO_RESOURCE)
 
 if test -n "$MOZ_GSTREAMER"; then
    AC_DEFINE(MOZ_GSTREAMER)
@@ -6198,7 +6235,7 @@ MOZ_ARG_DISABLE_BOOL(webapp-runtime,
 [  --disable-webapp-runtime  Disable Web App Runtime],
     MOZ_WEBAPP_RUNTIME=,
     MOZ_WEBAPP_RUNTIME=1)
-if test "$MOZ_WIDGET_TOOLKIT" != "windows" -a "$MOZ_WIDGET_TOOLKIT" != "cocoa" -a "$MOZ_WIDGET_TOOLKIT" != "gtk2"; then
+if test "$MOZ_WIDGET_TOOLKIT" != "windows" -a "$MOZ_WIDGET_TOOLKIT" != "cocoa" -a "$MOZ_WIDGET_TOOLKIT" != "gtk2" -a "$MOZ_WIDGET_TOOLKIT" != "qt"; then
     MOZ_WEBAPP_RUNTIME=
 fi
 if test "$OS_ARCH" = "WINNT" -a -z "$MAKENSISU" -a -n "$CROSS_COMPILE"; then
@@ -7928,10 +7965,11 @@ if test "$MOZ_TREE_CAIRO"; then
         XLIB_SURFACE_FEATURE="#define CAIRO_HAS_XLIB_SURFACE 1"
         XLIB_XRENDER_SURFACE_FEATURE="#define CAIRO_HAS_XLIB_XRENDER_SURFACE 1"
         PS_SURFACE_FEATURE="#define CAIRO_HAS_PS_SURFACE 1"
-        FT_FONT_FEATURE="#define CAIRO_HAS_FT_FONT 1"
-        MOZ_ENABLE_CAIRO_FT=1
-        CAIRO_FT_CFLAGS="$FT2_CFLAGS"
     fi
+    FT_FONT_FEATURE="#define CAIRO_HAS_FT_FONT 1"
+    MOZ_ENABLE_CAIRO_FT=1
+    CAIRO_FT_CFLAGS="$FT2_CFLAGS"
+
     case "$MOZ_WIDGET_TOOLKIT" in
       qt)
         QT_SURFACE_FEATURE="#define CAIRO_HAS_QT_SURFACE 1"

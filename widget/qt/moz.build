@@ -48,7 +48,7 @@ if CONFIG['MOZ_ENABLE_CONTENTMANAGER']:
         'moc_nsMFilePicker.cpp',
     ]
 
-if CONFIG[' MOZ_ENABLE_QTMOBILITY']:
+if CONFIG['MOZ_ENABLE_QTMOBILITY']:
     SOURCES += [
         'mozqorientationsensorfilter.cpp',
     ]

@@ -440,6 +440,12 @@ GetGlobalContextWGL(const ContextFlags aFlags = ContextFlagsNone)
 }
 
 already_AddRefed<GLContext>
+GLContextProviderWGL::CreateForEmbedded(ContextFlags flags)
+{
+    return nullptr;
+}
+
+already_AddRefed<GLContext>
 GLContextProviderWGL::CreateForWindow(nsIWidget *aWidget)
 {
     LibType libToUse = WGLLibrary::OPENGL_LIB;

@@ -8,6 +8,7 @@
 #include <qdesktopwidget.h>
 #include <qapplication.h>
 #include <QTransform>
+#include <QScreen>
 
 #include "nsScreenQt.h"
 #include "nsXULAppAPI.h"
@@ -48,7 +49,11 @@ NS_IMETHODIMP
 nsScreenQt::GetRect(int32_t *outLeft,int32_t *outTop,
                     int32_t *outWidth,int32_t *outHeight)
 {
+#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
     QRect r = QApplication::desktop()->screenGeometry(mScreen);
+#else
+    QRect r = QGuiApplication::screens()[mScreen]->geometry();
+#endif
 #ifdef MOZ_ENABLE_QTMOBILITY
     r = MozQOrientationSensorFilter::GetRotationTransform().mapRect(r);
     // just rotating gives us weird negative coordinates, but we want to return
@@ -68,7 +73,11 @@ NS_IMETHODIMP
 nsScreenQt::GetAvailRect(int32_t *outLeft,int32_t *outTop,
                          int32_t *outWidth,int32_t *outHeight)
 {
+#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
     QRect r = QApplication::desktop()->screenGeometry(mScreen);
+#else
+    QRect r = QGuiApplication::screens()[mScreen]->geometry();
+#endif
 #ifdef MOZ_ENABLE_QTMOBILITY
     r = MozQOrientationSensorFilter::GetRotationTransform().mapRect(r);
 #endif
@@ -85,7 +94,11 @@ NS_IMETHODIMP
 nsScreenQt::GetPixelDepth(int32_t *aPixelDepth)
 {
     // #############
+#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
     *aPixelDepth = (int32_t)QColormap::instance().depth();
+#else
+    *aPixelDepth = QGuiApplication::primaryScreen()->depth();
+#endif
     return NS_OK;
 }
 

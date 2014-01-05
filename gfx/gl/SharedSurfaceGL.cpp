@@ -268,7 +268,8 @@ SharedSurface_Basic::Create(GLContext* gl,
     default:
         MOZ_CRASH("Unhandled Tex format.");
     }
-    return new SharedSurface_Basic(gl, size, hasAlpha, format, tex);
+    SharedSurface_Basic* retSurf = new SharedSurface_Basic(gl, size, hasAlpha, format, tex);
+    return retSurf;
 }
 
 SharedSurface_Basic::SharedSurface_Basic(GLContext* gl,
@@ -321,7 +322,8 @@ SharedSurface_GLTexture::Create(GLContext* prodGL,
     prodGL->MakeCurrent();
     GLuint tex = CreateTextureForOffscreen(prodGL, formats, size);
 
-    return new SharedSurface_GLTexture(prodGL, consGL, size, hasAlpha, tex);
+    SharedSurface_GLTexture* retSurf = new SharedSurface_GLTexture(prodGL, consGL, size, hasAlpha, tex);
+    return retSurf;
 }
 
 SharedSurface_GLTexture::~SharedSurface_GLTexture()

@@ -32,6 +32,7 @@
 #endif
 #include "nsFilePickerProxy.h"
 #include "nsXULAppAPI.h"
+#include "mozilla/gfx/2D.h"
 
 #if defined(MOZ_X11)
 #include "GfxInfoX11.h"

@@ -1,0 +1,50 @@
+export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig
+export CPPFLAGS="-I/usr/include/arm-linux-gnueabihf"
+export CFLAGS="-I/usr/include/arm-linux-gnueabihf"
+mk_add_options  CPPFLAGS=$CPPFLAGS
+mk_add_options  CFLAGS=$CFLAGS
+
+FIX_LINK_LDFLAGS="-L/usr/arm-linux-gnueabihf/lib -Wl,-rpath-link=/usr/arm-linux-gnueabihf/lib -L/lib/arm-linux-gnueabihf -Wl,-rpath-link=/lib/arm-linux-gnueabihf"
+FIX_LINK_LDFLAGS="$FIX_LINK_LDFLAGS -L/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link=/usr/lib/arm-linux-gnueabihf"
+export LDFLAGS="$FIX_LINK_LDFLAGS"
+LDFLAGS="$FIX_LINK_LDFLAGS"
+export WRAP_LDFLAGS="$FIX_LINK_LDFLAGS"
+mk_add_options LDFLAGS="$FIX_LINK_LDFLAGS"
+
+export ac_cv_have_usable_wchar_option_v2="no"
+ac_add_options --enable-application=xulrunner
+ac_add_options --disable-tests
+ac_add_options --disable-dbus
+ac_add_options --disable-accessibility
+ac_add_options --disable-webrtc
+ac_add_options --enable-logging
+ac_add_options --enable-default-toolkit=cairo-gtk2
+ac_add_options --enable-mobile-optimize
+ac_add_options --enable-optimize
+ac_add_options --enable-system-ffi
+ac_add_options --disable-necko-wifi
+ac_add_options --disable-dbus
+ac_add_options --disable-updater
+
+export MOZ_DEBUG_SYMBOLS=1
+ac_add_options --enable-debug-symbols="-gdwarf-2"
+export MOZILLA_OFFICIAL=1
+mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
+
+export CXXFLAGS="$CXXFLAGS -DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1 "
+
+ac_add_options --disable-elf-hack
+ac_add_options --enable-libjpeg-turbo
+ac_add_options --with-gl-provider=EGL
+
+mk_add_options MOZ_MAKE_FLAGS="-j4"
+mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/objdir-arm-rasppi-gtk2"
+
+ac_add_options --with-arm-kuser
+ac_add_options --with-thumb=toolchain-default
+ac_add_options --with-arch=armv6
+ac_add_options --with-float-abi=hard
+ac_add_options --with-thumb=no
+ac_add_options --with-fpu=vfp
+ac_add_options --with-arm-kuser
+

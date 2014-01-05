@@ -92,6 +92,8 @@ using namespace QtMobility;
 #include "nsIDOMSimpleGestureEvent.h" //Gesture support
 #include "nsIDOMWheelEvent.h"
 
+#include "GLContext.h"
+
 #ifdef MOZ_X11
 #include "keysym2ucs.h"
 #endif
@@ -385,7 +387,7 @@ nsWindow::Destroy(void)
     if (rollupListener) {
         nsCOMPtr<nsIWidget> rollupWidget = rollupListener->GetRollupWidget();
         if (static_cast<nsIWidget *>(this) == rollupWidget) {
-            rollupListener->Rollup(0, nullptr);
+            rollupListener->Rollup(0, nullptr, nullptr);
         }
     }
 
@@ -435,7 +437,7 @@ nsWindow::ClearCachedResources()
 {
     if (mLayerManager &&
         mLayerManager->GetBackendType() == mozilla::layers::LAYERS_BASIC) {
-        statimLayerManager->ClearCachedResources();
+        mLayerManager->ClearCachedResources();
     }
     for (nsIWidget* kid = mFirstChild; kid; ) {
         nsIWidget* next = kid->GetNextSibling();
@@ -807,7 +809,7 @@ nsWindow::GetNativeData(uint32_t aDataType)
 NS_IMETHODIMP
 nsWindow::SetTitle(const nsAString& aTitle)
 {
-    QString qStr(QString::fromUtf16(aTitle.BeginReading(), aTitle.Length()));
+    QString qStr(QString::fromUtf16((const ushort*)aTitle.BeginReading(), aTitle.Length()));
     if (mIsTopLevel) {
         QWidget *widget = GetViewWidget();
         if (widget)
@@ -956,7 +958,8 @@ nsWindow::CheckForRollup(double aMouseX, double aMouseY,
 
         // if we've determined that we should still rollup, do it.
         if (rollup) {
-            retVal = rollupListener->Rollup(popupsToRollup, nullptr);
+            nsIntPoint pos(aMouseX, aMouseY);
+            retVal = rollupListener->Rollup(popupsToRollup, &pos, nullptr);
         }
     }
 
@@ -2737,7 +2740,7 @@ nsWindow::imComposeEvent(QInputMethodEvent *event, bool &handled)
     WidgetCompositionEvent start(true, NS_COMPOSITION_START, this);
     DispatchEvent(&start);
 
-    nsAutoString compositionStr(event->commitString().utf16());
+    nsAutoString compositionStr((PRUnichar*)event->commitString().utf16());
 
     if (!compositionStr.IsEmpty()) {
       WidgetCompositionEvent update(true, NS_COMPOSITION_UPDATE, this);

@@ -15,6 +15,12 @@ GLContextProviderNull::CreateForWindow(nsIWidget*)
 }
 
 already_AddRefed<GLContext>
+GLContextProviderNull::CreateForEmbedded(ContextFlags flags)
+{
+    return nullptr;
+}
+
+already_AddRefed<GLContext>
 GLContextProviderNull::CreateOffscreen(const gfxIntSize&,
                                        const SurfaceCaps&,
                                        ContextFlags)

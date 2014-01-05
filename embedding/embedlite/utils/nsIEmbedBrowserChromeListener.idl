@@ -1,0 +1,31 @@
+/* -*- Mode: IDL; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+#include "nsISupports.idl"
+
+/**
+ * An optional interface for embedding clients wishing to receive
+ * notifications for when a tooltip should be displayed or removed.
+ * The embedder implements this interface on the web browser chrome
+ * object associated with the window that notifications are required
+ * for.
+ *
+ * @see nsIEmbedBrowserChromeListener
+ */
+[scriptable, uuid(ff88f95e-48d9-11e2-bca5-6b3dfc3f4672)]
+interface nsIEmbedBrowserChromeListener
+{
+    void onLocationChanged(in string aLocation, in boolean aCanGoBack, in boolean aCanGoForward);
+    void onLoadStarted(in string aLocation);
+    void onLoadFinished();
+    void onLoadRedirect();
+    void onLoadProgress(in int32_t aProgress, in int32_t aCurTotal, in int32_t aMaxTotal);
+    void onSecurityChanged(in string aStatus, in uint32_t aState);
+    void onFirstPaint(in int32_t aX, in int32_t aY);
+    void onScrolledAreaChanged(in uint32_t aWidth, in uint32_t aHeight);
+    void onScrollChanged(in int32_t offSetX, in int32_t offSetY);
+    void onTitleChanged(in wstring aTitle);
+    void onUpdateDisplayPort();
+};

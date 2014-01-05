@@ -199,3 +199,5 @@ PROCESS_MAP_FILE = grep -v ';-' $< | \
 ifeq ($(OS_RELEASE),2.4)
 DEFINES += -DNO_FORK_CHECK
 endif
+
+OS_LIBS += -lrt

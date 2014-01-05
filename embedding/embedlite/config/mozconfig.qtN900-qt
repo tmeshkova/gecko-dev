@@ -1,0 +1,53 @@
+export ac_cv_have_usable_wchar_option_v2="no"
+ac_add_options --enable-application=xulrunner
+#ac_add_options --enable-update-channel=nightly
+#ac_add_options --enable-update-packaging
+ac_add_options --enable-logging
+ac_add_options --enable-default-toolkit=cairo-qt
+ac_add_options --enable-mobile-optimize
+ac_add_options --enable-skia
+
+export MOZ_DEBUG_SYMBOLS=1
+ac_add_options --enable-debug-symbols="-ggdb"
+export MOZILLA_OFFICIAL=1
+mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
+
+export CXXFLAGS="-mthumb -mtune=cortex-a8 -mcpu=cortex-a8 -fpermissive -DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1"
+export CFLAGS="-mthumb -mtune=cortex-a8 -mcpu=cortex-a8"
+
+ac_add_options --enable-optimize="-O2 -Wno-psabi"
+ac_add_options --disable-jemalloc
+ac_add_options --enable-gstreamer
+
+mk_add_options MOZ_MAKE_FLAGS="-j4"
+mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/obj-build-n900-qt"
+ac_add_options --with-fpu=neon
+
+ac_add_options --with-system-zlib
+ac_add_options --with-system-bz2
+ac_add_options --enable-system-pixman
+
+ac_add_options --disable-elf-hack
+
+ac_add_options --enable-libjpeg-turbo
+
+ac_add_options --enable-profile-guided-optimization
+#ac_add_options --enable-valgrind
+#ac_add_options --enable-profiling
+
+ac_add_options --disable-accessibility
+ac_add_options --disable-crashreporter
+ac_add_options --disable-updater
+ac_add_options --disable-jsd
+ac_add_options --disable-printing
+ac_add_options --disable-tests
+ac_add_options --disable-dbus
+ac_add_options --disable-necko-wifi
+ac_add_options --disable-updater
+ac_add_options --disable-gamepad
+ac_add_options --disable-pulseaudio
+
+#ac_add_options --enable-debug
+
+#fails to compile with this enabled, might raise a bug
+#ac_add_options --with-maemo-version=5

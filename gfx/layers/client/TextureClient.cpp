@@ -24,7 +24,7 @@
 #include "ImageContainer.h"             // for PlanarYCbCrImage, etc
 #include "mozilla/gfx/2D.h"
 
-#ifdef MOZ_ANDROID_OMTC
+#if defined(MOZ_ANDROID_OMTC) || defined(USE_ANDROID_OMTC_HACKS)
 #  include "gfxReusableImageSurfaceWrapper.h"
 #  include "gfxImageSurface.h"
 #else
@@ -627,7 +627,7 @@ DeprecatedTextureClientTile::EnsureAllocated(gfx::IntSize aSize, gfxContentType 
 {
   if (!mSurface ||
       mSurface->Format() != gfxPlatform::GetPlatform()->OptimalFormatForContent(aType)) {
-#ifdef MOZ_ANDROID_OMTC
+#if defined(MOZ_ANDROID_OMTC) || defined(USE_ANDROID_OMTC_HACKS)
     // If we're using OMTC, we can save some cycles by not using shared
     // memory. Using shared memory here is a small, but significant
     // performance regression.

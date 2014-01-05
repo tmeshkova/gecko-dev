@@ -35,6 +35,7 @@ public:
   MOCK_METHOD2(HandleLongTapUp, void(const CSSIntPoint&, int32_t));
   MOCK_METHOD3(SendAsyncScrollDOMEvent, void(bool aIsRoot, const CSSRect &aContentRect, const CSSSize &aScrollableSize));
   MOCK_METHOD2(PostDelayedTask, void(Task* aTask, int aDelayMs));
+  MOCK_METHOD2(ScrollUpdate, void(const CSSPoint& aPosition, const float aResolution));
 };
 
 class MockContentControllerDelayed : public MockContentController {

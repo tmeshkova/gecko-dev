@@ -2411,6 +2411,8 @@ public:
         return MakeCurrentImpl(aForce);
     }
 
+    virtual bool Init() { return false; }
+
     virtual bool SetupLookupFunction() = 0;
 
     virtual void ReleaseSurface() {}

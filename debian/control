@@ -1,0 +1,36 @@
+Source: xulrunner
+Section: libs
+Priority: extra
+Maintainer: unknown <tmeshkova@github.com>
+Build-Depends: debhelper (>= 7),
+ autoconf2.13,
+ python,
+ unzip,
+ zip,
+ libpango1.0-dev,
+ libdbus-1-dev,
+ libdbus-glib-1-dev,
+ libasound2-dev,
+ libgstreamer0.10-dev,
+ libgstreamer-plugins-base0.10-dev,
+ libx11-dev,
+ libxt-dev
+Homepage: https://wiki.mozilla.org/Embedding/IPCLiteAPI
+
+Package: xulrunner
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: <insert up to 60 chars description>
+ <insert long description, indented with spaces>
+
+Package: xulrunner-dev
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, xulrunner (= ${Source-Version})
+Description: <insert up to 60 chars description>
+ <insert long description, indented with spaces>
+
+Package: xulrunner-dbg
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, xulrunner (= ${Source-Version})
+Description: <insert up to 60 chars description>
+ <insert long description, indented with spaces>

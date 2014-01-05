@@ -262,7 +262,9 @@ typedef socklen_t cpr_socklen_t;
  * Common superset of at least AF_INET, AF_INET6 and AF_LINK sockaddr
  * structures. Has sufficient size and alignment for those sockaddrs.
  */
+#ifndef _BITS_SOCKADDR_H
 typedef uint16_t        sa_family_t;
+#endif
 
 typedef struct
 {

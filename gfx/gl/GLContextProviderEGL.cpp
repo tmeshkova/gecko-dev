@@ -203,7 +203,9 @@ CreateSurfaceForWindow(nsIWidget* widget, const EGLConfig& config) {
         }
     #else
         MOZ_ASSERT(widget != nullptr);
+    #ifndef MOZ_WIDGET_QT
         newSurface = sEGLLibrary.fCreateWindowSurface(EGL_DISPLAY(), config, GET_NATIVE_WINDOW(widget), 0);
+    #endif
         #ifdef MOZ_WIDGET_GONK
             gScreenBounds.x = 0;
             gScreenBounds.y = 0;
@@ -220,7 +222,7 @@ class GLContextEGL : public GLContext
 
     static already_AddRefed<GLContextEGL>
     CreateGLContext(const SurfaceCaps& caps,
-                    GLContextEGL *shareContext,
+                    GLContext *shareContext,
                     bool isOffscreen,
                     EGLConfig config,
                     EGLSurface surface)
@@ -230,7 +232,7 @@ class GLContextEGL : public GLContext
             return nullptr;
         }
 
-        EGLContext eglShareContext = shareContext ? shareContext->mContext
+        EGLContext eglShareContext = shareContext ? shareContext->GetEGLContext()
                                                   : EGL_NO_CONTEXT;
         EGLint* attribs = sEGLLibrary.HasRobustness() ? gContextAttribsRobustness
                                                       : gContextAttribs;
@@ -276,6 +278,7 @@ public:
         , mSurface(surface)
         , mSurfaceOverride(EGL_NO_SURFACE)
         , mContext(context)
+        , mPlatformContext(nullptr)
         , mThebesSurface(nullptr)
         , mBound(false)
         , mIsPBuffer(false)
@@ -306,12 +309,20 @@ public:
     {
         MarkDestroyed();
 
+        // If mGLWidget is non-null, then we've been given it by the GL context provider,
+        // and it's managed by the widget implementation. In this case, We can't destroy
+        // our contexts.
+        if (mPlatformContext)
+            return;
+
 #ifdef DEBUG
         printf_stderr("Destroying context %p surface %p on display %p\n", mContext, mSurface, EGL_DISPLAY());
 #endif
 
         sEGLLibrary.fDestroyContext(EGL_DISPLAY(), mContext);
-        mozilla::gl::DestroySurface(mSurface);
+        if (!mPlatformContext) {
+            mozilla::gl::DestroySurface(mSurface);
+        }
     }
 
     GLContextType GetContextType() {
@@ -320,6 +331,10 @@ public:
 
     bool Init()
     {
+        if (mInitialized) {
+            return true;
+        }
+
 #if defined(ANDROID)
         // We can't use LoadApitraceLibrary here because the GLContext
         // expects its own handle to the GL library
@@ -507,7 +522,9 @@ public:
 
     virtual void
     ReleaseSurface() {
-        DestroySurface(mSurface);
+        if (!mPlatformContext) {
+            DestroySurface(mSurface);
+        }
         mSurface = nullptr;
     }
 
@@ -530,7 +547,7 @@ public:
 
     bool SwapBuffers()
     {
-        if (mSurface) {
+        if (mSurface && !mPlatformContext) {
 #ifdef MOZ_WIDGET_GONK
             if (!mIsOffscreen) {
                 if (mHwc) {
@@ -550,6 +567,10 @@ public:
     // for the lifetime of this context.
     void HoldSurface(gfxASurface *aSurf) {
         mThebesSurface = aSurf;
+    }
+
+    void SetPlatformContext(void *context) {
+        mPlatformContext = context;
     }
 
     EGLContext Context() {
@@ -574,6 +595,7 @@ protected:
     EGLSurface mSurface;
     EGLSurface mSurfaceOverride;
     EGLContext mContext;
+    void *mPlatformContext;
     nsRefPtr<gfxASurface> mThebesSurface;
     bool mBound;
 
@@ -750,6 +772,42 @@ CreateConfig(EGLConfig* aConfig)
     }
 }
 
+static nsRefPtr<GLContext> gGlobalContext;
+
+already_AddRefed<GLContext>
+GLContextProviderEGL::CreateForEmbedded(ContextFlags flags)
+{
+    if (!sEGLLibrary.EnsureInitialized()) {
+        MOZ_CRASH("Failed to load EGL library!\n");
+        return nullptr;
+    }
+
+    EGLContext eglContext = sEGLLibrary.fGetCurrentContext();
+    if (eglContext) {
+        void* platformContext = eglContext;
+        SurfaceCaps caps = SurfaceCaps::Any();
+        EGLConfig config = EGL_NO_CONFIG;
+        EGLSurface surface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
+        nsRefPtr<GLContextEGL> glContext =
+            new GLContextEGL(caps,
+                             nullptr, false,
+                             config, surface, eglContext);
+
+        glContext->SetIsDoubleBuffered(true);
+        glContext->SetPlatformContext(platformContext);
+#if !defined(__arm__) // Must not use context sharing on arm (EGLImage should be enough)
+
+        if (flags == ContextFlagsGlobal) {
+            gGlobalContext = glContext;
+            gGlobalContext->SetIsGlobalSharedContext(true);
+        }
+#endif
+
+        return glContext.forget();
+    }
+    return nullptr;
+}
+
 already_AddRefed<GLContext>
 GLContextProviderEGL::CreateForWindow(nsIWidget *aWidget)
 {
@@ -759,6 +817,10 @@ GLContextProviderEGL::CreateForWindow(nsIWidget *aWidget)
     }
 
     bool doubleBuffered = true;
+
+    if (aWidget->HasGLContext()) {
+        return CreateForEmbedded();
+    }
 
     EGLConfig config;
     if (!CreateConfig(&config)) {
@@ -825,9 +887,10 @@ GLContextEGL::CreateEGLPBufferOffscreenContext(const gfxIntSize& size)
     }
 
     SurfaceCaps dummyCaps = SurfaceCaps::Any();
+    GLContext *shareContext = GLContextProviderEGL::GetGlobalContext(ContextFlagsNone);
     nsRefPtr<GLContextEGL> glContext =
         GLContextEGL::CreateGLContext(dummyCaps,
-                                      nullptr, true,
+                                      shareContext, true,
                                       config, surface);
     if (!glContext) {
         NS_WARNING("Failed to create GLContext from PBuffer");
@@ -863,9 +926,10 @@ GLContextEGL::CreateEGLPixmapOffscreenContext(const gfxIntSize& size)
     MOZ_ASSERT(surface);
 
     SurfaceCaps dummyCaps = SurfaceCaps::Any();
+    GLContext *shareContext = GLContextProviderEGL::GetGlobalContext(ContextFlagsNone);
     nsRefPtr<GLContextEGL> glContext =
         GLContextEGL::CreateGLContext(dummyCaps,
-                                      nullptr, true,
+                                      shareContext, true,
                                       config, surface);
     if (!glContext) {
         NS_WARNING("Failed to create GLContext from XSurface");
@@ -914,12 +978,13 @@ GLContextProviderEGL::CreateOffscreen(const gfxIntSize& size,
 GLContext *
 GLContextProviderEGL::GetGlobalContext(const ContextFlags)
 {
-    return nullptr;
+    return gGlobalContext.get();
 }
 
 void
 GLContextProviderEGL::Shutdown()
 {
+    gGlobalContext = nullptr;
 }
 
 } /* namespace gl */

@@ -1,0 +1,115 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+include protocol PEmbedLiteApp;
+
+include "ipc/nsGUIEventIPC.h";
+include "ipc/InputDataIPC.h";
+include "mozilla/GfxMessageUtils.h";
+using struct gfxSize from "gfxPoint.h";
+using gfxRect from "mozilla/GfxMessageUtils.h";
+using CSSRect from "Units.h";
+using CSSSize from "Units.h";
+using struct nsIntSize from "nsSize.h";
+using struct gfxPoint from "gfxPoint.h";
+using struct nsIntPoint from "nsPoint.h";
+using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
+using FrameMetrics::ViewID from "FrameMetrics.h";
+using nscolor from "nsColor.h";
+using class mozilla::WidgetKeyboardEvent from "ipc/nsGUIEventIPC.h";
+using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
+using MultiTouchInput from "InputData.h";
+using mozilla::CSSIntPoint from "Units.h";
+
+namespace mozilla {
+namespace embedlite {
+
+intr protocol PEmbedLiteView {
+    manager PEmbedLiteApp;
+child:
+    async LoadURL(nsString url);
+    async GoBack();
+    async GoForward();
+    async StopLoad();
+    async Reload(bool hardReload);
+    async LoadFrameScript(nsString uri);
+    async SetViewSize(gfxSize aSize);
+    async SetGLViewSize(gfxSize aSize);
+    async SetIsActive(bool aIsActive);
+    async SetIsFocused(bool aIsFocused);
+    async SuspendTimeouts();
+    async ResumeTimeouts();
+    async AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
+
+    UpdateFrame(FrameMetrics frame) compress;
+    HandleDoubleTap(nsIntPoint point);
+    HandleSingleTap(nsIntPoint point);
+    HandleLongTap(nsIntPoint point);
+    HandleTextEvent(nsString commit, nsString preEdit);
+    HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
+    HandleKeyReleaseEvent(int domKeyCode, int gmodifiers, int charCode);
+    MouseEvent(nsString aType, float aX, float aY,
+               int32_t aButton, int32_t aClickCount,
+               int32_t aModifiers, bool aIgnoreRootScrollFrame);
+
+    InputDataTouchEvent(MultiTouchInput event);
+    // We use a separate message for touchmove events only to apply
+    // compression to them.
+    InputDataTouchMoveEvent(MultiTouchInput event) compress;
+    AddMessageListener(nsCString name);
+    RemoveMessageListener(nsCString name);
+    AddMessageListeners(nsString [] messageNames);
+    RemoveMessageListeners(nsString [] messageNames);
+
+    async Destroy();
+
+parent:
+    async Initialized();
+    async __delete__();
+
+    async OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);
+    async OnLoadStarted(nsCString aLocation);
+    async OnLoadFinished();
+    async OnLoadRedirect();
+    async OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal);
+    async OnSecurityChanged(nsCString aStatus, uint32_t aState);
+    async OnFirstPaint(int32_t aX, int32_t aY);
+    async OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight);
+    async OnScrollChanged(int32_t offSetX, int32_t offSetY);
+    async OnTitleChanged(nsString aTitle);
+    UpdateZoomConstraints(bool aAllowZoom, float aMinZoom, float aMaxZoom);
+
+    /**
+      * Notifies the parent about a scroll event. The pres shell ID and
+      * view ID identify which scrollable (sub-)frame was scrolled, and
+      * the new scroll offset for that frame is sent.
+      */
+    UpdateScrollOffset(uint32_t aPresShellId, ViewID aViewId, CSSIntPoint aScrollOffset);
+
+    ZoomToRect(CSSRect aRect);
+    async SetBackgroundColor(nscolor color);
+    ContentReceivedTouch(bool aPreventDefault);
+    sync GetGLViewSize()
+      returns (gfxSize aSize);
+
+    sync SyncMessage(nsString aMessage, nsString aJSON)
+      returns (nsString[] retval);
+
+    // IME
+    sync GetInputContext() returns (int32_t IMEEnabled, int32_t IMEOpen,
+                                    intptr_t NativeIMEContext);
+
+    SetInputContext(int32_t IMEEnabled,
+                    int32_t IMEOpen,
+                    nsString type,
+                    nsString inputmode,
+                    nsString actionHint,
+                    int32_t cause,
+                    int32_t focusChange);
+
+both:
+    AsyncMessage(nsString aMessage, nsString aData);
+};
+
+}}

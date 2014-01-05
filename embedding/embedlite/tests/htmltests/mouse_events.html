@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <title>Touch Event Example</title>
+  <style type="text/css">
+    #canvas {
+      border:solid black 1px;
+    }
+  </style>
+  
+  <script>
+    var ongoingTouches = new Array;
+    var offX = 0;
+    var offY = 0;
+    var prevX = 0;
+    var prevY = 0;
+
+    function getOffset(el) {
+        if (el.getBoundingClientRect)
+            return el.getBoundingClientRect();
+        else {
+            var x = 0, y = 0;
+            do {
+                x += el.offsetLeft - el.scrollLeft;
+                y += el.offsetTop - el.scrollTop;
+            } 
+            while (el = el.offsetParent);
+
+            return { "left": x, "top": y }
+        }      
+    }
+
+    function colorForTouch(touch) {
+      return "#FF00FF";
+    }
+    
+    function ongoingTouchIndexById(idToFind) {
+      for (var i=0; i<ongoingTouches.length; i++) {
+        var id = ongoingTouches[i].identifier;
+        if (id == idToFind) {
+          return i;
+        }
+      }
+      return -1;    // not found
+    }
+
+    function handleStart(evt) {
+      evt.preventDefault();
+      var el = document.getElementById("canvas");
+      var off = getOffset(el);
+      offX = -off.left;
+      offY = -off.top;
+      var ctx = el.getContext("2d");
+        var color = colorForTouch(0);
+        ctx.fillStyle = color;
+        ctx.fillRect(evt.clientX-2 + offX, evt.clientY-2 + offY, 4, 4);
+        prevX = evt.clientX;
+        prevY = evt.clientY;
+    }
+ 
+    function handleMove(evt) {
+      evt.preventDefault();
+      var el = document.getElementById("canvas");
+      var ctx = el.getContext("2d");
+      ctx.lineWidth = 4;
+        var color = colorForTouch(0);
+
+        ctx.fillStyle = color;
+        ctx.fillRect(evt.clientX-2 + offX, evt.clientY-2 + offY, 4, 4);
+    }
+
+    function handleEnd(evt) {
+      window.dump("handleEnd\n");
+      evt.preventDefault();
+      var el = document.getElementById("canvas");
+      var ctx = el.getContext("2d");
+      ctx.lineWidth = 4;
+        var color = colorForTouch(0);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(prevX + offY, prevY + offY);
+        ctx.lineTo(evt.clientX + offY, evt.clientY + offY);
+//        ongoingTouches.splice(i, 1);  // remove it; we're done
+        prevX = evt.clientX;
+        prevY = evt.clientY;
+    }
+
+    function handleCancel(evt) {
+      window.dump("handleCancel\n");
+      evt.preventDefault();
+      var touches = evt.changedTouches;
+
+      for (var i=0; i<touches.length; i++) {
+        ongoingTouches.splice(i, 1);  // remove it; we're done
+      }
+    }
+
+  
+    function startup() {
+      var el = document.getElementById("canvas");
+      el.addEventListener("mousedown", handleStart, false);
+      el.addEventListener("mouseup", handleEnd, false);
+      el.addEventListener("mousemove", handleMove, false);
+    }
+  </script>
+</head>
+<body topmargin="100px" leftmargin="100px" marginheight="100px" marginwidth="100px" onload="startup()">
+  <canvas id="canvas" width="1000" height="1000">
+    You really badly need to use a different browser.
+  </canvas>
+</body>
+</html>

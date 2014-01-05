@@ -65,6 +65,8 @@ public:
                                        const CSSRect &aContentRect,
                                        const CSSSize &aScrollableSize) = 0;
 
+  virtual void ScrollUpdate(const CSSPoint& aPosition, const float aResolution) = 0;
+
   /**
    * Schedules a runnable to run on the controller/UI thread at some time
    * in the future.

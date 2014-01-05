@@ -89,6 +89,20 @@ MessageLoop* MessageLoop::current() {
 
 static mozilla::Atomic<int32_t> message_loop_id_seq(0);
 
+MessageLoop::MessageLoop(base::MessagePump* messagePump)
+    : type_(TYPE_EMBED),
+      id_(++message_loop_id_seq),
+      nestable_tasks_allowed_(true),
+      exception_restoration_(false),
+      state_(NULL),
+      run_depth_base_(1),
+      next_sequence_num_(0)
+{
+  DCHECK(!current()) << "should only have one message loop per thread";
+  lazy_tls_ptr.Pointer()->Set(this);
+  pump_ = messagePump;
+}
+
 MessageLoop::MessageLoop(Type type)
     : type_(type),
       id_(++message_loop_id_seq),

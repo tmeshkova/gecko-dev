@@ -1,0 +1,43 @@
+# 
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+DEPTH		= @DEPTH@
+topsrcdir	= @top_srcdir@
+srcdir		= @srcdir@
+VPATH		= @srcdir@
+relativesrcdir = @relativesrcdir@
+
+include $(DEPTH)/config/autoconf.mk
+
+DEFINES += -DXPCOM_GLUE
+# move me to common, when we link with common library
+STL_FLAGS=
+
+LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/build
+
+LIBS += \
+    $(XPCOM_STANDALONE_GLUE_LDOPTS) \
+    $(NULL)
+
+LIBS += \
+    $(TK_LIBS) \
+    $(MOZ_GTHREAD_LIBS) \
+    $(NULL)
+
+ifeq (1 ,$(MOZ_X11))
+    LIBS += \
+    -lX11 \
+    $(NULL)
+endif
+
+LOCAL_INCLUDES = \
+    $(TK_CFLAGS) \
+    $(MOZ_GTHREAD_CFLAGS) \
+    $(NULL)
+
+NSDISTMODE = copy
+
+include $(topsrcdir)/config/config.mk
+include $(topsrcdir)/config/rules.mk

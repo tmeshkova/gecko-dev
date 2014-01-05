@@ -183,6 +183,7 @@ public:
     : mCompositorID(0)
     , mDiagnosticTypes(DIAGNOSTIC_NONE)
     , mParent(aParent)
+    , mWorldOpacity(1.0f)
   {
     MOZ_COUNT_CTOR(Compositor);
   }
@@ -455,6 +456,11 @@ public:
    */
   static LayersBackend GetBackend();
 
+  /**
+   * Set Opacity multiplier for all compositable layers
+   */
+  virtual void SetWorldOpacity(gfx::Float aWorldOpacity) { mWorldOpacity = aWorldOpacity; }
+
 protected:
   void DrawDiagnosticsInternal(DiagnosticFlags aFlags,
                                const gfx::Rect& aVisibleRect,
@@ -475,6 +481,7 @@ protected:
    */
   size_t mPixelsPerFrame;
   size_t mPixelsFilled;
+  gfx::Float mWorldOpacity;
 };
 
 } // namespace layers

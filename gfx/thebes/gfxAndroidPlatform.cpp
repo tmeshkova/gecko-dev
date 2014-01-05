@@ -330,14 +330,7 @@ gfxAndroidPlatform::MakePlatformFont(const gfxProxyFontEntry *aProxyEntry,
 TemporaryRef<ScaledFont>
 gfxAndroidPlatform::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
 {
-    NativeFont nativeFont;
-    if (aTarget->GetType() == BACKEND_CAIRO || aTarget->GetType() == BACKEND_SKIA) {
-        nativeFont.mType = NATIVE_FONT_CAIRO_FONT_FACE;
-        nativeFont.mFont = aFont->GetCairoScaledFont();
-        return Factory::CreateScaledFontForNativeFont(nativeFont, aFont->GetAdjustedSize());
-    }
-
-    return nullptr;
+    return Factory::GetScaledFontForFontWithCairoSkia(aTarget, aFont->GetCairoScaledFont(), aFont->GetAdjustedSize());
 }
 
 bool

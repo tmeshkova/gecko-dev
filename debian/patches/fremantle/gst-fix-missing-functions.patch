@@ -1,0 +1,44 @@
+Index: mozilla-central/content/media/gstreamer/GStreamerFormatHelper.cpp
+===================================================================
+--- mozilla-central.orig/content/media/gstreamer/GStreamerFormatHelper.cpp	2013-11-19 02:04:40.000000000 +0200
++++ mozilla-central/content/media/gstreamer/GStreamerFormatHelper.cpp	2013-11-19 02:04:54.000000000 +0200
+@@ -294,15 +294,10 @@
+ GList* GStreamerFormatHelper::GetFactories() {
+   NS_ASSERTION(sLoadOK, "GStreamer library not linked");
+ 
+-  uint32_t cookie = gst_default_registry_get_feature_list_cookie ();
+-  if (cookie != mCookie) {
+-    g_list_free(mFactories);
+-    mFactories =
+-      gst_default_registry_feature_filter((GstPluginFeatureFilter)FactoryFilter,
+-                                          false, nullptr);
+-    mCookie = cookie;
+-  }
+-
++  g_list_free(mFactories);
++  mFactories =
++    gst_default_registry_feature_filter((GstPluginFeatureFilter)FactoryFilter,
++                                        false, nullptr);
+   return mFactories;
+ }
+ 
+Index: mozilla-central/content/media/gstreamer/GStreamerFunctionList.h
+===================================================================
+--- mozilla-central.orig/content/media/gstreamer/GStreamerFunctionList.h	2013-11-19 02:04:29.000000000 +0200
++++ mozilla-central/content/media/gstreamer/GStreamerFunctionList.h	2013-11-19 02:04:54.000000000 +0200
+@@ -55,6 +55,7 @@
+ GST_FUNC(LIBGSTREAMER, gst_init_check)
+ GST_FUNC(LIBGSTREAMER, gst_iterator_next)
+ GST_FUNC(LIBGSTREAMER, gst_message_parse_error)
++GST_FUNC(LIBGSTREAMER, gst_message_get_type)
+ GST_FUNC(LIBGSTREAMER, gst_message_type_get_name)
+ GST_FUNC(LIBGSTREAMER, gst_mini_object_get_type)
+ GST_FUNC(LIBGSTREAMER, gst_mini_object_new)
+@@ -75,7 +76,6 @@
+ GST_FUNC(LIBGSTREAMER, gst_plugin_feature_get_rank)
+ GST_FUNC(LIBGSTREAMER, gst_registry_feature_filter)
+ GST_FUNC(LIBGSTREAMER, gst_registry_get_default)
+-GST_FUNC(LIBGSTREAMER, gst_registry_get_feature_list_cookie)
+ GST_FUNC(LIBGSTREAMER, gst_segment_init)
+ GST_FUNC(LIBGSTREAMER, gst_segment_set_newsegment)
+ GST_FUNC(LIBGSTREAMER, gst_segment_to_stream_time)

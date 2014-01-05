@@ -1,0 +1,25 @@
+export ac_cv_have_usable_wchar_option_v2="no"
+
+export CXXFLAGS="-DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1 "
+ac_add_options --enable-application=xulrunner
+ac_add_options --enable-default-toolkit=cairo-gtk2
+# Would help to get rid of X interactions and use shared image surfaces
+ac_add_options --enable-mobile-optimize
+ac_add_options --enable-webapp-runtime
+ac_add_options --with-gl-provider=EGL
+
+mk_add_options MOZ_MAKE_FLAGS="-j4"
+mk_add_options MOZ_OBJDIR="obj-xr-gtk"
+ac_add_options --disable-libjpeg-turbo
+
+ac_add_options --disable-jemalloc
+ac_add_options --with-system-zlib
+ac_add_options --enable-dump-painting
+ac_add_options --enable-trace-malloc
+ac_add_options --enable-signmar
+ac_add_options --enable-gstreamer
+ac_add_options --enable-skia
+ac_add_options --enable-webrtc
+ac_add_options --disable-dbus
+ac_add_options --disable-updater
+ac_add_options --disable-gamepad
