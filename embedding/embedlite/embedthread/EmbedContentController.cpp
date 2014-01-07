@@ -30,7 +30,8 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
 {
     // We always need to post requests into the "UI thread" otherwise the
     // requests may get processed out of order.
-    LOGT();
+    LOG_FM(aFrameMetrics);
+
     mUILoop->PostTask(
         FROM_HERE,
         NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint,

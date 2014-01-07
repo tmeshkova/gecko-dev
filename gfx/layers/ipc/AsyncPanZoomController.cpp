@@ -755,6 +755,7 @@ nsEventStatus AsyncPanZoomController::OnScale(const PinchGestureInput& aEvent) {
         ScrollBy(neededDisplacement);
       }
 
+      APZC_LOG("%p OnScale about to schedule composite on state=%d scale=%.3f\n", this, mState, mFrameMetrics.mZoom.scale);
       ScheduleComposite();
       // We don't want to redraw on every scale, so don't use
       // RequestContentRepaint()
@@ -1453,7 +1454,8 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
 
   bool isDefault = mFrameMetrics.IsDefault();
   mFrameMetrics.mMayHaveTouchListeners = aLayerMetrics.mMayHaveTouchListeners;
-  APZC_LOG_FM(aLayerMetrics, "%p got a NotifyLayersUpdated with aIsFirstPaint=%d", this, aIsFirstPaint);
+  APZC_LOG_FM(aLayerMetrics, "%p got a NotifyLayersUpdated with aIsFirstPaint=%d aIsDefault=%d", this, aIsFirstPaint, isDefault);
+  APZC_LOG_FM(mFrameMetrics, "%p got a NotifyLayersUpdated current mFrameMetrics", this);
 
   LogRendertraceRect("page", "brown", aLayerMetrics.mScrollableRect);
   LogRendertraceRect("painted displayport", "green",
@@ -1465,8 +1467,11 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
       aLayerMetrics.mCompositionBounds.height == mFrameMetrics.mCompositionBounds.height) {
     // Remote content has sync'd up to the composition geometry
     // change, so we can accept the viewport it's calculated.
-    if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width)
+    if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width) {
+      mFrameMetrics.mDisplayPort = aLayerMetrics.mDisplayPort;
       needContentRepaint = true;
+    }
+
     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
   }
 
@@ -1479,6 +1484,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
 
     mFrameMetrics = aLayerMetrics;
     SetState(NOTHING);
+    APZC_LOG_FM(mFrameMetrics, "%p NotifyLayersUpdated cleanup frame metrics needContentRepaint=%d\n", this, needContentRepaint);
   } else {
     // If we're not taking the aLayerMetrics wholesale we still need to pull
     // in some things into our local mFrameMetrics because these things are
@@ -1487,9 +1493,15 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     mFrameMetrics.mCompositionBounds = aLayerMetrics.mCompositionBounds;
     float parentResolutionChange = aLayerMetrics.GetParentResolution().scale
                                  / mFrameMetrics.GetParentResolution().scale;
-    mFrameMetrics.mZoom.scale *= parentResolutionChange;
+    // Geometry changed. Need to keep mZoom level of previous geometry.
+    if (needContentRepaint) {
+        mFrameMetrics.mZoom.scale = aLayerMetrics.mZoom.scale;
+    } else {
+        mFrameMetrics.mZoom.scale *= parentResolutionChange;
+    }
     mFrameMetrics.mResolution = aLayerMetrics.mResolution;
     mFrameMetrics.mCumulativeResolution = aLayerMetrics.mCumulativeResolution;
+    APZC_LOG_FM(mFrameMetrics, "%p NotifyLayersUpdated copy some things into local framemetrics, needContentRepaint=%d\n", this, needContentRepaint);
   }
 
   if (needContentRepaint) {

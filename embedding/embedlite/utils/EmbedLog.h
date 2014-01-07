@@ -34,6 +34,21 @@ extern PRLogModuleInfo* GetEmbedCommonLog(const char* aModule);
 #endif // LOG_COMPONENT
 
 #define LOGC(CUSTOMNAME, FMT, ...) PR_LOG(GetEmbedCommonLog(CUSTOMNAME), PR_LOG_DEBUG, (CUSTOMNAME "::%s:%d " FMT , __FUNCTION__, __LINE__, ##__VA_ARGS__))
+#define LOG_FM(fm) LOGC("EmbedLiteViewPort", "i=(%ld %lld) " \
+         "cb=(%d %d %d %d) dp=(%.3f %.3f %.3f %.3f) v=(%.3f %.3f %.3f %.3f) " \
+         "s=(%.3f %.3f) sr=(%.3f %.3f %.3f %.3f) z=(%.3f %.3f %.3f %.3f)\n", \
+         fm.mPresShellId, fm.mScrollId, \
+         fm.mCompositionBounds.x, fm.mCompositionBounds.y, \
+         fm.mCompositionBounds.width, fm.mCompositionBounds.height, \
+         fm.mDisplayPort.x, fm.mDisplayPort.y, \
+         fm.mDisplayPort.width, fm.mDisplayPort.height, \
+         fm.mViewport.x, fm.mViewport.y, \
+         fm.mViewport.width, fm.mViewport.height, \
+         fm.mScrollOffset.x, fm.mScrollOffset.y, \
+         fm.mScrollableRect.x, fm.mScrollableRect.y, \
+         fm.mScrollableRect.width, fm.mScrollableRect.height, \
+         fm.mDevPixelsPerCSSPixel.scale, fm.mResolution.scale, \
+         fm.mCumulativeResolution.scale, fm.mZoom.scale)
 
 #else // EMBED_LITE_INTERNAL
 
@@ -54,6 +69,7 @@ extern PRLogModuleInfo* GetEmbedCommonLog(const char* aModule);
 #define LOGW(...) do {} while (0)
 #define LOGE(...) do {} while (0)
 #define LOGC(...) do {} while (0)
+#define LOG_FM(frameMetrics) do {} while (0)
 
 #endif // PR_LOGGING
 

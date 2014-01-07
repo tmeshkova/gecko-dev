@@ -127,6 +127,7 @@ private:
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   WebBrowserChrome* mBChrome;
   gfxSize mViewSize;
+  bool mViewResized;
   gfxSize mGLViewSize;
 
   nsRefPtr<TabChildHelper> mHelper;

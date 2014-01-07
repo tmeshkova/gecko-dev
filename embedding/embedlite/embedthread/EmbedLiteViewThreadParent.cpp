@@ -226,7 +226,7 @@ bool
 EmbedLiteViewThreadParent::RecvOnScrolledAreaChanged(const uint32_t& aWidth,
                                                      const uint32_t& aHeight)
 {
-  LOGNI("area[%u,%u]", aWidth, aHeight);
+  LOGT("area[%u,%u]", aWidth, aHeight);
   if (mViewAPIDestroyed) {
     return true;
   }
