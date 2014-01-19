@@ -270,6 +270,7 @@ Factory::CreateDrawTargetForData(BackendType aBackend,
       newTarget = new DrawTargetSkia();
       newTarget->Init(aData, aSize, aStride, aFormat);
       retVal = newTarget;
+      break;
     }
 #endif
 #ifdef XP_MACOSX
