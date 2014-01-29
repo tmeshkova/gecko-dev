@@ -214,9 +214,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
     mView->SendZoomToRect(rect);
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
-    nsCOMPtr<nsIDOMDocument> domDoc;
-    mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-    nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+    nsCOMPtr<nsIDocument> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
       nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
@@ -891,4 +889,13 @@ TabChildHelper::HandlePossibleViewportChange()
   // Force a repaint with these metrics. This, among other things, sets the
   // displayport, so we start with async painting.
   ProcessUpdateFrame(metrics);
+}
+
+already_AddRefed<nsIDocument>
+TabChildHelper::GetDocument()
+{
+  nsCOMPtr<nsIDOMDocument> domDoc;
+  mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  return doc.forget();
 }

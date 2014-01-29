@@ -14,6 +14,7 @@
 #include "InputData.h"
 #include "nsDataHashtable.h"
 #include "nsIDOMEventListener.h"
+#include "nsIDocument.h"
 
 class CancelableTask;
 class nsPresContext;
@@ -85,6 +86,8 @@ private:
 
   // Get the DOMWindowUtils for the top-level window in this tab.
   already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils();
+  // Get the Document for the top-level window in this tab.
+  already_AddRefed<nsIDocument> GetDocument();
 
   // Wrapper for nsIDOMWindowUtils.setCSSViewport(). This updates some state
   // variables local to this class before setting it.
