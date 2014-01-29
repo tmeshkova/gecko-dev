@@ -113,7 +113,9 @@ protected:
                                InfallibleTArray<nsString>* aJSONRetVal);
   virtual bool
   RecvUpdateZoomConstraints(const bool&, const float&, const float&);
-  virtual bool RecvZoomToRect(const CSSRect& aRect);
+  virtual bool RecvZoomToRect(const uint32_t& aPresShellId,
+                              const ViewID& aViewId,
+                              const CSSRect& aRect);
   virtual bool RecvSetBackgroundColor(const nscolor& aColor);
   virtual bool RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault);
 
