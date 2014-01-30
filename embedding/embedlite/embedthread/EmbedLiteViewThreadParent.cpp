@@ -262,11 +262,17 @@ EmbedLiteViewThreadParent::RecvOnTitleChanged(const nsString& aTitle)
 }
 
 bool
-EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const bool& aAllowZoom, const float& min, const float& max)
+EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                                     const ViewID& aViewId,
+                                                     const bool& aIsRoot,
+                                                     const ZoomConstraints& aConstraints)
 {
+  if (mController && aIsRoot) {
+    mController->SaveZoomConstraints(aConstraints);
+  }
+
   if (mController) {
-    ZoomConstraints constraints(aAllowZoom, CSSToScreenScale(min), CSSToScreenScale(max));
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), constraints);
+    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aConstraints);
   }
   return true;
 }

@@ -785,9 +785,14 @@ TabChildHelper::HandlePossibleViewportChange()
   ViewID viewId;
   if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
                                                &presShellId, &viewId)) {
-    mView->SendUpdateZoomConstraints(viewportInfo.IsZoomAllowed(),
-                                     viewportInfo.GetMinZoom().scale,
-                                     viewportInfo.GetMaxZoom().scale);
+    ZoomConstraints constraints(
+      viewportInfo.IsZoomAllowed(),
+      viewportInfo.GetMinZoom(),
+      viewportInfo.GetMaxZoom());
+    mView->SendUpdateZoomConstraints(presShellId,
+                                     viewId,
+                                     /* isRoot = */ true,
+                                     constraints);
   }
 
 
