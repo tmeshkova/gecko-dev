@@ -59,6 +59,7 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
 {
   MOZ_COUNT_CTOR(EmbedLiteViewThreadParent);
   MOZ_ASSERT(mView, "View destroyed during OMTC view construction");
+  mController = new EmbedContentController(this, mUILoop);
   mView->SetImpl(this);
 }
 
@@ -105,10 +106,9 @@ EmbedLiteViewThreadParent::UpdateScrollController()
 
   NS_ENSURE_TRUE(mView, );
 
-  mController = nullptr;
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
-    mController = new EmbedContentController(this, mCompositor, mUILoop);
+    mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
 }
