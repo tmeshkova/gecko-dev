@@ -27,6 +27,9 @@ class EmbedContentController : public mozilla::layers::GeckoContentController
 public:
   EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, MessageLoop* aUILoop);
 
+  // This method build APZCTreeManager for give layer tree
+  void SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId);
+
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
   virtual void HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers) MOZ_OVERRIDE;

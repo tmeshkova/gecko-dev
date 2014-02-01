@@ -333,14 +333,6 @@ EmbedLiteView::ScheduleRender()
   mViewImpl->ScheduleRender();
 }
 
-bool
-EmbedLiteView::ScrollBy(int aDX, int aDY, bool aDoOverflow)
-{
-  LOGT();
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->ScrollBy(aDX, aDY);
-}
-
 void
 EmbedLiteView::ReceiveInputEvent(const InputData& aEvent)
 {

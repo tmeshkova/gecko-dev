@@ -16,6 +16,7 @@ const kDragDataTypePrefix = "text/toolbarwrapper-id/";
 const kPlaceholderClass = "panel-customization-placeholder";
 const kSkipSourceNodePref = "browser.uiCustomization.skipSourceNodeCheck";
 const kToolbarVisibilityBtn = "customization-toolbar-visibility-button";
+const kDrawInTitlebarPref = "browser.tabs.drawInTitlebar";
 const kMaxTransitionDurationMs = 2000;
 
 Cu.import("resource://gre/modules/Services.jsm");
@@ -50,6 +51,11 @@ function CustomizeMode(aWindow) {
   this.visiblePalette = this.document.getElementById(kPaletteId);
   this.paletteEmptyNotice = this.document.getElementById("customization-empty");
   this.paletteSpacer = this.document.getElementById("customization-spacer");
+#ifdef CAN_DRAW_IN_TITLEBAR
+  this._updateTitlebarButton();
+  Services.prefs.addObserver(kDrawInTitlebarPref, this, false);
+  this.window.addEventListener("unload", this);
+#endif
 };
 
 CustomizeMode.prototype = {
@@ -78,6 +84,12 @@ CustomizeMode.prototype = {
 
   get _handler() {
     return this.window.CustomizationHandler;
+  },
+
+  uninit: function() {
+#ifdef CAN_DRAW_IN_TITLEBAR
+    Services.prefs.removeObserver(kDrawInTitlebarPref, this);
+#endif
   },
 
   toggle: function() {
@@ -174,6 +186,8 @@ CustomizeMode.prototype = {
       let customizeButton = document.getElementById("PanelUI-customize");
       customizeButton.setAttribute("enterLabel", customizeButton.getAttribute("label"));
       customizeButton.setAttribute("label", customizeButton.getAttribute("exitLabel"));
+      customizeButton.setAttribute("enterTooltiptext", customizeButton.getAttribute("tooltiptext"));
+      customizeButton.setAttribute("tooltiptext", customizeButton.getAttribute("exitTooltiptext"));
 
       this._transitioning = true;
 
@@ -325,6 +339,8 @@ CustomizeMode.prototype = {
       let customizeButton = document.getElementById("PanelUI-customize");
       customizeButton.setAttribute("exitLabel", customizeButton.getAttribute("label"));
       customizeButton.setAttribute("label", customizeButton.getAttribute("enterLabel"));
+      customizeButton.setAttribute("exitTooltiptext", customizeButton.getAttribute("tooltiptext"));
+      customizeButton.setAttribute("tooltiptext", customizeButton.getAttribute("enterTooltiptext"));
 
       // We have to use setAttribute/removeAttribute here instead of the
       // property because the XBL property will be set later, and right
@@ -633,9 +649,6 @@ CustomizeMode.prototype = {
 
     if (aNode.hasAttribute("flex")) {
       wrapper.setAttribute("flex", aNode.getAttribute("flex"));
-      if (aPlace == "palette") {
-        aNode.removeAttribute("flex");
-      }
     }
 
 
@@ -700,10 +713,6 @@ CustomizeMode.prototype = {
 
     if (aWrapper.hasAttribute("itemchecked")) {
       toolbarItem.checked = true;
-    }
-
-    if (aWrapper.hasAttribute("flex") && !toolbarItem.hasAttribute("flex")) {
-      toolbarItem.setAttribute("flex", aWrapper.getAttribute("flex"));
     }
 
     if (aWrapper.hasAttribute("itemcommand")) {
@@ -970,8 +979,42 @@ CustomizeMode.prototype = {
           this.exit();
         }
         break;
+#ifdef CAN_DRAW_IN_TITLEBAR
+      case "unload":
+        this.uninit();
+        break;
+#endif
     }
   },
+
+#ifdef CAN_DRAW_IN_TITLEBAR
+  observe: function(aSubject, aTopic, aData) {
+    switch (aTopic) {
+      case "nsPref:changed":
+        this._updateTitlebarButton();
+        break;
+    }
+  },
+
+  _updateTitlebarButton: function() {
+    let drawInTitlebar = true;
+    try {
+      drawInTitlebar = Services.prefs.getBoolPref(kDrawInTitlebarPref);
+    } catch (ex) { }
+    let button = this.document.getElementById("customization-titlebar-visibility-button");
+    // Drawing in the titlebar means 'hiding' the titlebar:
+    if (drawInTitlebar) {
+      button.removeAttribute("checked");
+    } else {
+      button.setAttribute("checked", "true");
+    }
+  },
+
+  toggleTitlebar: function(aShouldShowTitlebar) {
+    // Drawing in the titlebar means not showing the titlebar, hence the negation:
+    Services.prefs.setBoolPref(kDrawInTitlebarPref, !aShouldShowTitlebar);
+  },
+#endif
 
   _onDragStart: function(aEvent) {
     __dumpDragData(aEvent);
@@ -1330,6 +1373,10 @@ CustomizeMode.prototype = {
     let draggedWrapper = document.getElementById("wrapper-" + draggedItemId);
     draggedWrapper.hidden = false;
     draggedWrapper.removeAttribute("mousedown");
+    if (this._dragOverItem) {
+      this._cancelDragActive(this._dragOverItem);
+      this._dragOverItem = null;
+    }
     this._showPanelCustomizationPlaceholders();
   },
 
@@ -1411,10 +1458,13 @@ CustomizeMode.prototype = {
 
   _setGridDragActive: function(aDragOverNode, aDraggedItem, aValue) {
     let targetArea = this._getCustomizableParent(aDragOverNode);
+    let draggedWrapper = this.document.getElementById("wrapper-" + aDraggedItem.id);
+    let originArea = this._getCustomizableParent(draggedWrapper);
     let positionManager = DragPositionManager.getManagerForArea(targetArea);
     let draggedSize = this._getDragItemSize(aDragOverNode, aDraggedItem);
     let isWide = aDraggedItem.classList.contains(CustomizableUI.WIDE_PANEL_CLASS);
-    positionManager.insertPlaceholder(targetArea, aDragOverNode, isWide, draggedSize);
+    positionManager.insertPlaceholder(targetArea, aDragOverNode, isWide, draggedSize,
+                                      originArea == targetArea);
   },
 
   _getDragItemSize: function(aDragOverNode, aDraggedItem) {

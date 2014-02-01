@@ -24,16 +24,18 @@ const DB_PATH = OS.Path.join(OS.Constants.Path.profileDir, "home.sqlite");
 const SQL = {
   createItemsTable:
     "CREATE TABLE items (" +
-      "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+      "_id INTEGER PRIMARY KEY AUTOINCREMENT, " +
       "dataset_id TEXT NOT NULL, " +
       "url TEXT," +
-      "primary_text TEXT," +
-      "secondary_text TEXT" +
+      "title TEXT," +
+      "description TEXT," +
+      "image_url TEXT," +
+      "created INTEGER" +
     ")",
 
   insertItem:
-    "INSERT INTO items (dataset_id, url) " +
-      "VALUES (:dataset_id, :url)",
+    "INSERT INTO items (dataset_id, url, title, description, image_url, created) " +
+      "VALUES (:dataset_id, :url, :title, :description, :image_url, :created)",
 
   deleteFromDataset:
     "DELETE FROM items WHERE dataset_id = :dataset_id"
@@ -75,6 +77,7 @@ HomeStorage.prototype = {
         // XXX: Factor this out to some migration path.
         if (!(yield db.tableExists("items"))) {
           yield db.execute(SQL.createItemsTable);
+          yield db.setSchemaVersion(SCHEMA_VERSION);
         }
 
         // Insert data into DB.
@@ -82,7 +85,11 @@ HomeStorage.prototype = {
           // XXX: Directly pass item as params? More validation for item? Batch insert?
           let params = {
             dataset_id: this.datasetId,
-            url: item.url
+            url: item.url,
+            title: item.title,
+            description: item.description,
+            image_url: item.image_url,
+            created: Date.now()
           };
           yield db.executeCached(SQL.insertItem, params);
         }

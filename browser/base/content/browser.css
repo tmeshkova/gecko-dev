@@ -283,11 +283,19 @@ toolbarpaletteitem > #personal-bookmarks > #bookmarks-toolbar-placeholder,
 }
 
 #urlbar-container {
-  min-width: 30ch;
+  min-width: 28ch;
 }
 
 #search-container {
   min-width: 25ch;
+}
+
+#urlbar,
+.searchbar-textbox {
+  /* Setting a width and min-width to let the location & search bars maintain
+     a constant width in case they haven't be resized manually. (bug 965772) */
+  width: 1px;
+  min-width: 1px;
 }
 
 #main-window:-moz-lwtheme {
@@ -379,7 +387,7 @@ panel[noactions] > richlistbox > richlistitem[type~="action"] > .ac-url-box > .a
 }
 
 #identity-icon-labels {
-  max-width: 18em;
+  max-width: 12vw;
 }
 
 #identity-icon-country-label {

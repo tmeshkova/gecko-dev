@@ -109,9 +109,6 @@ public:
   // Setup renderable view size
   virtual void SetViewSize(int width, int height);
 
-  // Scroll/Zoom API
-  virtual bool ScrollBy(int aDX, int aDY, bool aDoOverflow = false);
-
   // Compositor Interface
   //   PNG Decoded data
   virtual char* GetImageAsURL(int aWidth = -1, int aHeight = -1);

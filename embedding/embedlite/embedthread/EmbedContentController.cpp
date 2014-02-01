@@ -28,7 +28,7 @@ EmbedContentController::EmbedContentController(EmbedLiteViewThreadParent* aRende
 
 void EmbedContentController::SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId)
 {
-    mAPZC = CompositorParent::GetAPZCTreeManager(aRootLayerTreeId);
+  mAPZC = CompositorParent::GetAPZCTreeManager(aRootLayerTreeId);
 }
 
 void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)

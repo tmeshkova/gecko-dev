@@ -318,31 +318,29 @@ class ReviewboardToolsProvider(MachCommandBase):
 
 @CommandProvider
 class FormatProvider(MachCommandBase):
-    @Command('clang-format', category='devenv', allow_all_args=True,
+    @Command('clang-format', category='misc',
         description='Run clang-format on current changes')
-    @CommandArgument('args', nargs='...', help='Arguments to clang-format tool')
-    def clang_format(self, args):
-        if not args:
-            args = ['help']
-
-        fmt = "clang-format-3.5"
+    @CommandArgument('--show', '-s', action = 'store_true',
+        help = 'Show diff output on instead of applying changes')
+    def clang_format(self, show=False):
+        plat = platform.system()
+        fmt = plat.lower() + "/clang-format-3.5"
         fmt_diff = "clang-format-diff-3.5"
 
         # We are currently using a modified verion of clang-format hosted on people.mozilla.org.
         # This is a temporary work around until we upstream the necessary changes and we can use
         # a system version of clang-format. See bug 961541.
-        self.prompt = 1
-        plat = platform.system()
         if plat == "Windows":
             fmt += ".exe"
         else:
             arch = os.uname()[4]
-            if plat != "Linux" or arch != 'x86_64':
+            if (plat != "Linux" and plat != "Darwin") or arch != 'x86_64':
                 print("Unsupported platform " + plat + "/" + arch +
-                      ". Supported platforms are Windows/* and Linux/x86_64")
+                      ". Supported platforms are Windows/*, Linux/x86_64 and Darwin/x86_64")
                 return 1
 
         os.chdir(self.topsrcdir)
+        self.prompt = True
 
         try:
             if not self.locate_or_fetch(fmt):
@@ -356,19 +354,31 @@ class FormatProvider(MachCommandBase):
             return 1
 
         from subprocess import Popen, PIPE
-        p1 = Popen(["hg", "diff", "-U0", "-r", "tip^", "--include", "glob:**.c", "--include", "glob:**.cpp",
-                   "--include", "glob:**.h", "--exclude", "listfile:.clang-format-ignore"], stdout=PIPE)
-        p2 = Popen([sys.executable, clang_format_diff, "-i", "-p1", "-style=Mozilla"], stdin=p1.stdout)
-        return p2.communicate()[0]
+
+        if os.path.exists(".hg"):
+            diff_process = Popen(["hg", "diff", "-U0", "-r", "tip^",
+                                  "--include", "glob:**.c", "--include", "glob:**.cpp", "--include", "glob:**.h",
+                                  "--exclude", "listfile:.clang-format-ignore"], stdout=PIPE)
+        else:
+            git_process = Popen(["git", "diff", "-U0", "HEAD^"], stdout=PIPE)
+            diff_process = Popen(["filterdiff", "--include=*.h", "--include=*.cpp",
+                                  "--exclude-from-file=.clang-format-ignore"],
+                                 stdin=git_process.stdout, stdout=PIPE)
+
+        args = [sys.executable, clang_format_diff, "-p1"]
+        if not show:
+           args.append("-i")
+        cf_process = Popen(args, stdin=diff_process.stdout)
+        return cf_process.communicate()[0]
 
     def locate_or_fetch(self, root):
-        target = os.path.join(self._mach_context.state_dir, root)
+        target = os.path.join(self._mach_context.state_dir, os.path.basename(root))
         if not os.path.exists(target):
-            site = "http://people.mozilla.org/~ajones/clang-format/"
+            site = "https://people.mozilla.org/~ajones/clang-format/"
             if self.prompt and raw_input("Download clang-format executables from {0} (yN)? ".format(site)).lower() != 'y':
                 print("Download aborted.")
                 return 1
-            self.prompt = 0
+            self.prompt = False
 
             u = site + root
             print("Downloading {0} to {1}".format(u, target))

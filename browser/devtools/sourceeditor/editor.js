@@ -89,6 +89,7 @@ const CM_MAPPING = [
   "clearHistory",
   "openDialog",
   "refresh",
+  "getScrollInfo",
   "getOption",
   "setOption"
 ];
@@ -770,7 +771,7 @@ Editor.prototype = {
   extend: function (funcs) {
     Object.keys(funcs).forEach((name) => {
       let cm  = editors.get(this);
-      let ctx = { ed: this, cm: cm };
+      let ctx = { ed: this, cm: cm, Editor: Editor};
 
       if (name === "initialize") {
         funcs[name](ctx);

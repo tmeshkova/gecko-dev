@@ -833,7 +833,7 @@ class JSObject : public js::ObjectImpl
     }
 
     inline void finish(js::FreeOp *fop);
-    JS_ALWAYS_INLINE void finalize(js::FreeOp *fop);
+    MOZ_ALWAYS_INLINE void finalize(js::FreeOp *fop);
 
     static inline bool hasProperty(JSContext *cx, js::HandleObject obj,
                                    js::HandleId id, bool *foundp, unsigned flags = 0);
@@ -1215,13 +1215,13 @@ class JSObject : public js::ObjectImpl
  * const& instead of * as a syntactic way to assert non-null. This leads to an
  * abundance of address-of operators to identity. Hence this overload.
  */
-static JS_ALWAYS_INLINE bool
+static MOZ_ALWAYS_INLINE bool
 operator==(const JSObject &lhs, const JSObject &rhs)
 {
     return &lhs == &rhs;
 }
 
-static JS_ALWAYS_INLINE bool
+static MOZ_ALWAYS_INLINE bool
 operator!=(const JSObject &lhs, const JSObject &rhs)
 {
     return &lhs != &rhs;
@@ -1321,8 +1321,12 @@ js_PopulateObject(JSContext *cx, js::HandleObject newborn, js::HandleObject prop
  * Fast access to immutable standard objects (constructors and prototypes).
  */
 extern bool
-js_GetClassObject(js::ExclusiveContext *cx, JSObject *obj, JSProtoKey key,
+js_GetClassObject(js::ExclusiveContext *cx, JSProtoKey key,
                   js::MutableHandleObject objp);
+
+extern bool
+js_GetClassPrototype(js::ExclusiveContext *cx, JSProtoKey key,
+                     js::MutableHandleObject objp);
 
 /*
  * Determine if the given object is a prototype for a standard class. If so,
@@ -1332,12 +1336,19 @@ extern JSProtoKey
 js_IdentifyClassPrototype(JSObject *obj);
 
 /*
- * If protoKey is not JSProto_Null, then clasp is ignored. If protoKey is
- * JSProto_Null, clasp must non-null.
+ * Property-lookup-based access to interface and prototype objects for classes.
+ * If the class is built-in (and has a non-null JSProtoKey), these forward to
+ * js_GetClass{Object,Prototype}.
  */
+
 bool
-js_FindClassObject(js::ExclusiveContext *cx, JSProtoKey protoKey, js::MutableHandleValue vp,
-                   const js::Class *clasp = nullptr);
+js_FindClassObject(js::ExclusiveContext *cx, js::MutableHandleObject protop,
+                   const js::Class *clasp);
+
+extern bool
+js_FindClassPrototype(js::ExclusiveContext *cx, js::MutableHandleObject protop,
+                      const js::Class *clasp);
+
 
 namespace js {
 
@@ -1561,7 +1572,7 @@ extern JSObject *
 ToObjectSlow(JSContext *cx, HandleValue vp, bool reportScanStack);
 
 /* For object conversion in e.g. native functions. */
-JS_ALWAYS_INLINE JSObject *
+MOZ_ALWAYS_INLINE JSObject *
 ToObject(JSContext *cx, HandleValue vp)
 {
     if (vp.isObject())
@@ -1570,7 +1581,7 @@ ToObject(JSContext *cx, HandleValue vp)
 }
 
 /* For converting stack values to objects. */
-JS_ALWAYS_INLINE JSObject *
+MOZ_ALWAYS_INLINE JSObject *
 ToObjectFromStack(JSContext *cx, HandleValue vp)
 {
     if (vp.isObject())
@@ -1596,17 +1607,6 @@ js_ReportGetterOnlyAssignment(JSContext *cx, bool strict);
 extern unsigned
 js_InferFlags(JSContext *cx, unsigned defaultFlags);
 
-
-/*
- * If protoKey is not JSProto_Null, then clasp is ignored. If protoKey is
- * JSProto_Null, clasp must non-null.
- *
- * If protoKey is constant and scope is non-null, use GlobalObject's prototype
- * methods instead.
- */
-extern bool
-js_GetClassPrototype(js::ExclusiveContext *cx, JSProtoKey protoKey, js::MutableHandleObject protop,
-                     const js::Class *clasp = nullptr);
 
 namespace js {
 

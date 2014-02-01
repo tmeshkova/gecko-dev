@@ -104,7 +104,6 @@
  */
 
 class nsIWidget;
-struct gfxMatrix;
 struct nsIntSize;
 class nsIntRegion;
 
@@ -364,7 +363,7 @@ public:
    * coordinate space.
    */
   virtual void PrepareViewport(const gfx::IntSize& aSize,
-                               const gfxMatrix& aWorldTransform) = 0;
+                               const gfx::Matrix& aWorldTransform) = 0;
 
   /**
    * Whether textures created by this compositor can receive partial updates.

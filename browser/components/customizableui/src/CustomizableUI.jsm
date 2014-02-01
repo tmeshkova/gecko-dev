@@ -1204,6 +1204,11 @@ let CustomizableUIInternal = {
 
     let target = aEvent.originalTarget;
     let panel = this._getPanelForNode(aEvent.currentTarget);
+    // This can happen in e.g. customize mode. If there's no panel,
+    // there's clearly nothing for us to close; pretend we're interactive.
+    if (!panel) {
+      return true;
+    }
     // We keep track of:
     // whether we're in an input container (text field)
     let inInput = false;
@@ -1953,7 +1958,12 @@ let CustomizableUIInternal = {
       let widgetNode = window.document.getElementById(aWidgetId) ||
                        window.gNavToolbox.palette.getElementsByAttribute("id", aWidgetId)[0];
       if (widgetNode) {
+        let container = widgetNode.parentNode
+        this.notifyListeners("onWidgetBeforeDOMChange", widgetNode, null,
+                             container, true);
         widgetNode.remove();
+        this.notifyListeners("onWidgetAfterDOMChange", widgetNode, null,
+                             container, true);
       }
       if (widget.type == "view") {
         let viewNode = window.document.getElementById(widget.viewId);
@@ -3397,7 +3407,7 @@ OverflowableToolbar.prototype = {
   },
 
   onWidgetBeforeDOMChange: function(aNode, aNextNode, aContainer) {
-    if (aContainer != this._target) {
+    if (aContainer != this._target && aContainer != this._list) {
       return;
     }
     // When we (re)move an item, update all the items that come after it in the list
@@ -3420,7 +3430,7 @@ OverflowableToolbar.prototype = {
   },
 
   onWidgetAfterDOMChange: function(aNode, aNextNode, aContainer) {
-    if (aContainer != this._target) {
+    if (aContainer != this._target && aContainer != this._list) {
       return;
     }
 

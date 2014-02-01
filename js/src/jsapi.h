@@ -183,7 +183,8 @@ class AutoStringRooter : private AutoGCRooter {
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-class AutoArrayRooter : private AutoGCRooter {
+class AutoArrayRooter : private AutoGCRooter
+{
   public:
     AutoArrayRooter(JSContext *cx, size_t len, Value *vec
                     MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
@@ -203,15 +204,28 @@ class AutoArrayRooter : private AutoGCRooter {
         array = newArray;
     }
 
-    Value *array;
+    Value *start() {
+        return array;
+    }
 
-    MutableHandleValue handleAt(size_t i)
-    {
+    size_t length() {
+        JS_ASSERT(tag_ >= 0);
+        return size_t(tag_);
+    }
+
+    MutableHandleValue handleAt(size_t i) {
         JS_ASSERT(i < size_t(tag_));
         return MutableHandleValue::fromMarkedLocation(&array[i]);
     }
-    HandleValue handleAt(size_t i) const
-    {
+    HandleValue handleAt(size_t i) const {
+        JS_ASSERT(i < size_t(tag_));
+        return HandleValue::fromMarkedLocation(&array[i]);
+    }
+    MutableHandleValue operator[](size_t i) {
+        JS_ASSERT(i < size_t(tag_));
+        return MutableHandleValue::fromMarkedLocation(&array[i]);
+    }
+    HandleValue operator[](size_t i) const {
         JS_ASSERT(i < size_t(tag_));
         return HandleValue::fromMarkedLocation(&array[i]);
     }
@@ -219,9 +233,9 @@ class AutoArrayRooter : private AutoGCRooter {
     friend void AutoGCRooter::trace(JSTracer *trc);
 
   private:
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-
+    Value *array;
     js::SkipRoot skip;
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
 template<class T>
@@ -858,7 +872,7 @@ typedef void
 
 /************************************************************************/
 
-static JS_ALWAYS_INLINE jsval
+static MOZ_ALWAYS_INLINE jsval
 JS_NumberValue(double d)
 {
     int32_t i;
@@ -887,7 +901,7 @@ INTERNED_STRING_TO_JSID(JSContext *cx, JSString *str);
  * Returns true iff the given jsval is immune to GC and can be used across
  * multiple JSRuntimes without requiring any conversion API.
  */
-static JS_ALWAYS_INLINE bool
+static MOZ_ALWAYS_INLINE bool
 JSVAL_IS_UNIVERSAL(jsval v)
 {
     return !JSVAL_IS_GCTHING(v);
@@ -1076,7 +1090,7 @@ ToStringSlow(JSContext *cx, JS::HandleValue v);
 namespace JS {
 
 /* ES5 9.3 ToNumber. */
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ToNumber(JSContext *cx, HandleValue v, double *out)
 {
     AssertArgumentsAreSane(cx, v);
@@ -1092,7 +1106,7 @@ ToNumber(JSContext *cx, HandleValue v, double *out)
     return js::ToNumberSlow(cx, v, out);
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ToBoolean(HandleValue v)
 {
     if (v.isBoolean())
@@ -1110,7 +1124,7 @@ ToBoolean(HandleValue v)
     return js::ToBooleanSlow(v);
 }
 
-JS_ALWAYS_INLINE JSString*
+MOZ_ALWAYS_INLINE JSString*
 ToString(JSContext *cx, HandleValue v)
 {
     if (v.isString())
@@ -1154,7 +1168,7 @@ ToUint64Slow(JSContext *cx, JS::HandleValue v, uint64_t *out);
 
 namespace JS {
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ToUint16(JSContext *cx, JS::HandleValue v, uint16_t *out)
 {
     AssertArgumentsAreSane(cx, v);
@@ -1167,7 +1181,7 @@ ToUint16(JSContext *cx, JS::HandleValue v, uint16_t *out)
     return js::ToUint16Slow(cx, v, out);
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ToInt32(JSContext *cx, JS::HandleValue v, int32_t *out)
 {
     AssertArgumentsAreSane(cx, v);
@@ -1180,7 +1194,7 @@ ToInt32(JSContext *cx, JS::HandleValue v, int32_t *out)
     return js::ToInt32Slow(cx, v, out);
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ToUint32(JSContext *cx, JS::HandleValue v, uint32_t *out)
 {
     AssertArgumentsAreSane(cx, v);
@@ -1193,7 +1207,7 @@ ToUint32(JSContext *cx, JS::HandleValue v, uint32_t *out)
     return js::ToUint32Slow(cx, v, out);
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ToInt64(JSContext *cx, JS::HandleValue v, int64_t *out)
 {
     AssertArgumentsAreSane(cx, v);
@@ -1207,7 +1221,7 @@ ToInt64(JSContext *cx, JS::HandleValue v, int64_t *out)
     return js::ToInt64Slow(cx, v, out);
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ToUint64(JSContext *cx, JS::HandleValue v, uint64_t *out)
 {
     AssertArgumentsAreSane(cx, v);
@@ -1775,14 +1789,13 @@ extern JS_PUBLIC_API(bool)
 JS_EnumerateStandardClasses(JSContext *cx, JS::HandleObject obj);
 
 extern JS_PUBLIC_API(bool)
-JS_GetClassObject(JSContext *cx, JS::Handle<JSObject*> obj, JSProtoKey key,
-                  JS::MutableHandle<JSObject*> objp);
+JS_GetClassObject(JSContext *cx, JSProtoKey key, JS::MutableHandle<JSObject*> objp);
 
 extern JS_PUBLIC_API(bool)
 JS_GetClassPrototype(JSContext *cx, JSProtoKey key, JS::MutableHandle<JSObject*> objp);
 
 extern JS_PUBLIC_API(JSProtoKey)
-JS_IdentifyClassPrototype(JSContext *cx, JSObject *obj);
+JS_IdentifyClassPrototype(JSObject *obj);
 
 extern JS_PUBLIC_API(JSProtoKey)
 JS_IdToProtoKey(JSContext *cx, JS::HandleId id);
@@ -2028,19 +2041,19 @@ JS_RemoveExtraGCRootsTracer(JSRuntime *rt, JSTraceDataOp traceOp, void *data);
  * Use the following macros to check if a particular jsval is a traceable
  * thing and to extract the thing and its kind to pass to JS_CallTracer.
  */
-static JS_ALWAYS_INLINE bool
+static MOZ_ALWAYS_INLINE bool
 JSVAL_IS_TRACEABLE(jsval v)
 {
     return JSVAL_IS_TRACEABLE_IMPL(JSVAL_TO_IMPL(v));
 }
 
-static JS_ALWAYS_INLINE void *
+static MOZ_ALWAYS_INLINE void *
 JSVAL_TO_TRACEABLE(jsval v)
 {
     return JSVAL_TO_GCTHING(v);
 }
 
-static JS_ALWAYS_INLINE JSGCTraceKind
+static MOZ_ALWAYS_INLINE JSGCTraceKind
 JSVAL_TRACE_KIND(jsval v)
 {
     JS_ASSERT(JSVAL_IS_GCTHING(v));
@@ -2526,7 +2539,7 @@ struct JSFunctionSpec {
     {name, {call, info}, nargs, flags, selfHostedName}
 
 extern JS_PUBLIC_API(JSObject *)
-JS_InitClass(JSContext *cx, JSObject *obj, JSObject *parent_proto,
+JS_InitClass(JSContext *cx, JS::HandleObject obj, JS::HandleObject parent_proto,
              const JSClass *clasp, JSNative constructor, unsigned nargs,
              const JSPropertySpec *ps, const JSFunctionSpec *fs,
              const JSPropertySpec *static_ps, const JSFunctionSpec *static_fs);
@@ -3086,7 +3099,10 @@ extern JS_PUBLIC_API(JSObject *)
 JS_NewArrayObject(JSContext *cx, int length, jsval *vector);
 
 extern JS_PUBLIC_API(bool)
-JS_IsArrayObject(JSContext *cx, JSObject *obj);
+JS_IsArrayObject(JSContext *cx, JS::HandleValue value);
+
+extern JS_PUBLIC_API(bool)
+JS_IsArrayObject(JSContext *cx, JS::HandleObject obj);
 
 extern JS_PUBLIC_API(bool)
 JS_GetArrayLength(JSContext *cx, JS::Handle<JSObject*> obj, uint32_t *lengthp);
@@ -4102,21 +4118,21 @@ JS_FlattenString(JSContext *cx, JSString *str);
 extern JS_PUBLIC_API(const jschar *)
 JS_GetFlatStringChars(JSFlatString *str);
 
-static JS_ALWAYS_INLINE JSFlatString *
+static MOZ_ALWAYS_INLINE JSFlatString *
 JSID_TO_FLAT_STRING(jsid id)
 {
     JS_ASSERT(JSID_IS_STRING(id));
     return (JSFlatString *)(JSID_BITS(id));
 }
 
-static JS_ALWAYS_INLINE JSFlatString *
+static MOZ_ALWAYS_INLINE JSFlatString *
 JS_ASSERT_STRING_IS_FLAT(JSString *str)
 {
     JS_ASSERT(JS_GetFlatStringChars((JSFlatString *)str));
     return (JSFlatString *)str;
 }
 
-static JS_ALWAYS_INLINE JSString *
+static MOZ_ALWAYS_INLINE JSString *
 JS_FORGET_STRING_FLATNESS(JSFlatString *fstr)
 {
     return (JSString *)fstr;
@@ -4455,6 +4471,15 @@ JS_GetErrorReporter(JSContext *cx);
 extern JS_PUBLIC_API(JSErrorReporter)
 JS_SetErrorReporter(JSContext *cx, JSErrorReporter er);
 
+namespace JS {
+
+extern JS_PUBLIC_API(bool)
+CreateTypeError(JSContext *cx, HandleString stack, HandleString fileName,
+                uint32_t lineNumber, uint32_t columnNumber, JSErrorReport *report,
+                HandleString message, MutableHandleValue rval);
+
+} /* namespace JS */
+
 /************************************************************************/
 
 /*
@@ -4721,7 +4746,7 @@ class AutoHideScriptedCaller
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-} /* namepsace JS */
+} /* namespace JS */
 
 /*
  * Encode/Decode interpreted scripts and functions to/from memory.
@@ -4797,6 +4822,63 @@ struct AsmJSCacheOps
 
 extern JS_PUBLIC_API(void)
 SetAsmJSCacheOps(JSRuntime *rt, const AsmJSCacheOps *callbacks);
+
+/*
+ * Convenience class for imitating a JS level for-of loop. Typical usage:
+ *
+ *     ForOfIterator it(cx);
+ *     if (!it.init(iterable))
+ *       return false;
+ *     RootedValue val(cx);
+ *     while (true) {
+ *       bool done;
+ *       if (!it.next(&val, &done))
+ *         return false;
+ *       if (done)
+ *         break;
+ *       if (!DoStuff(cx, val))
+ *         return false;
+ *     }
+ */
+class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
+  protected:
+    JSContext *cx_;
+    JS::RootedObject iterator;
+
+    ForOfIterator(const ForOfIterator &) MOZ_DELETE;
+    ForOfIterator &operator=(const ForOfIterator &) MOZ_DELETE;
+
+  public:
+    ForOfIterator(JSContext *cx) : cx_(cx), iterator(cx) { }
+
+    enum NonIterableBehavior {
+        ThrowOnNonIterable,
+        AllowNonIterable
+    };
+
+    /*
+     * Initialize the iterator.  If AllowNonIterable is passed then if iterable
+     * does not have a callable @@iterator init() will just return true instead
+     * of throwing.  Callers should then check valueIsIterable() before
+     * continuing with the iteration.
+     */
+    bool init(JS::HandleValue iterable,
+              NonIterableBehavior nonIterableBehavior = ThrowOnNonIterable);
+
+    /*
+     * Get the next value from the iterator.  If false *done is true
+     * after this call, do not examine val.
+     */
+    bool next(JS::MutableHandleValue val, bool *done);
+
+    /*
+     * If initialized with throwOnNonCallable = false, check whether
+     * the value is iterable.
+     */
+    bool valueIsIterable() const {
+        return iterator;
+    }
+};
 
 } /* namespace JS */
 

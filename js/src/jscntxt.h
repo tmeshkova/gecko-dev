@@ -287,6 +287,7 @@ struct ThreadSafeContext : ContextFriendFields,
     size_t workerThreadCount() { return runtime_->workerThreadCount(); }
     void *runtimeAddressForJit() { return runtime_; }
     void *stackLimitAddress(StackKind kind) { return &runtime_->mainThread.nativeStackLimit[kind]; }
+    void *stackLimitAddressForJitCode(StackKind kind);
     size_t gcSystemPageSize() { return runtime_->gcSystemPageSize; }
     bool signalHandlersInstalled() const { return runtime_->signalHandlersInstalled(); }
     bool jitSupportsFloatingPoint() const { return runtime_->jitSupportsFloatingPoint; }
@@ -919,13 +920,19 @@ class AutoValueArray : public AutoGCRooter
     Value *start() { return start_; }
     unsigned length() const { return length_; }
 
-    MutableHandleValue handleAt(unsigned i)
-    {
+    MutableHandleValue handleAt(unsigned i) {
         JS_ASSERT(i < length_);
         return MutableHandleValue::fromMarkedLocation(&start_[i]);
     }
-    HandleValue handleAt(unsigned i) const
-    {
+    HandleValue handleAt(unsigned i) const {
+        JS_ASSERT(i < length_);
+        return HandleValue::fromMarkedLocation(&start_[i]);
+    }
+    MutableHandleValue operator[](unsigned i) {
+        JS_ASSERT(i < length_);
+        return MutableHandleValue::fromMarkedLocation(&start_[i]);
+    }
+    HandleValue operator[](unsigned i) const {
         JS_ASSERT(i < length_);
         return HandleValue::fromMarkedLocation(&start_[i]);
     }

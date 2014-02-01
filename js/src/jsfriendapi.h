@@ -125,11 +125,11 @@ JS_SetCompartmentPrincipals(JSCompartment *compartment, JSPrincipals *principals
 
 /* Safe to call with input obj == nullptr. Returns non-nullptr iff obj != nullptr. */
 extern JS_FRIEND_API(JSObject *)
-JS_ObjectToInnerObject(JSContext *cx, JSObject *obj);
+JS_ObjectToInnerObject(JSContext *cx, JS::HandleObject obj);
 
 /* Requires obj != nullptr. */
 extern JS_FRIEND_API(JSObject *)
-JS_ObjectToOuterObject(JSContext *cx, JSObject *obj);
+JS_ObjectToOuterObject(JSContext *cx, JS::HandleObject obj);
 
 extern JS_FRIEND_API(JSObject *)
 JS_CloneObject(JSContext *cx, JSObject *obj, JSObject *proto, JSObject *parent);
@@ -225,6 +225,173 @@ extern JS_FRIEND_API(bool)
 JS_DefineFunctionsWithHelp(JSContext *cx, JSObject *obj, const JSFunctionSpecWithHelp *fs);
 
 namespace js {
+
+/*
+ * Helper Macros for creating JSClasses that function as proxies.
+ *
+ * NB: The macro invocation must be surrounded by braces, so as to
+ *     allow for potention JSClass extensions.
+ */
+#define PROXY_MAKE_EXT(outerObject, innerObject, iteratorObject,        \
+                       isWrappedNative)                                 \
+    {                                                                   \
+        outerObject,                                                    \
+        innerObject,                                                    \
+        iteratorObject,                                                 \
+        isWrappedNative,                                                \
+        js::proxy_WeakmapKeyDelegate                                    \
+    }
+
+#define PROXY_CLASS_WITH_EXT(name, extraSlots, flags, callOp, constructOp, ext)         \
+    {                                                                                   \
+        name,                                                                           \
+        js::Class::NON_NATIVE |                                                         \
+            JSCLASS_IS_PROXY |                                                          \
+            JSCLASS_IMPLEMENTS_BARRIERS |                                               \
+            JSCLASS_HAS_RESERVED_SLOTS(js::PROXY_MINIMUM_SLOTS + (extraSlots)) |        \
+            flags,                                                                      \
+        JS_PropertyStub,         /* addProperty */                                      \
+        JS_DeletePropertyStub,   /* delProperty */                                      \
+        JS_PropertyStub,         /* getProperty */                                      \
+        JS_StrictPropertyStub,   /* setProperty */                                      \
+        JS_EnumerateStub,                                                               \
+        JS_ResolveStub,                                                                 \
+        js::proxy_Convert,                                                              \
+        js::proxy_Finalize,      /* finalize    */                                      \
+        callOp,                  /* call        */                                      \
+        js::proxy_HasInstance,   /* hasInstance */                                      \
+        constructOp,             /* construct   */                                      \
+        js::proxy_Trace,         /* trace       */                                      \
+        ext,                                                                            \
+        {                                                                               \
+            js::proxy_LookupGeneric,                                                    \
+            js::proxy_LookupProperty,                                                   \
+            js::proxy_LookupElement,                                                    \
+            js::proxy_LookupSpecial,                                                    \
+            js::proxy_DefineGeneric,                                                    \
+            js::proxy_DefineProperty,                                                   \
+            js::proxy_DefineElement,                                                    \
+            js::proxy_DefineSpecial,                                                    \
+            js::proxy_GetGeneric,                                                       \
+            js::proxy_GetProperty,                                                      \
+            js::proxy_GetElement,                                                       \
+            js::proxy_GetSpecial,                                                       \
+            js::proxy_SetGeneric,                                                       \
+            js::proxy_SetProperty,                                                      \
+            js::proxy_SetElement,                                                       \
+            js::proxy_SetSpecial,                                                       \
+            js::proxy_GetGenericAttributes,                                             \
+            js::proxy_SetGenericAttributes,                                             \
+            js::proxy_DeleteProperty,                                                   \
+            js::proxy_DeleteElement,                                                    \
+            js::proxy_DeleteSpecial,                                                    \
+            js::proxy_Watch, js::proxy_Unwatch,                                         \
+            js::proxy_Slice,                                                            \
+            nullptr,             /* enumerate       */                                  \
+            nullptr,             /* thisObject      */                                  \
+        }                                                                               \
+    }
+
+#define PROXY_CLASS_DEF(name, extraSlots, flags, callOp, constructOp)   \
+  PROXY_CLASS_WITH_EXT(name, extraSlots, flags, callOp, constructOp,    \
+                       PROXY_MAKE_EXT(                                  \
+                         nullptr, /* outerObject */                     \
+                         nullptr, /* innerObject */                     \
+                         nullptr, /* iteratorObject */                  \
+                         false    /* isWrappedNative */                 \
+                       ))
+
+/*
+ * Proxy stubs, similar to JS_*Stub, for embedder proxy class definitions.
+ *
+ * NB: Should not be called directly.
+ */
+
+extern JS_FRIEND_API(bool)
+proxy_LookupGeneric(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::MutableHandleObject objp,
+                    JS::MutableHandle<Shape*> propp);
+extern JS_FRIEND_API(bool)
+proxy_LookupProperty(JSContext *cx, JS::HandleObject obj, JS::Handle<PropertyName*> name,
+                     JS::MutableHandleObject objp, JS::MutableHandle<Shape*> propp);
+extern JS_FRIEND_API(bool)
+proxy_LookupElement(JSContext *cx, JS::HandleObject obj, uint32_t index, JS::MutableHandleObject objp,
+                    JS::MutableHandle<Shape*> propp);
+extern JS_FRIEND_API(bool)
+proxy_LookupSpecial(JSContext *cx, JS::HandleObject obj, HandleSpecialId sid,
+                    JS::MutableHandleObject objp, JS::MutableHandle<Shape*> propp);
+extern JS_FRIEND_API(bool)
+proxy_DefineGeneric(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue value,
+                    JSPropertyOp getter, JSStrictPropertyOp setter, unsigned attrs);
+extern JS_FRIEND_API(bool)
+proxy_DefineProperty(JSContext *cx, JS::HandleObject obj, JS::Handle<PropertyName*> name,
+                     JS::HandleValue value, JSPropertyOp getter, JSStrictPropertyOp setter,
+                     unsigned attrs);
+extern JS_FRIEND_API(bool)
+proxy_DefineElement(JSContext *cx, JS::HandleObject obj, uint32_t index, JS::HandleValue value,
+                    JSPropertyOp getter, JSStrictPropertyOp setter, unsigned attrs);
+extern JS_FRIEND_API(bool)
+proxy_DefineSpecial(JSContext *cx, JS::HandleObject obj, HandleSpecialId sid,
+                    JS::HandleValue value, JSPropertyOp getter, JSStrictPropertyOp setter,
+                    unsigned attrs);
+extern JS_FRIEND_API(bool)
+proxy_GetGeneric(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver, JS::HandleId id,
+                 JS::MutableHandleValue vp);
+extern JS_FRIEND_API(bool)
+proxy_GetProperty(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver,
+                  JS::Handle<PropertyName*> name, JS::MutableHandleValue vp);
+extern JS_FRIEND_API(bool)
+proxy_GetElement(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver, uint32_t index,
+                 JS::MutableHandleValue vp);
+extern JS_FRIEND_API(bool)
+proxy_GetSpecial(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver,
+                 HandleSpecialId sid, JS::MutableHandleValue vp);
+extern JS_FRIEND_API(bool)
+proxy_SetGeneric(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                 JS::MutableHandleValue bp, bool strict);
+extern JS_FRIEND_API(bool)
+proxy_SetProperty(JSContext *cx, JS::HandleObject obj, JS::Handle<PropertyName*> name,
+                  JS::MutableHandleValue bp, bool strict);
+extern JS_FRIEND_API(bool)
+proxy_SetElement(JSContext *cx, JS::HandleObject obj, uint32_t index, JS::MutableHandleValue vp,
+                 bool strict);
+extern JS_FRIEND_API(bool)
+proxy_SetSpecial(JSContext *cx, JS::HandleObject obj, HandleSpecialId sid,
+                 JS::MutableHandleValue vp, bool strict);
+extern JS_FRIEND_API(bool)
+proxy_GetGenericAttributes(JSContext *cx, JS::HandleObject obj, JS::HandleId id, unsigned *attrsp);
+extern JS_FRIEND_API(bool)
+proxy_SetGenericAttributes(JSContext *cx, JS::HandleObject obj, JS::HandleId id, unsigned *attrsp);
+extern JS_FRIEND_API(bool)
+proxy_DeleteProperty(JSContext *cx, JS::HandleObject obj, JS::Handle<PropertyName*> name,
+                     bool *succeeded);
+extern JS_FRIEND_API(bool)
+proxy_DeleteElement(JSContext *cx, JS::HandleObject obj, uint32_t index, bool *succeeded);
+extern JS_FRIEND_API(bool)
+proxy_DeleteSpecial(JSContext *cx, JS::HandleObject obj, HandleSpecialId sid, bool *succeeded);
+
+extern JS_FRIEND_API(void)
+proxy_Trace(JSTracer *trc, JSObject *obj);
+extern JS_FRIEND_API(JSObject *)
+proxy_WeakmapKeyDelegate(JSObject *obj);
+extern JS_FRIEND_API(bool)
+proxy_Convert(JSContext *cx, JS::HandleObject proxy, JSType hint, JS::MutableHandleValue vp);
+extern JS_FRIEND_API(void)
+proxy_Finalize(FreeOp *fop, JSObject *obj);
+extern JS_FRIEND_API(bool)
+proxy_HasInstance(JSContext *cx, JS::HandleObject proxy, JS::MutableHandleValue v, bool *bp);
+extern JS_FRIEND_API(bool)
+proxy_Call(JSContext *cx, unsigned argc, JS::Value *vp);
+extern JS_FRIEND_API(bool)
+proxy_Construct(JSContext *cx, unsigned argc, JS::Value *vp);
+extern JS_FRIEND_API(JSObject *)
+proxy_innerObject(JSContext *cx, JS::HandleObject obj);
+extern JS_FRIEND_API(bool)
+proxy_Watch(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleObject callable);
+extern JS_FRIEND_API(bool)
+proxy_Unwatch(JSContext *cx, JS::HandleObject obj, JS::HandleId id);
+extern JS_FRIEND_API(bool)
+proxy_Slice(JSContext *cx, JS::HandleObject proxy, uint32_t begin, uint32_t end,
+            JS::HandleObject result);
 
 /*
  * A class of objects that return source code on demand.
@@ -481,7 +648,7 @@ GetObjectParent(JSObject *obj)
     return reinterpret_cast<shadow::Object*>(obj)->shape->base->parent;
 }
 
-static JS_ALWAYS_INLINE JSCompartment *
+static MOZ_ALWAYS_INLINE JSCompartment *
 GetObjectCompartment(JSObject *obj)
 {
     return reinterpret_cast<shadow::Object*>(obj)->shape->base->compartment;
@@ -1020,23 +1187,23 @@ JS_NewFloat64Array(JSContext *cx, uint32_t nelements);
  */
 
 extern JS_FRIEND_API(JSObject *)
-JS_NewInt8ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewInt8ArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint8ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewUint8ArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint8ClampedArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewUint8ClampedArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewInt16ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewInt16ArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint16ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewUint16ArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewInt32ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewInt32ArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint32ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewUint32ArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewFloat32ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewFloat32ArrayFromArray(JSContext *cx, JS::HandleObject array);
 extern JS_FRIEND_API(JSObject *)
-JS_NewFloat64ArrayFromArray(JSContext *cx, JSObject *array);
+JS_NewFloat64ArrayFromArray(JSContext *cx, JS::HandleObject array);
 
 /*
  * Create a new typed array using the given ArrayBuffer for storage.  The
@@ -1045,31 +1212,31 @@ JS_NewFloat64ArrayFromArray(JSContext *cx, JSObject *array);
  */
 
 extern JS_FRIEND_API(JSObject *)
-JS_NewInt8ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewInt8ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                           uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint8ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewUint8ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                            uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint8ClampedArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewUint8ClampedArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                                   uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewInt16ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewInt16ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                            uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint16ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewUint16ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                             uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewInt32ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewInt32ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                            uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewUint32ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewUint32ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                             uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewFloat32ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewFloat32ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                              uint32_t byteOffset, int32_t length);
 extern JS_FRIEND_API(JSObject *)
-JS_NewFloat64ArrayWithBuffer(JSContext *cx, JSObject *arrayBuffer,
+JS_NewFloat64ArrayWithBuffer(JSContext *cx, JS::HandleObject arrayBuffer,
                              uint32_t byteOffset, int32_t length);
 
 /*
@@ -1659,7 +1826,7 @@ inline int CheckIsParallelNative(JSParallelNative parallelNative);
     }                                                                   \
     JS_JITINFO_NATIVE_PARALLEL(infoName, wrapperName##_ParallelNativeThreadSafeWrapper)
 
-static JS_ALWAYS_INLINE const JSJitInfo *
+static MOZ_ALWAYS_INLINE const JSJitInfo *
 FUNCTION_VALUE_TO_JITINFO(const JS::Value& v)
 {
     JS_ASSERT(js::GetObjectClass(&v.toObject()) == js::FunctionClassPtr);
@@ -1669,7 +1836,7 @@ FUNCTION_VALUE_TO_JITINFO(const JS::Value& v)
 /* Statically asserted in jsfun.h. */
 static const unsigned JS_FUNCTION_INTERPRETED_BIT = 0x1;
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 SET_JITINFO(JSFunction * func, const JSJitInfo *info)
 {
     js::shadow::Function *fun = reinterpret_cast<js::shadow::Function *>(func);
@@ -1682,7 +1849,7 @@ SET_JITINFO(JSFunction * func, const JSJitInfo *info)
  * eliminate Gecko's dependencies on it!
  */
 
-static JS_ALWAYS_INLINE jsid
+static MOZ_ALWAYS_INLINE jsid
 JSID_FROM_BITS(size_t bits)
 {
     jsid id;
@@ -1717,7 +1884,7 @@ bool IdMatchesAtom(jsid id, JSAtom *atom);
  * Thus, it is only the rare third case which needs this function, which
  * handles any JSAtom* that is known not to be representable with an int jsid.
  */
-static JS_ALWAYS_INLINE jsid
+static MOZ_ALWAYS_INLINE jsid
 NON_INTEGER_ATOM_TO_JSID(JSAtom *atom)
 {
     JS_ASSERT(((size_t)atom & 0x7) == 0);
@@ -1727,19 +1894,19 @@ NON_INTEGER_ATOM_TO_JSID(JSAtom *atom)
 }
 
 /* All strings stored in jsids are atomized, but are not necessarily property names. */
-static JS_ALWAYS_INLINE bool
+static MOZ_ALWAYS_INLINE bool
 JSID_IS_ATOM(jsid id)
 {
     return JSID_IS_STRING(id);
 }
 
-static JS_ALWAYS_INLINE bool
+static MOZ_ALWAYS_INLINE bool
 JSID_IS_ATOM(jsid id, JSAtom *atom)
 {
     return id == JSID_FROM_BITS((size_t)atom);
 }
 
-static JS_ALWAYS_INLINE JSAtom *
+static MOZ_ALWAYS_INLINE JSAtom *
 JSID_TO_ATOM(jsid id)
 {
     return (JSAtom *)JSID_TO_STRING(id);
@@ -1749,14 +1916,14 @@ JS_STATIC_ASSERT(sizeof(jsid) == sizeof(void*));
 
 namespace js {
 
-static JS_ALWAYS_INLINE JS::Value
+static MOZ_ALWAYS_INLINE JS::Value
 IdToValue(jsid id)
 {
     if (JSID_IS_STRING(id))
         return JS::StringValue(JSID_TO_STRING(id));
-    if (JS_LIKELY(JSID_IS_INT(id)))
+    if (MOZ_LIKELY(JSID_IS_INT(id)))
         return JS::Int32Value(JSID_TO_INT(id));
-    if (JS_LIKELY(JSID_IS_OBJECT(id)))
+    if (MOZ_LIKELY(JSID_IS_OBJECT(id)))
         return JS::ObjectValue(*JSID_TO_OBJECT(id));
     JS_ASSERT(JSID_IS_VOID(id));
     return JS::UndefinedValue();

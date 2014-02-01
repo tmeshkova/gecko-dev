@@ -46,7 +46,6 @@ class EmbedLiteViewImplIface
     virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset) {}
     virtual void ScheduleRender() {}
     virtual void SetClipping(nsIntRect aClipRect) {}
-    virtual bool ScrollBy(int aDX, int aDY, bool aDoOverflow = false) { return false; }
     virtual void ReceiveInputEvent(const InputData& aEvent) {}
     virtual void TextEvent(const char* composite, const char* preEdit) {}
     virtual void SendKeyPress(int domKeyCode, int gmodifiers, int charCode) {}
