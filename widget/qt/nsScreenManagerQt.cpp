@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "qdesktopwidget.h"
-#include "qapplication.h"
+#include <QGuiApplication>
 #include <QScreen>
 
 #include "nsScreenManagerQt.h"
@@ -29,12 +28,7 @@ void nsScreenManagerQt::init()
     if (mInitialized)
         return;
 
-#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
-    desktop = QApplication::desktop();
-    nScreens = desktop->numScreens();
-#else
     nScreens = QGuiApplication::screens().size();
-#endif
     screens = new nsCOMPtr<nsIScreen>[nScreens];
 
     for (int i = 0; i < nScreens; ++i)
@@ -52,8 +46,8 @@ void nsScreenManagerQt::init()
 //
 NS_IMETHODIMP
 nsScreenManagerQt::ScreenForRect(int32_t inLeft, int32_t inTop,
-				 int32_t inWidth, int32_t inHeight,
-				 nsIScreen **outScreen)
+                                 int32_t inWidth, int32_t inHeight,
+                                 nsIScreen **outScreen)
 {
     if (!mInitialized)
         init();
@@ -62,11 +56,7 @@ nsScreenManagerQt::ScreenForRect(int32_t inLeft, int32_t inTop,
     int best = 0;
     int area = 0;
     for (int i = 0; i < nScreens; ++i) {
-#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
-        const QRect& rect = desktop->screenGeometry(i);
-#else
         const QRect& rect = QGuiApplication::screens()[i]->geometry();
-#endif
         QRect intersection = r&rect;
         int a = intersection.width()*intersection.height();
         if (a > area) {
@@ -118,10 +108,10 @@ nsScreenManagerQt::GetSystemDefaultScale(float *aDefaultScale)
 }
 
 NS_IMETHODIMP
-nsScreenManagerQt :: ScreenForNativeWidget (void *aWidget, nsIScreen **outScreen)
+nsScreenManagerQt::ScreenForNativeWidget(void *aWidget, nsIScreen **outScreen)
 {
     // I don't know how to go from GtkWindow to nsIScreen, especially
     // given xinerama and stuff, so let's just do this
-    QRect rect = static_cast<QWidget*>(aWidget)->geometry();
+    QRect rect(0, 0, 1, 1);
     return ScreenForRect(rect.x(), rect.y(), rect.width(), rect.height(), outScreen);
 }

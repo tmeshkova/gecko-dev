@@ -7,7 +7,7 @@
 #include "mozilla/embedlite/EmbedLiteApp.h"
 
 #ifdef MOZ_WIDGET_QT
-#include <QApplication>
+#include <QGuiApplication>
 #elif defined(MOZ_WIDGET_GTK2)
 #include <glib-object.h>
 #endif
@@ -34,7 +34,7 @@ private:
 int main(int argc, char** argv)
 {
 #ifdef MOZ_WIDGET_QT
-  QApplication app(argc, argv);
+  QGuiApplication app(argc, argv);
 #elif defined(MOZ_WIDGET_GTK2)
   g_type_init();
   g_thread_init(NULL);
