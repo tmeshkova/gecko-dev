@@ -4,16 +4,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <QPixmap>
-#include <qglobal.h>
-#if (QT_VERSION < QT_VERSION_CHECK(5,0,0))
-#  include <QX11Info>
-#else
-#  include <qpa/qplatformnativeinterface.h>
-#  include <qpa/qplatformintegration.h>
+#include <QWindow>
+#ifdef MOZ_X11
+#include <qpa/qplatformnativeinterface.h>
+#include <qpa/qplatformintegration.h>
 #endif
-#include <QApplication>
-#include <QDesktopWidget>
-#include <QPaintEngine>
+#include <QGuiApplication>
+#include <QScreen>
 
 #include "gfxQtPlatform.h"
 
@@ -33,8 +30,6 @@
 
 #include "nsUnicharUtils.h"
 
-#include <fontconfig/fontconfig.h>
-
 #include "nsMathUtils.h"
 #include "nsTArray.h"
 #ifdef MOZ_X11
@@ -49,55 +44,25 @@ using namespace mozilla;
 using namespace mozilla::unicode;
 using namespace mozilla::gfx;
 
-#if (QT_VERSION < QT_VERSION_CHECK(5,0,0))
-#define DEFAULT_RENDER_MODE RENDER_DIRECT
-#else
-#define DEFAULT_RENDER_MODE RENDER_BUFFERED
-#endif
-
-static QPaintEngine::Type sDefaultQtPaintEngineType = QPaintEngine::Raster;
 gfxFontconfigUtils *gfxQtPlatform::sFontconfigUtils = nullptr;
+#ifdef MOZ_X11
+bool gfxQtPlatform::sUseXRender = true;
+#endif
 
 static gfxImageFormat sOffscreenFormat = gfxImageFormat::RGB24;
 
 gfxQtPlatform::gfxQtPlatform()
 {
+#ifdef MOZ_X11
+    sUseXRender = mozilla::Preferences::GetBool("gfx.xrender.enabled");
+#endif
     if (!sFontconfigUtils)
         sFontconfigUtils = gfxFontconfigUtils::GetFontconfigUtils();
 
-    // 0 - default gfxQPainterSurface
-    // 1 - gfxImageSurface
-    int32_t ival = Preferences::GetInt("mozilla.widget-qt.render-mode", DEFAULT_RENDER_MODE);
-
-    const char *envTypeOverride = getenv("MOZ_QT_RENDER_TYPE");
-    if (envTypeOverride)
-        ival = atoi(envTypeOverride);
-
-    switch (ival) {
-        case 0:
-            mRenderMode = RENDER_QPAINTER;
-            break;
-        case 1:
-            mRenderMode = RENDER_BUFFERED;
-            break;
-        case 2:
-            mRenderMode = RENDER_DIRECT;
-            break;
-        default:
-            mRenderMode = RENDER_QPAINTER;
-    }
-
-    // Qt doesn't provide a public API to detect the graphicssystem type. We hack
-    // around this by checking what type of graphicssystem a test QPixmap uses.
-    QPixmap pixmap(1, 1);
-    if ((pixmap.depth() == 16) || Preferences::GetBool("gfx.qt.rgb16.force", false)) {
+    mScreenDepth = qApp->primaryScreen()->depth();
+    if (mScreenDepth == 16 || Preferences::GetBool("gfx.qt.rgb16.force", false)) {
         sOffscreenFormat = gfxImageFormat::RGB16_565;
     }
-    mScreenDepth = pixmap.depth();
-#if (QT_VERSION < QT_VERSION_CHECK(4,8,0))
-    if (pixmap.paintEngine())
-        sDefaultQtPaintEngineType = pixmap.paintEngine()->type();
-#endif
     uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
     uint32_t contentMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
     InitBackendPrefs(canvasMask, BackendType::CAIRO,
@@ -114,35 +79,18 @@ gfxQtPlatform::~gfxQtPlatform()
 
 #ifdef MOZ_X11
 Display*
-gfxQtPlatform::GetXDisplay(QWidget* aWindow)
+gfxQtPlatform::GetXDisplay(QWindow* aWindow)
 {
-#if (QT_VERSION < QT_VERSION_CHECK(5,0,0))
-#ifdef Q_WS_X11
-  return aWindow ? aWindow->x11Info().display() : QX11Info::display();
-#else
-  return nullptr;
-#endif
-#else
-  return (Display*)(qApp->platformNativeInterface()->
-    nativeResourceForWindow("display", aWindow ? aWindow->windowHandle() : nullptr));
-#endif
+    return (Display*)(qApp->platformNativeInterface()->
+        nativeResourceForScreen("display", aWindow ? aWindow->screen() : qApp->primaryScreen()));
 }
 
 Screen*
-gfxQtPlatform::GetXScreen(QWidget* aWindow)
+gfxQtPlatform::GetXScreen(QWindow* aWindow)
 {
-#if (QT_VERSION < QT_VERSION_CHECK(5,0,0))
-#ifdef Q_WS_X11
-  return ScreenOfDisplay(GetXDisplay(aWindow), aWindow ? aWindow->x11Info().screen() : QX11Info().screen());
-#else
-  return nullptr;
-#endif
-#else
-  return ScreenOfDisplay(GetXDisplay(aWindow),
-                         (int)(intptr_t)qApp->platformNativeInterface()->
-                           nativeResourceForWindow("screen",
-                             aWindow ? aWindow->windowHandle() : nullptr));
-#endif
+    return ScreenOfDisplay(GetXDisplay(aWindow),
+        (int)(intptr_t)qApp->platformNativeInterface()->
+            nativeResourceForScreen("screen", aWindow ? aWindow->screen() : qApp->primaryScreen()));
 }
 #endif
 
@@ -154,26 +102,10 @@ gfxQtPlatform::CreateOffscreenSurface(const gfxIntSize& size,
 
     gfxImageFormat imageFormat = OptimalFormatForContent(contentType);
 
-#ifdef CAIRO_HAS_QT_SURFACE
-    if (mRenderMode == RENDER_QPAINTER) {
-      newSurface = new gfxQPainterSurface(size, imageFormat);
-      return newSurface.forget();
+    if (!newSurface) {
+        newSurface = new gfxImageSurface(size, imageFormat);
+        return newSurface.forget();
     }
-#endif
-
-    if ((mRenderMode == RENDER_BUFFERED || mRenderMode == RENDER_DIRECT) &&
-        sDefaultQtPaintEngineType != QPaintEngine::X11) {
-      newSurface = new gfxImageSurface(size, imageFormat);
-      return newSurface.forget();
-    }
-
-#ifdef MOZ_X11
-    XRenderPictFormat* xrenderFormat =
-        gfxXlibSurface::FindRenderFormat(GetXDisplay(), imageFormat);
-
-    Screen* screen = GetXScreen();
-    newSurface = gfxXlibSurface::Create(screen, xrenderFormat, size);
-#endif
 
     if (newSurface) {
         gfxContext ctx(newSurface);
@@ -183,6 +115,20 @@ gfxQtPlatform::CreateOffscreenSurface(const gfxIntSize& size,
 
     return newSurface.forget();
 }
+
+already_AddRefed<gfxASurface>
+gfxQtPlatform::OptimizeImage(gfxImageSurface *aSurface,
+                             gfxImageFormat format)
+{
+    /* Qt have no special offscreen surfaces so we can avoid a copy */
+    if (OptimalFormatForContent(gfxASurface::ContentFromFormat(format)) ==
+        format) {
+        return nullptr;
+    }
+
+    return gfxPlatform::OptimizeImage(aSurface, format);
+}
+
 
 nsresult
 gfxQtPlatform::GetFontList(nsIAtom *aLangGroup,
@@ -240,6 +186,17 @@ gfxQtPlatform::MakePlatformFont(const gfxProxyFontEntry *aProxyEntry,
 }
 
 bool
+gfxQtPlatform::SupportsOffMainThreadCompositing()
+{
+#if defined(MOZ_X11) && !defined(NIGHTLY_BUILD)
+  return (PR_GetEnv("MOZ_USE_OMTC") != nullptr) ||
+         (PR_GetEnv("MOZ_OMTC_ENABLED") != nullptr);
+#else
+  return true;
+#endif
+}
+
+bool
 gfxQtPlatform::IsFontFormatSupported(nsIURI *aFontURI, uint32_t aFormatFlags)
 {
     // check for strange format flags
@@ -265,18 +222,17 @@ gfxQtPlatform::IsFontFormatSupported(nsIURI *aFontURI, uint32_t aFormatFlags)
     return true;
 }
 
-qcms_profile*
-gfxQtPlatform::GetPlatformCMSOutputProfile()
+void
+gfxQtPlatform::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
 {
-    return nullptr;
+    mem = nullptr;
+    size = 0;
 }
 
 int32_t
 gfxQtPlatform::GetDPI()
 {
-    QDesktopWidget* rootWindow = qApp->desktop();
-    int32_t dpi = rootWindow->logicalDpiY(); // y-axis DPI for fonts
-    return dpi <= 0 ? 96 : dpi;
+    return qApp->primaryScreen()->logicalDotsPerInch();
 }
 
 gfxImageFormat

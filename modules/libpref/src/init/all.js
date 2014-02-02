@@ -4084,7 +4084,11 @@ pref("layers.max-active", -1);
 pref("layers.scroll-graph", false);
 
 // Set the default values, and then override per-platform as needed
+#ifdef MOZ_WIDGET_QT
+pref("layers.offmainthreadcomposition.enabled", true);
+#else
 pref("layers.offmainthreadcomposition.enabled", false);
+#endif
 // Compositor target frame rate. NOTE: If vsync is enabled the compositor
 // frame rate will still be capped.
 // -1 -> default (match layout.frame_rate or 60 FPS)

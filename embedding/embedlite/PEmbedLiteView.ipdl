@@ -22,6 +22,7 @@ using class mozilla::WidgetKeyboardEvent from "ipc/nsGUIEventIPC.h";
 using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
 using MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
+using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -79,9 +80,20 @@ parent:
     async OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight);
     async OnScrollChanged(int32_t offSetX, int32_t offSetY);
     async OnTitleChanged(nsString aTitle);
-    UpdateZoomConstraints(bool aAllowZoom, float aMinZoom, float aMaxZoom);
 
-    ZoomToRect(CSSRect aRect);
+    /**
+     * Updates the zoom constraints for a scrollable frame in this tab.
+     * The zoom controller code lives on the parent side and so this allows it to
+     * have up-to-date zoom constraints.
+     */
+    UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, bool aIsRoot,
+                          ZoomConstraints aConstraints);
+
+    /**
+     * Instructs the EmbedLiteViewThreadParent to forward a request to zoom to a rect given in
+     * CSS pixels. This rect is relative to the document.
+     */
+    ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
     async SetBackgroundColor(nscolor color);
     ContentReceivedTouch(ScrollableLayerGuid aGuid, bool aPreventDefault);
     sync GetGLViewSize()

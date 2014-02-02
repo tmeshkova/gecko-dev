@@ -206,17 +206,20 @@ TabChildHelper::Observe(nsISupports* aSubject,
                         const char16_t* aData)
 {
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
-    nsCOMPtr<nsIDocShell> docShell(do_QueryInterface(aSubject));
-    CSSRect rect;
-    sscanf(NS_ConvertUTF16toUTF8(aData).get(),
-           "{\"x\":%f,\"y\":%f,\"w\":%f,\"h\":%f}",
-           &rect.x, &rect.y, &rect.width, &rect.height);
-    mView->SendZoomToRect(rect);
+    nsCOMPtr<nsIDocument> doc(GetDocument());
+    uint32_t presShellId;
+    ViewID viewId;
+    if (APZCCallbackHelper::GetScrollIdentifiers(doc->GetDocumentElement(),
+                                                 &presShellId, &viewId)) {
+      CSSRect rect;
+      sscanf(NS_ConvertUTF16toUTF8(aData).get(),
+             "{\"x\":%f,\"y\":%f,\"w\":%f,\"h\":%f}",
+             &rect.x, &rect.y, &rect.width, &rect.height);
+      mView->SendZoomToRect(presShellId, viewId, rect);
+    }
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
-    nsCOMPtr<nsIDOMDocument> domDoc;
-    mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-    nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+    nsCOMPtr<nsIDocument> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
       nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
@@ -778,13 +781,18 @@ TabChildHelper::HandlePossibleViewportChange()
   nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
-  uint32_t presShellId;
-  ViewID viewId;
+  uint32_t presShellId = 0;
+  ViewID viewId = 0;
   if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
                                                &presShellId, &viewId)) {
-    mView->SendUpdateZoomConstraints(viewportInfo.IsZoomAllowed(),
-                                     viewportInfo.GetMinZoom().scale,
-                                     viewportInfo.GetMaxZoom().scale);
+    ZoomConstraints constraints(
+      viewportInfo.IsZoomAllowed(),
+      viewportInfo.GetMinZoom(),
+      viewportInfo.GetMaxZoom());
+    mView->SendUpdateZoomConstraints(presShellId,
+                                     viewId,
+                                     /* isRoot = */ true,
+                                     constraints);
   }
 
 
@@ -891,4 +899,13 @@ TabChildHelper::HandlePossibleViewportChange()
   // Force a repaint with these metrics. This, among other things, sets the
   // displayport, so we start with async painting.
   ProcessUpdateFrame(metrics);
+}
+
+already_AddRefed<nsIDocument>
+TabChildHelper::GetDocument()
+{
+  nsCOMPtr<nsIDOMDocument> domDoc;
+  mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  return doc.forget();
 }

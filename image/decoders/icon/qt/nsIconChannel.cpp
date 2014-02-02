@@ -5,11 +5,6 @@
 
 #include <QIcon>
 
-#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
-#include <QStyle>
-#include <QApplication>
-#endif
-
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -111,28 +106,10 @@ nsIconChannel::Init(nsIURI* aURI)
   iconURI->GetIconState(iconStateString);
   bool disabled = iconStateString.EqualsLiteral("disabled");
 
-#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
-  QStyle::StandardPixmap sp_icon = (QStyle::StandardPixmap)0;
-  nsCOMPtr <nsIGtkQtIconsConverter> converter = do_GetService("@mozilla.org/gtkqticonsconverter;1");
-  if (converter) {
-    int32_t res = 0;
-    stockIcon.Cut(0,4);
-    converter->Convert(stockIcon.get(), &res);
-    sp_icon = (QStyle::StandardPixmap)res;
-    // printf("ConvertIcon: icon:'%s' -> res:%i\n", stockIcon.get(), res);
-  }
-  if (!sp_icon)
-    return NS_ERROR_FAILURE;
-
-  QStyle *style = qApp->style();
-  NS_ENSURE_TRUE(style, NS_ERROR_NULL_POINTER);
-  QPixmap pixmap = style->standardIcon(sp_icon).pixmap(desiredImageSize, desiredImageSize, disabled?QIcon::Disabled:QIcon::Normal);
-#else
   // This is a workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=662299
   // Try to find corresponding freedesktop icon and fallback to empty QIcon if failed.
   QIcon icon = QIcon::fromTheme(QString(stockIcon.get()).replace("gtk-", "edit-"));
-  QPixmap pixmap = icon.pixmap(desiredImageSize, desiredImageSize, disabled?QIcon::Disabled:QIcon::Normal);
-#endif
+  QPixmap pixmap = icon.pixmap(desiredImageSize, desiredImageSize, disabled ? QIcon::Disabled : QIcon::Normal);
 
   QImage image = pixmap.toImage();
 

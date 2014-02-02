@@ -42,7 +42,6 @@ struct ID2D1Device;
 struct IDWriteRenderingParams;
 
 class GrContext;
-class gfxFont;
 struct GrGLInterface;
 
 struct CGContext;
@@ -1097,9 +1096,6 @@ public:
 #ifdef XP_MACOSX
   static TemporaryRef<DrawTarget> CreateDrawTargetForCairoCGContext(CGContextRef cg, const IntSize& aSize);
 #endif
-
- static TemporaryRef<ScaledFont>
-   GetScaledFontForFontWithCairoSkia(DrawTarget* aTarget, cairo_scaled_font_t* aCairoFont, double aAdjustedSize);
 
 #ifdef WIN32
   static TemporaryRef<DrawTarget> CreateDrawTargetForD3D10Texture(ID3D10Texture2D *aTexture, SurfaceFormat aFormat);

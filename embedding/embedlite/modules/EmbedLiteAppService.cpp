@@ -276,7 +276,12 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->SendZoomToRect(CSSRect(aX, aY, aWidth, aHeight));
+
+  uint32_t presShellId;
+  mozilla::layers::FrameMetrics::ViewID viewId;
+  if (view->GetScrollIdentifiers(&presShellId, &viewId)) {
+    view->SendZoomToRect(presShellId, viewId, CSSRect(aX, aY, aWidth, aHeight));
+  }
   return NS_OK;
 }
 

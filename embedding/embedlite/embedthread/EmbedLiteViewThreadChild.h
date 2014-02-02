@@ -56,6 +56,11 @@ public:
   uint32_t GetID() { return mId; }
   gfxSize GetGLViewSize();
 
+  /**
+   * This method is used by EmbedLiteAppService::ZoomToRect() only.
+   */
+  bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId);
+
   virtual bool RecvAsyncMessage(const nsString& aMessage,
                                 const nsString& aData);
 
