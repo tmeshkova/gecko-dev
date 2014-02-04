@@ -8,12 +8,8 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
-BuildRequires:  pkgconfig(Qt5Core)
-BuildRequires:  pkgconfig(Qt5Gui)
+BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
-BuildRequires:  pkgconfig(Qt5OpenGL)
-BuildRequires:  pkgconfig(Qt5Widgets)
-BuildRequires:  pkgconfig(Qt5PrintSupport)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(libpulse)
@@ -24,7 +20,6 @@ BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
 BuildRequires:  pkgconfig(libresourceqt5)
 %endif
 BuildRequires:  pkgconfig(Qt5Positioning)
-BuildRequires:  pkgconfig(Qt0Feedback)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
 BuildRequires:  autoconf213
@@ -35,7 +30,7 @@ BuildRequires:  zip
 BuildRequires:  unzip
 BuildRequires:  hunspell-devel
 BuildRequires:  libjpeg-turbo-devel
-%ifarch i586 i486 i386
+%ifarch i586 i486 i386 x86_64
 BuildRequires:  yasm
 %endif
 BuildRequires:  fdupes
@@ -65,7 +60,7 @@ Tests and misc files for xulrunner
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done
@@ -99,7 +94,7 @@ export MOZCONFIG=$PWD/mozconfig
 
 %install
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done

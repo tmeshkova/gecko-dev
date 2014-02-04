@@ -78,6 +78,7 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
   : mId(aId)
   , mOuterId(0)
   , mViewSize(0, 0)
+  , mViewResized(false)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
 {
@@ -491,6 +492,7 @@ EmbedLiteViewThreadChild::RecvRemoveMessageListeners(const InfallibleTArray<nsSt
 bool
 EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
 {
+  mViewResized = aSize != mViewSize;
   mViewSize = aSize;
   LOGT("sz[%g,%g]", mViewSize.width, mViewSize.height);
 
@@ -573,13 +575,21 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     return true;
   }
 
+
+  FrameMetrics metrics(aFrameMetrics);
+  if (mViewResized && mHelper->HandlePossibleViewportChange()) {
+    metrics = mHelper->mFrameMetrics;
+    mViewResized = false;
+  }
+
+
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
+    mControllerListeners[i]->RequestContentRepaint(metrics);
   }
 
   bool ret = true;
   if (sHandleDefaultAZPC.viewport) {
-    ret = mHelper->RecvUpdateFrame(aFrameMetrics);
+    ret = mHelper->RecvUpdateFrame(metrics);
   }
 
   return ret;

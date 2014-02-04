@@ -271,6 +271,7 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 {
   nsAutoString eventType;
   aEvent->GetType(eventType);
+  // Should this also handle "MozScrolledAreaChanged".
   if (eventType.EqualsLiteral("DOMMetaAdded")) {
     // This meta data may or may not have been a meta viewport tag. If it was,
     // we should handle it immediately.
@@ -768,11 +769,11 @@ GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport)
                  std::max(htmlHeight, bodyHeight));
 }
 
-void
+bool
 TabChildHelper::HandlePossibleViewportChange()
 {
   if (sDisableViewportHandler) {
-    return;
+    return false;
   }
   nsCOMPtr<nsIDOMDocument> domDoc;
   mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
@@ -803,7 +804,7 @@ TabChildHelper::HandlePossibleViewportChange()
   // We're not being displayed in any way; don't bother doing anything because
   // that will just confuse future adjustments.
   if (!screenW || !screenH) {
-    return;
+    return false;
   }
 
   float oldBrowserWidth = mOldViewportWidth;
@@ -823,7 +824,7 @@ TabChildHelper::HandlePossibleViewportChange()
   // window.innerWidth before they are painted have a correct value (bug
   // 771575).
   if (!mContentDocumentIsDisplayed) {
-    return;
+    return false;
   }
 
   float oldScreenWidth = mLastRootMetrics.mCompositionBounds.width;
@@ -892,13 +893,15 @@ TabChildHelper::HandlePossibleViewportChange()
   CSSSize pageSize = GetPageSize(document, viewport);
   if (!pageSize.width) {
     // Return early rather than divide by 0.
-    return;
+    return false;
   }
   metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
 
   // Force a repaint with these metrics. This, among other things, sets the
   // displayport, so we start with async painting.
   ProcessUpdateFrame(metrics);
+  mFrameMetrics = metrics;
+  return true;
 }
 
 already_AddRefed<nsIDocument>

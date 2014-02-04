@@ -13,6 +13,8 @@
 #include <gdk/gdkx.h>
 // we're using default display for now
 #define GET_NATIVE_WINDOW(aWidget) (EGLNativeWindowType)GDK_WINDOW_XID((GdkWindow *) aWidget->GetNativeData(NS_NATIVE_WINDOW))
+#elif defined(MOZ_WIDGET_QT)
+#define GET_NATIVE_WINDOW(aWidget) (EGLNativeWindowType)(aWidget->GetNativeData(NS_NATIVE_SHAREABLE_WINDOW))
 #elif defined(MOZ_WIDGET_GONK)
 #define GET_NATIVE_WINDOW(aWidget) ((EGLNativeWindowType)aWidget->GetNativeData(NS_NATIVE_WINDOW))
 #include "HwcComposer2D.h"
@@ -203,9 +205,9 @@ CreateSurfaceForWindow(nsIWidget* widget, const EGLConfig& config) {
         }
     #else
         MOZ_ASSERT(widget != nullptr);
-    #ifndef MOZ_WIDGET_QT
+
         newSurface = sEGLLibrary.fCreateWindowSurface(EGL_DISPLAY(), config, GET_NATIVE_WINDOW(widget), 0);
-    #endif
+
         #ifdef MOZ_WIDGET_GONK
             gScreenBounds.x = 0;
             gScreenBounds.y = 0;
