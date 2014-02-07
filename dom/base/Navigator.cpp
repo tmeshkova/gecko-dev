@@ -1926,6 +1926,11 @@ Navigator::HasDataStoreSupport(JSContext* cx, JSObject* aGlobal)
 {
   JS::Rooted<JSObject*> global(cx, aGlobal);
 
+  // DataStore is enabled by default for chrome code.
+  if (nsContentUtils::IsCallerChrome()) {
+    return true;
+  }
+
   // First of all, the general pref has to be turned on.
   bool enabled = false;
   Preferences::GetBool("dom.datastore.enabled", &enabled);
@@ -1960,17 +1965,7 @@ Navigator::HasDataStoreSupport(JSContext* cx, JSObject* aGlobal)
 bool
 Navigator::HasDownloadsSupport(JSContext* aCx, JSObject* aGlobal)
 {
-  // We'll need a rooted object so that GC doesn't make it go away while
-  // we're calling CheckIsChrome.
-  JS::Rooted<JSObject*> global(aCx, aGlobal);
-
-  // Because of the way this API must be implemented, it will interact with
-  // objects attached to a chrome window. We always want to allow this.
-  if (ThreadsafeCheckIsChrome(aCx, global)) {
-    return true;
-  }
-
-  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(global);
+  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
 
   return win &&
          CheckPermission(win, "downloads")  &&

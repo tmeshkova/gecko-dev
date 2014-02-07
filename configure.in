@@ -71,7 +71,7 @@ GCONF_VERSION=1.2.1
 GIO_VERSION=2.20
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.8.2
+SQLITE_VERSION=3.8.3
 
 MSMANIFEST_TOOL=
 
@@ -1350,6 +1350,20 @@ if test "$GNU_CC"; then
                      [HAVE_TOOLCHAIN_SUPPORT_MSSE4_1=1],
                      AC_MSG_RESULT([no]))
     CFLAGS=$_SAVE_CFLAGS
+
+    case "${CPU_ARCH}" in
+    x86 | x86_64)
+      AC_MSG_CHECKING(for x86 AVX2 asm support in compiler)
+      AC_TRY_COMPILE([],
+                     [asm volatile ("vpermq      \$0xd8,%ymm0,%ymm0 \n");],
+                     result="yes", result="no")
+      AC_MSG_RESULT("$result")
+      if test "$result" = "yes"; then
+          HAVE_X86_AVX2=1
+          AC_DEFINE(HAVE_X86_AVX2)
+          AC_SUBST(HAVE_X86_AVX2)
+      fi
+    esac
 
     # Turn on GNU-specific warnings:
     # -Wall - turn on a lot of warnings
@@ -3675,7 +3689,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.15.4, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.15.5, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_NATIVE_NSS"; then
@@ -3932,6 +3946,9 @@ if test -n "$MOZ_NATIVE_ICU"; then
     PKG_CHECK_MODULES(MOZ_ICU, icu-i18n >= 50.1)
     MOZ_JS_STATIC_LIBS="$MOZ_JS_STATIC_LIBS $MOZ_ICU_LIBS"
     MOZ_SHARED_ICU=1
+else
+    MOZ_ICU_CFLAGS='-I$(topsrcdir)/intl/icu/source/common -I$(topsrcdir)/intl/icu/source/i18n'
+    AC_SUBST(MOZ_ICU_CFLAGS)
 fi
 
 AC_SUBST(MOZ_NATIVE_ICU)
@@ -4430,6 +4447,7 @@ cairo-gonk)
     MOZ_WEBGL=1
     MOZ_PDF_PRINTING=1
     MOZ_TOUCH=1
+    MOZ_INSTRUMENT_EVENT_LOOP=1
     ;;
 
 esac

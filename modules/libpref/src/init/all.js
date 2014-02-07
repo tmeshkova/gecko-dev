@@ -113,6 +113,9 @@ pref("dom.gamepad.non_standard_events.enabled", false);
 pref("dom.gamepad.non_standard_events.enabled", true);
 #endif
 
+// Whether the UndoManager API is enabled
+pref("dom.undo_manager.enabled", false);
+
 // Fastback caching - if this pref is negative, then we calculate the number
 // of content viewers to cache based on the amount of available memory.
 pref("browser.sessionhistory.max_total_viewers", -1);
@@ -170,6 +173,9 @@ pref("browser.chrome.toolbar_style",        2);
 pref("browser.chrome.image_icons.max_size", 1024);
 
 pref("browser.triple_click_selects_paragraph", true);
+
+// Print/Preview Shrink-To-Fit won't shrink below 20% for text-ish documents.
+pref("print.shrink-to-fit.scale-limit-percent", 20);
 
 // Media cache size in kilobytes
 pref("media.cache_size", 512000);
@@ -278,9 +284,6 @@ pref("media.encoder.webm.enabled", true);
 #ifdef MOZ_OMX_ENCODER
 pref("media.encoder.omx.enabled", true);
 #endif
-
-// Whether to enable Web Audio support
-pref("media.webaudio.enabled", true);
 
 // Whether to autostart a media element with an |autoplay| attribute
 pref("media.autoplay.enabled", true);
@@ -1008,6 +1011,16 @@ pref("network.http.pacing.requests.min-parallelism", 6);
 pref("network.http.pacing.requests.hz", 100);
 pref("network.http.pacing.requests.burst", 32);
 
+// TCP Keepalive config for HTTP connections.
+pref("network.http.tcp_keepalive.short_lived_connections", true);
+// Max time from initial request during which conns are considered short-lived.
+pref("network.http.tcp_keepalive.short_lived_time", 60);
+// Idle time of TCP connection until first keepalive probe sent.
+pref("network.http.tcp_keepalive.short_lived_idle_time", 10);
+
+pref("network.http.tcp_keepalive.long_lived_connections", true);
+pref("network.http.tcp_keepalive.long_lived_idle_time", 600);
+
 // default values for FTP
 // in a DSCP environment this should be 40 (0x28, or AF11), per RFC-4594,
 // Section 4.8 "High-Throughput Data Service Class", and 80 (0x50, or AF22)
@@ -1389,6 +1402,7 @@ pref("intl.charsetmenu.composer.cache",     "");
 pref("intl.charsetmenu.browser.cache.size", 5);
 pref("intl.charset.detector",               "chrome://global/locale/intl.properties");
 pref("intl.charset.fallback.override",      "");
+pref("intl.charset.fallback.tld",           true);
 pref("intl.ellipsis",                       "chrome://global-platform/locale/intl.properties");
 pref("intl.locale.matchOS",                 false);
 // fallback charset list for Unicode conversion (converting from Unicode)
@@ -1782,6 +1796,7 @@ pref("layout.css.prefixes.border-image", true);
 pref("layout.css.prefixes.transforms", true);
 pref("layout.css.prefixes.transitions", true);
 pref("layout.css.prefixes.animations", true);
+pref("layout.css.prefixes.box-sizing", true);
 
 // Is support for the :scope selector enabled?
 #ifdef RELEASE_BUILD
@@ -1871,13 +1886,6 @@ pref("dom.max_script_run_time", 10);
 
 // If true, ArchiveReader will be enabled
 pref("dom.archivereader.enabled", false);
-
-// If true, Promise will be enabled
-#ifdef RELEASE_BUILD
-pref("dom.promise.enabled", false);
-#else
-pref("dom.promise.enabled", true);
-#endif
 
 // Hang monitor timeout after which we kill the browser, in seconds
 // (0 is disabled)
@@ -2563,6 +2571,11 @@ pref("intl.tsf.support_imm", true);
 // We need to notify the layout change to TSF, but we cannot check the actual
 // change now, therefore, we always notify it by this fequency.
 pref("intl.tsf.on_layout_change_interval", 100);
+
+// Enables/Disables hack for specific TIP.
+
+// Whether creates native caret for ATOK or not.
+pref("intl.tsf.hack.atok.create_native_caret", true);
 #endif
 
 // See bug 448927, on topmost panel, some IMEs are not usable on Windows.
@@ -4056,6 +4069,22 @@ pref("stagefright.disabled", false);
 // The default TCP send window on Windows is too small, and autotuning only occurs on receive
 pref("network.tcp.sendbuffer", 131072);
 #endif
+// TCP Keepalive
+pref("network.tcp.keepalive.enabled", true);
+// Default idle time before first TCP keepalive probe; same time for interval
+// between successful probes. Can be overridden in socket transport API.
+// Win, Linux and Mac.
+pref("network.tcp.keepalive.idle_time", 600); // seconds; 10 mins
+// Default timeout for retransmission of unack'd keepalive probes.
+// Win and Linux only; not configurable on Mac.
+#if defined(XP_UNIX) && !defined(XP_MACOSX) || defined(XP_WIN)
+pref("network.tcp.keepalive.retry_interval", 1); // seconds
+#endif
+// Default maximum probe retransmissions.
+// Linux only; not configurable on Win and Mac; fixed at 10 and 8 respectively.
+#ifdef XP_UNIX && !defined(XP_MACOSX)
+pref("network.tcp.keepalive.probe_count", 4);
+#endif
 
 // Whether to disable acceleration for all widgets.
 pref("layers.acceleration.disabled", false);
@@ -4095,30 +4124,27 @@ pref("layers.offmainthreadcomposition.enabled", false);
 // 0  -> full-tilt mode: Recomposite even if not transaction occured.
 pref("layers.offmainthreadcomposition.frame-rate", -1);
 // Whether to use the deprecated texture architecture rather than the new one.
-pref("layers.use-deprecated-textures", true);
 #ifndef XP_WIN
 // Asynchonous video compositing using the ImageBridge IPDL protocol.
 // requires off-main-thread compositing.
 // Never works on Windows, so no point pref'ing it on.
 pref("layers.async-video.enabled",false);
+pref("layers.use-deprecated-textures", true);
 #endif
 
 #ifdef MOZ_X11
 // OMTC off by default on Linux, but if activated, use new textures and async-video.
-pref("layers.use-deprecated-textures", false);
 pref("layers.async-video.enabled", true);
 #endif
 
 #ifdef XP_MACOSX
 pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.use-deprecated-textures", false);
 pref("layers.async-video.enabled",true);
 #endif
 
 // ANDROID covers android and b2g
 #ifdef ANDROID
 pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.use-deprecated-textures", false);
 pref("layers.async-video.enabled",true);
 #endif
 
@@ -4131,8 +4157,6 @@ pref("layers.offmainthreadcomposition.force-basic", false);
 
 // Whether to animate simple opacity and transforms on the compositor
 pref("layers.offmainthreadcomposition.async-animations", false);
-// Whether to prefer normal memory over shared memory. Ignored with cross-process compositing
-pref("layers.prefer-memory-over-shmem", true);
 
 pref("layers.bufferrotation.enabled", true);
 

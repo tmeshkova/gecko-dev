@@ -262,6 +262,7 @@ namespace js {
         js::proxy_HasInstance,   /* hasInstance */                                      \
         constructOp,             /* construct   */                                      \
         js::proxy_Trace,         /* trace       */                                      \
+        JS_NULL_CLASS_SPEC,                                                             \
         ext,                                                                            \
         {                                                                               \
             js::proxy_LookupGeneric,                                                    \
@@ -810,14 +811,6 @@ JS_FRIEND_API(bool)
 IsObjectInContextCompartment(JSObject *obj, const JSContext *cx);
 
 /*
- * ErrorFromException takes a raw Value so that it's possible to call it during
- * GC/CC/whatever, when it may not be possible to get a JSContext to create a
- * Rooted.  It promises to never ever GC.
- */
-JS_FRIEND_API(JSErrorReport*)
-ErrorFromException(JS::Value val);
-
-/*
  * NB: these flag bits are encoded into the bytecode stream in the immediate
  * operand of JSOP_ITER, so don't change them without advancing vm/Xdr.h's
  * XDR_BYTECODE_VERSION.
@@ -1110,6 +1103,16 @@ typedef enum JSErrNum {
 
 extern JS_FRIEND_API(const JSErrorFormatString *)
 js_GetErrorMessage(void *userRef, const char *locale, const unsigned errorNumber);
+
+namespace js {
+
+// Creates a string of the form |ErrorType: ErrorMessage| for a JSErrorReport,
+// which generally matches the toString() behavior of an ErrorObject.
+extern JS_FRIEND_API(JSString *)
+ErrorReportToString(JSContext *cx, JSErrorReport *reportp);
+
+} /* namespace js */
+
 
 /* Implemented in jsclone.cpp. */
 
@@ -1819,10 +1822,10 @@ inline int CheckIsParallelNative(JSParallelNative parallelNative);
         {{JS_CAST_PARALLEL_NATIVE_TO(parallelOp, JSJitGetterOp)},0,0,JSJitInfo::ParallelNative,JSJitInfo::AliasEverything,JSVAL_TYPE_MISSING,false,false,false,false,0}
 
 #define JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(infoName, wrapperName, serialOp) \
-    bool wrapperName##_ParallelNativeThreadSafeWrapper(js::ForkJoinSlice *slice, unsigned argc, \
+    bool wrapperName##_ParallelNativeThreadSafeWrapper(js::ForkJoinContext *cx, unsigned argc, \
                                                        JS::Value *vp)   \
     {                                                                   \
-        return JSParallelNativeThreadSafeWrapper<serialOp>(slice, argc, vp); \
+        return JSParallelNativeThreadSafeWrapper<serialOp>(cx, argc, vp); \
     }                                                                   \
     JS_JITINFO_NATIVE_PARALLEL(infoName, wrapperName##_ParallelNativeThreadSafeWrapper)
 

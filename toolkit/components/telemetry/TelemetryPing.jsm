@@ -19,6 +19,7 @@ Cu.import("resource://gre/modules/LightweightThemeManager.jsm", this);
 Cu.import("resource://gre/modules/ThirdPartyCookieProbe.jsm", this);
 Cu.import("resource://gre/modules/Promise.jsm", this);
 Cu.import("resource://gre/modules/Task.jsm", this);
+Cu.import("resource://gre/modules/AsyncShutdown.jsm", this);
 
 // When modifying the payload in incompatible ways, please bump this version number
 const PAYLOAD_VERSION = 1;
@@ -457,6 +458,14 @@ let Impl = {
       revision: HISTOGRAMS_FILE_VERSION,
       locale: getLocale()
     };
+
+    // In order to share profile data, the appName used for Metro Firefox is "Firefox",
+    // (the same as desktop Firefox). We set it to "MetroFirefox" here in order to
+    // differentiate telemetry pings sent by desktop vs. metro Firefox.
+    if(Services.metro && Services.metro.immersive) {
+      ret.appName = "MetroFirefox";
+    }
+
     if (this._previousBuildID) {
       ret.previousBuildID = this._previousBuildID;
     }
@@ -672,6 +681,7 @@ let Impl = {
       simpleMeasurements: simpleMeasurements,
       histograms: this.getHistograms(Telemetry.histogramSnapshots),
       slowSQL: Telemetry.slowSQL,
+      fileIOReports: Telemetry.fileIOReports,
       chromeHangs: Telemetry.chromeHangs,
       threadHangStats: this.getThreadHangStats(Telemetry.threadHangStats),
       lateWrites: Telemetry.lateWrites,
@@ -892,7 +902,16 @@ let Impl = {
       Telemetry.canRecord = false;
       return;
     }
-    Services.obs.addObserver(this, "profile-before-change2", false);
+
+    AsyncShutdown.sendTelemetry.addBlocker(
+      "Telemetry: shutting down",
+      function condition(){
+        this.uninstall();
+        if (Telemetry.canSend) {
+          return this.savePendingPings();
+        }
+      }.bind(this));
+
     Services.obs.addObserver(this, "sessionstore-windows-restored", false);
     Services.obs.addObserver(this, "quit-application-granted", false);
 #ifdef MOZ_WIDGET_ANDROID
@@ -976,7 +995,6 @@ let Impl = {
       Services.obs.removeObserver(this, "xul-window-visible");
       this._hasXulWindowVisibleObserver = false;
     }
-    Services.obs.removeObserver(this, "profile-before-change2");
     Services.obs.removeObserver(this, "quit-application-granted");
 #ifdef MOZ_WIDGET_ANDROID
     Services.obs.removeObserver(this, "application-background", false);
@@ -1070,13 +1088,6 @@ let Impl = {
     case "idle":
       this.sendIdlePing(false, this._server);
       break;
-    case "profile-before-change2":
-      this.uninstall();
-      if (Telemetry.canSend) {
-        return this.savePendingPings();
-      } else {
-        return Promise.resolve();
-      }
 
 #ifdef MOZ_WIDGET_ANDROID
     // On Android, we can get killed without warning once we are in the background,

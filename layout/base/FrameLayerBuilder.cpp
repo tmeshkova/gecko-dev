@@ -1561,7 +1561,10 @@ SetVisibleRegionForLayer(Layer* aLayer, const nsIntRegion& aLayerVisibleRegion,
   // for the layer, so it doesn't really matter what we do here
   gfxRect itemVisible(aRestrictToRect.x, aRestrictToRect.y,
                       aRestrictToRect.width, aRestrictToRect.height);
-  gfxRect layerVisible = transform.Inverse().ProjectRectBounds(itemVisible);
+  nsIntRect childBounds = aLayerVisibleRegion.GetBounds();
+  gfxRect childGfxBounds(childBounds.x, childBounds.y,
+                         childBounds.width, childBounds.height);
+  gfxRect layerVisible = transform.UntransformBounds(itemVisible, childGfxBounds);
   layerVisible.RoundOut();
 
   nsIntRect visibleRect;
@@ -2158,14 +2161,6 @@ ContainerState::FindThebesLayerFor(nsDisplayItem* aItem,
     thebesLayerData->mLayer = layer;
     thebesLayerData->mAnimatedGeometryRoot = aActiveScrolledRoot;
     thebesLayerData->mReferenceFrame = aItem->ReferenceFrame();
-    if (!aActiveScrolledRoot->GetParent() &&
-        nsLayoutUtils::ViewportHasDisplayPort(aActiveScrolledRoot->PresContext())) {
-      // The active scrolled root is the viewport, so this is background-attachment:fixed
-      // or fixed-pos elements or something like that. Async scrolling may
-      // do magic things to move these layers, so don't allow any regular content
-      // to be pushed to layers below them; that might turn out to be incorrect.
-      thebesLayerData->SetAllDrawingAbove();
-    }
 
     NS_ASSERTION(!mNewChildLayers.Contains(layer), "Layer already in list???");
     *mNewChildLayers.AppendElement() = layer.forget();
@@ -2990,7 +2985,7 @@ ChooseScaleAndSetTransform(FrameLayerBuilder* aLayerBuilder,
   gfxSize scale;
   // XXX Should we do something for 3D transforms?
   if (canDraw2D) {
-    // If the container's transform is animated off main thread, then use the
+//     // If the container's transform is animated off main thread, then use the
     // maximum scale.
     if (aContainerFrame->GetContent() &&
         nsLayoutUtils::HasAnimationsForCompositor(
@@ -3868,8 +3863,7 @@ ContainerState::SetupMaskLayer(Layer *aLayer, const DisplayItemClip& aClip,
     // build the image and container
     container = aLayer->Manager()->CreateImageContainer();
     NS_ASSERTION(container, "Could not create image container for mask layer.");
-    static const ImageFormat format = CAIRO_SURFACE;
-    nsRefPtr<Image> image = container->CreateImage(&format, 1);
+    nsRefPtr<Image> image = container->CreateImage(ImageFormat::CAIRO_SURFACE);
     NS_ASSERTION(image, "Could not create image container for mask layer.");
     CairoImage::Data data;
     data.mDeprecatedSurface = surface;

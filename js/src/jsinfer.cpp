@@ -1724,7 +1724,7 @@ TemporaryTypeSet::isDOMClass()
     unsigned count = getObjectCount();
     for (unsigned i = 0; i < count; i++) {
         const Class *clasp = getObjectClass(i);
-        if (clasp && !(clasp->flags & JSCLASS_IS_DOMJSCLASS))
+        if (clasp && (!(clasp->flags & JSCLASS_IS_DOMJSCLASS) || clasp->isProxy()))
             return false;
     }
 
@@ -1765,7 +1765,7 @@ TemporaryTypeSet::maybeEmulatesUndefined()
         // it's a WrapperObject, see EmulatesUndefined. Since all wrappers are
         // proxies, we can just check for that.
         const Class *clasp = getObjectClass(i);
-        if (clasp && (clasp->emulatesUndefined() || IsProxyClass(clasp)))
+        if (clasp && (clasp->emulatesUndefined() || clasp->isProxy()))
             return true;
     }
 
@@ -1861,8 +1861,7 @@ TypeCompartment::newTypeObject(ExclusiveContext *cx, const Class *clasp, Handle<
             initialFlags |= OBJECT_FLAG_NURSERY_PROTO;
     }
 
-    TypeObject *object = gc::NewGCThing<TypeObject, CanGC>(cx, gc::FINALIZE_TYPE_OBJECT,
-                                                           sizeof(TypeObject), gc::TenuredHeap);
+    TypeObject *object = js::NewTypeObject(cx);
     if (!object)
         return nullptr;
     new(object) TypeObject(clasp, proto, initialFlags);
@@ -3680,24 +3679,30 @@ JSScript::makeTypes(JSContext *cx)
 
     unsigned count = TypeScript::NumTypeSets(this);
 
-    types = (TypeScript *) cx->calloc_(sizeof(TypeScript) + (sizeof(StackTypeSet) * count));
-    if (!types) {
+    TypeScript *typeScript = (TypeScript *) cx->calloc_(sizeof(TypeScript) + (sizeof(StackTypeSet) * count));
+    if (!typeScript) {
         cx->compartment()->types.setPendingNukeTypes(cx);
         return false;
     }
 
-    new(types) TypeScript();
+    new(typeScript) TypeScript();
 
-    TypeSet *typeArray = types->typeArray();
+    TypeSet *typeArray = typeScript->typeArray();
 
     for (unsigned i = 0; i < count; i++)
         new (&typeArray[i]) StackTypeSet();
 
+    {
+        AutoLockForCompilation lock(cx);
+        types = typeScript;
+    }
+
 #ifdef DEBUG
-    for (unsigned i = 0; i < nTypeSets(); i++)
+    for (unsigned i = 0; i < nTypeSets(); i++) {
         InferSpew(ISpewOps, "typeSet: %sT%p%s bytecode%u #%u",
                   InferSpewColor(&typeArray[i]), &typeArray[i], InferSpewColorReset(),
                   i, id());
+    }
     TypeSet *thisTypes = TypeScript::ThisTypes(this);
     InferSpew(ISpewOps, "typeSet: %sT%p%s this #%u",
               InferSpewColor(thisTypes), thisTypes, InferSpewColorReset(),

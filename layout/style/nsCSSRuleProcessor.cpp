@@ -1243,27 +1243,6 @@ InitSystemMetrics()
   }
 #endif
 
-  // os version metrics, currently only defined for Windows.
-  if (NS_SUCCEEDED(
-        LookAndFeel::GetInt(LookAndFeel::eIntID_OperatingSystemVersionIdentifier,
-                            &metricResult))) {
-    switch(metricResult) {
-      case LookAndFeel::eOperatingSystemVersion_WindowsXP:
-        sSystemMetrics->AppendElement(nsGkAtoms::windows_version_xp);
-        break;
-      case LookAndFeel::eOperatingSystemVersion_WindowsVista:
-        sSystemMetrics->AppendElement(nsGkAtoms::windows_version_vista);
-        break;
-      case LookAndFeel::eOperatingSystemVersion_Windows7:
-        sSystemMetrics->AppendElement(nsGkAtoms::windows_version_win7);
-        break;
-      case LookAndFeel::eOperatingSystemVersion_Windows8:
-        sSystemMetrics->AppendElement(nsGkAtoms::windows_version_win8);
-        break;
-      // don't add anything for future versions
-    }
-  }
-
   return true;
 }
 
@@ -1627,7 +1606,7 @@ static const nsEventStates sPseudoClassStates[] = {
   nsEventStates(),
   nsEventStates()
 };
-static_assert(NS_ARRAY_LENGTH(sPseudoClassStates) ==
+static_assert(MOZ_ARRAY_LENGTH(sPseudoClassStates) ==
               nsCSSPseudoClasses::ePseudoClass_NotPseudoClass + 1,
               "ePseudoClass_NotPseudoClass is no longer at the end of"
               "sPseudoClassStates");
@@ -2713,6 +2692,16 @@ AttributeEnumFunc(nsCSSSelector* aSelector, AttributeEnumData* aData)
   }
 }
 
+static MOZ_ALWAYS_INLINE void
+EnumerateSelectors(nsTArray<nsCSSSelector*>& aSelectors, AttributeEnumData* aData)
+{
+  nsCSSSelector **iter = aSelectors.Elements(),
+                **end = iter + aSelectors.Length();
+  for (; iter != end; ++iter) {
+    AttributeEnumFunc(*iter, aData);
+  }
+}
+
 nsRestyleHint
 nsCSSRuleProcessor::HasAttributeDependentStyle(AttributeRuleProcessorData* aData)
 {
@@ -2759,19 +2748,11 @@ nsCSSRuleProcessor::HasAttributeDependentStyle(AttributeRuleProcessorData* aData
                      (PL_DHashTableOperate(&cascade->mIdSelectors,
                                            id, PL_DHASH_LOOKUP));
         if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
-          nsCSSSelector **iter = entry->mSelectors.Elements(),
-                        **end = iter + entry->mSelectors.Length();
-          for(; iter != end; ++iter) {
-            AttributeEnumFunc(*iter, &data);
-          }
+          EnumerateSelectors(entry->mSelectors, &data);
         }
       }
 
-      nsCSSSelector **iter = cascade->mPossiblyNegatedIDSelectors.Elements(),
-                    **end = iter + cascade->mPossiblyNegatedIDSelectors.Length();
-      for(; iter != end; ++iter) {
-        AttributeEnumFunc(*iter, &data);
-      }
+      EnumerateSelectors(cascade->mPossiblyNegatedIDSelectors, &data);
     }
     
     if (aData->mAttribute == aData->mElement->GetClassAttributeName()) {
@@ -2785,21 +2766,12 @@ nsCSSRuleProcessor::HasAttributeDependentStyle(AttributeRuleProcessorData* aData
                        (PL_DHashTableOperate(&cascade->mClassSelectors,
                                              curClass, PL_DHASH_LOOKUP));
           if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
-            nsCSSSelector **iter = entry->mSelectors.Elements(),
-                          **end = iter + entry->mSelectors.Length();
-            for(; iter != end; ++iter) {
-              AttributeEnumFunc(*iter, &data);
-            }
+            EnumerateSelectors(entry->mSelectors, &data);
           }
         }
       }
 
-      nsCSSSelector **iter = cascade->mPossiblyNegatedClassSelectors.Elements(),
-                    **end = iter +
-                              cascade->mPossiblyNegatedClassSelectors.Length();
-      for (; iter != end; ++iter) {
-        AttributeEnumFunc(*iter, &data);
-      }
+      EnumerateSelectors(cascade->mPossiblyNegatedClassSelectors, &data);
     }
 
     AtomSelectorEntry *entry =
@@ -2807,11 +2779,7 @@ nsCSSRuleProcessor::HasAttributeDependentStyle(AttributeRuleProcessorData* aData
                  (PL_DHashTableOperate(&cascade->mAttributeSelectors,
                                        aData->mAttribute, PL_DHASH_LOOKUP));
     if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
-      nsCSSSelector **iter = entry->mSelectors.Elements(),
-                    **end = iter + entry->mSelectors.Length();
-      for(; iter != end; ++iter) {
-        AttributeEnumFunc(*iter, &data);
-      }
+      EnumerateSelectors(entry->mSelectors, &data);
     }
   }
 

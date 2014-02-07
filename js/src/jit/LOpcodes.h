@@ -36,7 +36,7 @@
     _(AbortPar)                     \
     _(InitElem)                     \
     _(InitElemGetterSetter)         \
-    _(MutateProto)                    \
+    _(MutateProto)                  \
     _(InitProp)                     \
     _(InitPropGetterSetter)         \
     _(CheckOverRecursed)            \
@@ -142,8 +142,10 @@
     _(Float32ToInt32)               \
     _(TruncateDToInt32)             \
     _(TruncateFToInt32)             \
+    _(BooleanToString)              \
     _(IntToString)                  \
     _(DoubleToString)               \
+    _(PrimitiveToString)            \
     _(Start)                        \
     _(OsrEntry)                     \
     _(OsrValue)                     \
@@ -210,7 +212,7 @@
     _(StoreFixedSlotV)              \
     _(StoreFixedSlotT)              \
     _(FunctionEnvironment)          \
-    _(ForkJoinSlice)                \
+    _(ForkJoinContext)              \
     _(GetPropertyCacheV)            \
     _(GetPropertyCacheT)            \
     _(GetPropertyPolymorphicV)      \

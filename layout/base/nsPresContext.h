@@ -434,6 +434,13 @@ public:
   nsILinkHandler* GetLinkHandler() { return mLinkHandler; }
 
   /**
+   * Detach this pres context - i.e. cancel relevant timers,
+   * SetLinkHandler(null), SetContainer(null) etc.
+   * Only to be used by the DocumentViewer.
+   */
+  virtual void Detach();
+
+  /**
    * Get the visible area associated with this presentation context.
    * This is the size of the visible area that is used for
    * presenting the document. The returned value is in the standard
@@ -806,20 +813,8 @@ public:
                               mType == eContext_PrintPreview); }
 
   // Is this presentation in a chrome docshell?
-  bool IsChrome() const
-  {
-    return mIsChromeIsCached ? mIsChrome : IsChromeSlow();
-  }
-
-  virtual void InvalidateIsChromeCacheExternal();
-  void InvalidateIsChromeCacheInternal() { mIsChromeIsCached = false; }
-#ifdef MOZILLA_INTERNAL_API
-  void InvalidateIsChromeCache()
-  { InvalidateIsChromeCacheInternal(); }
-#else
-  void InvalidateIsChromeCache()
-  { InvalidateIsChromeCacheExternal(); }
-#endif
+  bool IsChrome() const { return mIsChrome; }
+  void UpdateIsChrome();
 
   // Public API for native theme code to get style internals.
   virtual bool HasAuthorSpecifiedRules(nsIFrame *aFrame, uint32_t ruleTypeMask) const;
@@ -1307,11 +1302,7 @@ protected:
 
   unsigned              mFireAfterPaintEvents : 1;
 
-  // Cache whether we are chrome or not because it is expensive.  
-  // mIsChromeIsCached tells us if mIsChrome is valid or we need to get the
-  // value the slow way.
-  mutable unsigned      mIsChromeIsCached : 1;
-  mutable unsigned      mIsChrome : 1;
+  unsigned              mIsChrome : 1;
 
   // Should we paint flash in this context? Do not use this variable directly.
   // Use GetPaintFlashing() method instead.
@@ -1355,10 +1346,11 @@ public:
 
 };
 
-class nsRootPresContext : public nsPresContext {
+class nsRootPresContext MOZ_FINAL : public nsPresContext {
 public:
   nsRootPresContext(nsIDocument* aDocument, nsPresContextType aType) NS_HIDDEN;
   virtual ~nsRootPresContext();
+  virtual void Detach() MOZ_OVERRIDE;
 
   /**
    * Ensure that NotifyDidPaintForSubtree is eventually called on this

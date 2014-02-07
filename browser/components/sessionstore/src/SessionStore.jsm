@@ -57,9 +57,6 @@ const MESSAGES = [
   // be saved to disk.
   "SessionStore:update",
 
-  // A "load" event happened.
-  "SessionStore:load",
-
   // The restoreHistory code has run. This is a good time to run SSTabRestoring.
   "SessionStore:restoreHistoryComplete",
 
@@ -130,11 +127,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "TabStateCache",
   "resource:///modules/sessionstore/TabStateCache.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Utils",
   "resource:///modules/sessionstore/Utils.jsm");
-
-#ifdef MOZ_CRASHREPORTER
-XPCOMUtils.defineLazyServiceGetter(this, "CrashReporter",
-  "@mozilla.org/xre/app-info;1", "nsICrashReporter");
-#endif
 
 /**
  * |true| if we are in debug mode, |false| otherwise.
@@ -588,6 +580,11 @@ let SessionStoreInternal = {
   receiveMessage: function ssi_receiveMessage(aMessage) {
     var browser = aMessage.target;
     var win = browser.ownerDocument.defaultView;
+    let tab = this._getTabForBrowser(browser);
+    if (!tab) {
+      // Ignore messages from <browser> elements that are not tabs.
+      return;
+    }
 
     switch (aMessage.name) {
       case "SessionStore:setupSyncHandler":
@@ -598,13 +595,9 @@ let SessionStoreInternal = {
         TabState.update(browser, aMessage.data);
         this.saveStateDelayed(win);
         break;
-      case "SessionStore:load":
-        this.onTabLoad(win, browser);
-        break;
       case "SessionStore:restoreHistoryComplete":
         if (this.isCurrentEpoch(browser, aMessage.data.epoch)) {
           // Notify the tabbrowser that the tab chrome has been restored.
-          let tab = this._getTabForBrowser(browser);
           let tabData = browser.__SS_data;
 
           // wall-paper fix for bug 439675: make sure that the URL to be loaded
@@ -655,7 +648,6 @@ let SessionStoreInternal = {
             Services.obs.notifyObservers(browser, NOTIFY_TAB_RESTORED, null);
           }
 
-          let tab = this._getTabForBrowser(browser);
           if (tab) {
             SessionStoreInternal._resetLocalTabRestoringState(tab);
             SessionStoreInternal.restoreNextTab();
@@ -677,7 +669,6 @@ let SessionStoreInternal = {
         break;
       case "SessionStore:reloadPendingTab":
         if (this.isCurrentEpoch(browser, aMessage.data.epoch)) {
-          let tab = this._getTabForBrowser(browser);
           if (tab && browser.__SS_restoreState == TAB_STATE_NEEDS_RESTORE) {
             this.restoreTabContent(tab);
           }
@@ -770,6 +761,12 @@ let SessionStoreInternal = {
     // Assign the window a unique identifier we can use to reference
     // internal data about the window.
     aWindow.__SSi = this._generateWindowID();
+
+    let mm = aWindow.messageManager;
+    MESSAGES.forEach(msg => mm.addMessageListener(msg, this));
+
+    // Load the frame script after registering listeners.
+    mm.loadFrameScript("chrome://browser/content/content-sessionStore.js", true);
 
     // and create its data object
     this._windows[aWindow.__SSi] = { tabs: [], selected: 0, _closedTabs: [], busy: false };
@@ -1093,6 +1090,9 @@ let SessionStoreInternal = {
     // Cache the window state until it is completely gone.
     DyingWindowCache.set(aWindow, winData);
 
+    let mm = aWindow.messageManager;
+    MESSAGES.forEach(msg => mm.removeMessageListener(msg, this));
+
     delete aWindow.__SSi;
   },
 
@@ -1291,17 +1291,9 @@ let SessionStoreInternal = {
    *        bool Do not save state if we're updating an existing tab
    */
   onTabAdd: function ssi_onTabAdd(aWindow, aTab, aNoNotification) {
-    let mm = aTab.linkedBrowser.messageManager;
-    MESSAGES.forEach(msg => mm.addMessageListener(msg, this));
-
-    // Load the frame script after registering listeners.
-    mm.loadFrameScript("chrome://browser/content/content-sessionStore.js", false);
-
     if (!aNoNotification) {
       this.saveStateDelayed(aWindow);
     }
-
-    this._updateCrashReportURL(aWindow);
   },
 
   /**
@@ -1315,9 +1307,6 @@ let SessionStoreInternal = {
    */
   onTabRemove: function ssi_onTabRemove(aWindow, aTab, aNoNotification) {
     let browser = aTab.linkedBrowser;
-    let mm = browser.messageManager;
-    MESSAGES.forEach(msg => mm.removeMessageListener(msg, this));
-
     delete browser.__SS_data;
 
     // If this tab was in the middle of restoring or still needs to be restored,
@@ -1386,29 +1375,6 @@ let SessionStoreInternal = {
   },
 
   /**
-   * When a tab loads, invalidate its cached state, trigger async save.
-   *
-   * @param aWindow
-   *        Window reference
-   * @param aBrowser
-   *        Browser reference
-   */
-  onTabLoad: function ssi_onTabLoad(aWindow, aBrowser) {
-    // It's possible to get a load event after calling stop on a browser (when
-    // overwriting tabs). We want to return early if the tab hasn't been restored yet.
-    if (aBrowser.__SS_restoreState &&
-        aBrowser.__SS_restoreState == TAB_STATE_NEEDS_RESTORE) {
-      return;
-    }
-
-    delete aBrowser.__SS_data;
-    this.saveStateDelayed(aWindow);
-
-    // attempt to update the current URL we send in a crash report
-    this._updateCrashReportURL(aWindow);
-  },
-
-  /**
    * When a tab is selected, save session data
    * @param aWindow
    *        Window reference
@@ -1424,9 +1390,6 @@ let SessionStoreInternal = {
       if (tab.linkedBrowser.__SS_restoreState &&
           tab.linkedBrowser.__SS_restoreState == TAB_STATE_NEEDS_RESTORE)
         this.restoreTabContent(tab);
-
-      // attempt to update the current URL we send in a crash report
-      this._updateCrashReportURL(aWindow);
     }
   },
 
@@ -3064,29 +3027,6 @@ let SessionStoreInternal = {
    */
   _getURIFromString: function ssi_getURIFromString(aString) {
     return Services.io.newURI(aString, null, null);
-  },
-
-  /**
-   * Annotate a breakpad crash report with the currently selected tab's URL.
-   */
-  _updateCrashReportURL: function ssi_updateCrashReportURL(aWindow) {
-#ifdef MOZ_CRASHREPORTER
-    try {
-      var currentURI = aWindow.gBrowser.currentURI.clone();
-      // if the current URI contains a username/password, remove it
-      try {
-        currentURI.userPass = "";
-      }
-      catch (ex) { } // ignore failures on about: URIs
-
-      CrashReporter.annotateCrashReport("URL", currentURI.spec);
-    }
-    catch (ex) {
-      // don't make noise when crashreporter is built but not enabled
-      if (ex.result != Components.results.NS_ERROR_NOT_INITIALIZED)
-        debug(ex);
-    }
-#endif
   },
 
   /**

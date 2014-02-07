@@ -1740,7 +1740,7 @@ nsComputedDOMStyle::DoGetFontVariantPosition()
 CSSValue*
 nsComputedDOMStyle::GetBackgroundList(uint8_t nsStyleBackground::Layer::* aMember,
                                       uint32_t nsStyleBackground::* aCount,
-                                      const int32_t aTable[])
+                                      const KTableValue aTable[])
 {
   const nsStyleBackground* bg = StyleBackground();
 
@@ -2847,7 +2847,7 @@ nsComputedDOMStyle::DoGetVerticalAlign()
 
 CSSValue*
 nsComputedDOMStyle::CreateTextAlignValue(uint8_t aAlign, bool aAlignTrue,
-                                         const int32_t aTable[])
+                                         const KTableValue aTable[])
 {
   nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
   val->SetIdent(nsCSSProps::ValueToKeywordEnum(aAlign, aTable));
@@ -3334,15 +3334,9 @@ nsComputedDOMStyle::DoGetBorderImageSource()
 {
   const nsStyleBorder* border = StyleBorder();
 
-  imgIRequest* imgSrc = border->GetBorderImage();
   nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
-  if (imgSrc) {
-    nsCOMPtr<nsIURI> uri;
-    imgSrc->GetURI(getter_AddRefs(uri));
-    val->SetURI(uri);
-  } else {
-    val->SetIdent(eCSSKeyword_none);
-  }
+  const nsStyleImage& image = border->mBorderImageSource;
+  SetValueToStyleImage(image, val);
 
   return val;
 }
@@ -4307,7 +4301,7 @@ nsComputedDOMStyle::SetValueToCoord(nsROCSSPrimitiveValue* aValue,
                                     const nsStyleCoord& aCoord,
                                     bool aClampNegativeCalc,
                                     PercentageBaseGetter aPercentageBaseGetter,
-                                    const int32_t aTable[],
+                                    const KTableValue aTable[],
                                     nscoord aMinAppUnits,
                                     nscoord aMaxAppUnits)
 {

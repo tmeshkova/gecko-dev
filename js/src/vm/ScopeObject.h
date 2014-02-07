@@ -18,6 +18,8 @@ namespace js {
 
 namespace frontend { struct Definition; }
 
+class StaticWithObject;
+
 /*****************************************************************************/
 
 /*
@@ -65,14 +67,16 @@ class StaticScopeIter
       : obj(cx, obj), onNamedLambda(false)
     {
         JS_STATIC_ASSERT(allowGC == CanGC);
-        JS_ASSERT_IF(obj, obj->is<StaticBlockObject>() || obj->is<JSFunction>());
+        JS_ASSERT_IF(obj, obj->is<StaticBlockObject>() || obj->is<StaticWithObject>() ||
+                     obj->is<JSFunction>());
     }
 
     StaticScopeIter(JSObject *obj)
       : obj((ExclusiveContext *) nullptr, obj), onNamedLambda(false)
     {
         JS_STATIC_ASSERT(allowGC == NoGC);
-        JS_ASSERT_IF(obj, obj->is<StaticBlockObject>() || obj->is<JSFunction>());
+        JS_ASSERT_IF(obj, obj->is<StaticBlockObject>() || obj->is<StaticWithObject>() ||
+                     obj->is<JSFunction>());
     }
 
     bool done() const;
@@ -82,10 +86,11 @@ class StaticScopeIter
     bool hasDynamicScopeObject() const;
     Shape *scopeShape() const;
 
-    enum Type { BLOCK, FUNCTION, NAMED_LAMBDA };
+    enum Type { WITH, BLOCK, FUNCTION, NAMED_LAMBDA };
     Type type() const;
 
     StaticBlockObject &block() const;
+    StaticWithObject &staticWith() const;
     JSScript *funScript() const;
 };
 
@@ -159,9 +164,11 @@ ScopeCoordinateFunctionScript(JSScript *script, jsbytecode *pc);
  *        \  CallObject         Scope of entire function or strict eval
  *         \
  *   NestedScopeObject          Scope created for a statement
- *     \   \
- *      \  WithObject           with
- *       \
+ *     \   \  \
+ *      \   \ StaticWithObject  Template for "with" object in static scope chain
+ *       \   \
+ *        \  DynamicWithObject  Run-time "with" object on scope chain
+ *         \
  *   BlockObject                Shared interface of cloned/static block objects
  *     \   \
  *      \  ClonedBlockObject    let, switch, catch, for
@@ -301,22 +308,65 @@ class DeclEnvObject : public ScopeObject
 
 class NestedScopeObject : public ScopeObject
 {
-  protected:
-    static const unsigned DEPTH_SLOT = 1;
-
   public:
-    /* Return the abstract stack depth right before entering this nested scope. */
-    uint32_t stackDepth() const {
-        return getReservedSlot(DEPTH_SLOT).toPrivateUint32();
+    /*
+     * A refinement of enclosingScope that returns nullptr if the enclosing
+     * scope is not a NestedScopeObject.
+     */
+    inline NestedScopeObject *enclosingNestedScope() const;
+
+    // Return true if this object is a compile-time scope template.
+    inline bool isStatic() { return !getProto(); }
+
+    // Return the static scope corresponding to this scope chain object.
+    inline NestedScopeObject* staticScope() {
+        JS_ASSERT(!isStatic());
+        return &getProto()->as<NestedScopeObject>();
+    }
+
+    // At compile-time it's possible for the scope chain to be null.
+    JSObject *enclosingScopeForStaticScopeIter() {
+        return getReservedSlot(SCOPE_CHAIN_SLOT).toObjectOrNull();
+    }
+
+    void initEnclosingNestedScope(JSObject *obj) {
+        JS_ASSERT(getReservedSlot(SCOPE_CHAIN_SLOT).isUndefined());
+        setReservedSlot(SCOPE_CHAIN_SLOT, ObjectOrNullValue(obj));
+    }
+
+    /*
+     * The parser uses 'enclosingNestedScope' as the prev-link in the
+     * pc->staticScope stack. Note: in the case of hoisting, this prev-link will
+     * not ultimately be the same as enclosingNestedScope;
+     * initEnclosingNestedScope must be called separately in the
+     * emitter. 'reset' is just for asserting stackiness.
+     */
+    void initEnclosingNestedScopeFromParser(NestedScopeObject *prev) {
+        setReservedSlot(SCOPE_CHAIN_SLOT, ObjectOrNullValue(prev));
+    }
+
+    void resetEnclosingNestedScopeFromParser() {
+        setReservedSlot(SCOPE_CHAIN_SLOT, UndefinedValue());
     }
 };
 
-class WithObject : public NestedScopeObject
+// With scope template objects on the static scope chain.
+class StaticWithObject : public NestedScopeObject
 {
-    static const unsigned THIS_SLOT = 2;
+  public:
+    static const unsigned RESERVED_SLOTS = 1;
+    static const gc::AllocKind FINALIZE_KIND = gc::FINALIZE_OBJECT2_BACKGROUND;
 
-    /* Use WithObject::object() instead. */
-    JSObject *getProto() const;
+    static const Class class_;
+
+    static StaticWithObject *create(ExclusiveContext *cx);
+};
+
+// With scope objects on the run-time scope chain.
+class DynamicWithObject : public NestedScopeObject
+{
+    static const unsigned OBJECT_SLOT = 1;
+    static const unsigned THIS_SLOT = 2;
 
   public:
     static const unsigned RESERVED_SLOTS = 3;
@@ -324,27 +374,39 @@ class WithObject : public NestedScopeObject
 
     static const Class class_;
 
-    static WithObject *
-    create(JSContext *cx, HandleObject proto, HandleObject enclosing, uint32_t depth);
+    static DynamicWithObject *
+    create(JSContext *cx, HandleObject object, HandleObject enclosing, HandleObject staticWith);
+
+    StaticWithObject& staticWith() const {
+        return getProto()->as<StaticWithObject>();
+    }
+
+    /* Return the 'o' in 'with (o)'. */
+    JSObject &object() const {
+        return getReservedSlot(OBJECT_SLOT).toObject();
+    }
 
     /* Return object for the 'this' class hook. */
     JSObject &withThis() const {
         return getReservedSlot(THIS_SLOT).toObject();
     }
-
-    /* Return the 'o' in 'with (o)'. */
-    JSObject &object() const {
-        return *JSObject::getProto();
-    }
 };
 
 class BlockObject : public NestedScopeObject
 {
+  protected:
+    static const unsigned DEPTH_SLOT = 1;
+
   public:
     static const unsigned RESERVED_SLOTS = 2;
     static const gc::AllocKind FINALIZE_KIND = gc::FINALIZE_OBJECT4_BACKGROUND;
 
     static const Class class_;
+
+    /* Return the abstract stack depth right before entering this nested scope. */
+    uint32_t stackDepth() const {
+        return getReservedSlot(DEPTH_SLOT).toPrivateUint32();
+    }
 
     /* Return the number of variables associated with this block. */
     uint32_t slotCount() const {
@@ -380,18 +442,6 @@ class StaticBlockObject : public BlockObject
 {
   public:
     static StaticBlockObject *create(ExclusiveContext *cx);
-
-    /* See StaticScopeIter comment. */
-    JSObject *enclosingStaticScope() const {
-        AutoThreadSafeAccess ts(this);
-        return getFixedSlot(SCOPE_CHAIN_SLOT).toObjectOrNull();
-    }
-
-    /*
-     * A refinement of enclosingStaticScope that returns nullptr if the enclosing
-     * static scope is a JSFunction.
-     */
-    inline StaticBlockObject *enclosingBlock() const;
 
     /*
      * Return whether this StaticBlockObject contains a variable stored at
@@ -437,11 +487,6 @@ class StaticBlockObject : public BlockObject
         initReservedSlot(DEPTH_SLOT, PrivateUint32Value(depth));
     }
 
-    void initEnclosingStaticScope(JSObject *obj) {
-        JS_ASSERT(getReservedSlot(SCOPE_CHAIN_SLOT).isUndefined());
-        setReservedSlot(SCOPE_CHAIN_SLOT, ObjectOrNullValue(obj));
-    }
-
     /*
      * Frontend compilation temporarily uses the object's slots to link
      * a let var to its associated Definition parse node.
@@ -455,20 +500,6 @@ class StaticBlockObject : public BlockObject
         Value v = slotValue(i);
         return v.isUndefined() ? nullptr
                                : reinterpret_cast<frontend::Definition *>(v.toPrivate());
-    }
-
-    /*
-     * The parser uses 'enclosingBlock' as the prev-link in the pc->blockChain
-     * stack. Note: in the case of hoisting, this prev-link will not ultimately
-     * be the same as enclosingBlock, initEnclosingStaticScope must be called
-     * separately in the emitter. 'reset' is just for asserting stackiness.
-     */
-    void initPrevBlockChainFromParser(StaticBlockObject *prev) {
-        setReservedSlot(SCOPE_CHAIN_SLOT, ObjectOrNullValue(prev));
-    }
-
-    void resetPrevBlockChainFromParser() {
-        setReservedSlot(SCOPE_CHAIN_SLOT, UndefinedValue());
     }
 
     /*
@@ -514,8 +545,13 @@ bool
 XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
                      StaticBlockObject **objp);
 
+template<XDRMode mode>
+bool
+XDRStaticWithObject(XDRState<mode> *xdr, HandleObject enclosingScope,
+                    StaticWithObject **objp);
+
 extern JSObject *
-CloneStaticBlockObject(JSContext *cx, HandleObject enclosingScope, Handle<StaticBlockObject*> src);
+CloneNestedScopeObject(JSContext *cx, HandleObject enclosingScope, Handle<NestedScopeObject*> src);
 
 /*****************************************************************************/
 
@@ -547,7 +583,7 @@ class ScopeIter
     JSContext *cx;
     AbstractFramePtr frame_;
     RootedObject cur_;
-    Rooted<StaticBlockObject *> block_;
+    Rooted<NestedScopeObject *> staticScope_;
     Type type_;
     bool hasScopeObject_;
 
@@ -592,8 +628,12 @@ class ScopeIter
     Type type() const { JS_ASSERT(!done()); return type_; }
     bool hasScopeObject() const { JS_ASSERT(!done()); return hasScopeObject_; }
     ScopeObject &scope() const;
+    NestedScopeObject* staticScope() const { return staticScope_; }
 
-    StaticBlockObject &staticBlock() const { JS_ASSERT(type() == Block); return *block_; }
+    StaticBlockObject &staticBlock() const {
+        JS_ASSERT(type() == Block);
+        return staticScope_->as<StaticBlockObject>();
+    }
 
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
@@ -604,18 +644,18 @@ class ScopeIterKey
 
     AbstractFramePtr frame_;
     JSObject *cur_;
-    StaticBlockObject *block_;
+    NestedScopeObject *staticScope_;
     ScopeIter::Type type_;
     bool hasScopeObject_;
 
   public:
     ScopeIterKey(const ScopeIter &si)
-      : frame_(si.frame()), cur_(si.cur_), block_(si.block_), type_(si.type_),
+      : frame_(si.frame()), cur_(si.cur_), staticScope_(si.staticScope_), type_(si.type_),
         hasScopeObject_(si.hasScopeObject_) {}
 
     AbstractFramePtr frame() const { return frame_; }
     JSObject *cur() const { return cur_; }
-    StaticBlockObject *block() const { return block_; }
+    NestedScopeObject *staticScope() const { return staticScope_; }
     ScopeIter::Type type() const { return type_; }
     bool hasScopeObject() const { return hasScopeObject_; }
     JSObject *enclosingScope() const { return cur_; }
@@ -628,7 +668,7 @@ class ScopeIterKey
     bool operator!=(const ScopeIterKey &other) const {
         return frame_ != other.frame_ ||
                cur_ != other.cur_ ||
-               block_ != other.block_ ||
+               staticScope_ != other.staticScope_ ||
                type_ != other.type_;
     }
     static void rekey(ScopeIterKey &k, const ScopeIterKey& newKey) {
@@ -643,7 +683,7 @@ class ScopeIterVal
 
     AbstractFramePtr frame_;
     RelocatablePtr<JSObject> cur_;
-    RelocatablePtr<StaticBlockObject> block_;
+    RelocatablePtr<NestedScopeObject> staticScope_;
     ScopeIter::Type type_;
     bool hasScopeObject_;
 
@@ -651,7 +691,7 @@ class ScopeIterVal
 
   public:
     ScopeIterVal(const ScopeIter &si)
-      : frame_(si.frame()), cur_(si.cur_), block_(si.block_), type_(si.type_),
+      : frame_(si.frame()), cur_(si.cur_), staticScope_(si.staticScope_), type_(si.type_),
         hasScopeObject_(si.hasScopeObject_) {}
 
     AbstractFramePtr frame() const { return frame_; }
@@ -797,7 +837,7 @@ template<>
 inline bool
 JSObject::is<js::NestedScopeObject>() const
 {
-    return is<js::BlockObject>() || is<js::WithObject>();
+    return is<js::BlockObject>() || is<js::StaticWithObject>() || is<js::DynamicWithObject>();
 }
 
 template<>
@@ -851,11 +891,11 @@ ScopeObject::aliasedVar(ScopeCoordinate sc)
     return getSlot(sc.slot());
 }
 
-inline StaticBlockObject *
-StaticBlockObject::enclosingBlock() const
+inline NestedScopeObject *
+NestedScopeObject::enclosingNestedScope() const
 {
     JSObject *obj = getReservedSlot(SCOPE_CHAIN_SLOT).toObjectOrNull();
-    return obj && obj->is<StaticBlockObject>() ? &obj->as<StaticBlockObject>() : nullptr;
+    return obj && obj->is<NestedScopeObject>() ? &obj->as<NestedScopeObject>() : nullptr;
 }
 
 #ifdef DEBUG

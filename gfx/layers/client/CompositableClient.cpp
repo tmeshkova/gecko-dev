@@ -17,6 +17,9 @@
 #include "gfxWindowsPlatform.h"
 #include "gfx2DGlue.h"
 #endif
+#ifdef MOZ_X11
+#include "mozilla/layers/TextureClientX11.h"
+#endif
 
 using namespace mozilla::gfx;
 
@@ -102,26 +105,16 @@ CompositableClient::CreateDeprecatedTextureClient(DeprecatedTextureClientType aD
 
   switch (aDeprecatedTextureClientType) {
   case TEXTURE_SHARED_GL:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL) {
-      result = new DeprecatedTextureClientSharedOGL(GetForwarder(), GetTextureInfo());
-    }
-     break;
   case TEXTURE_SHARED_GL_EXTERNAL:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL) {
-      result = new DeprecatedTextureClientSharedOGLExternal(GetForwarder(), GetTextureInfo());
-    }
-    break;
   case TEXTURE_STREAM_GL:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL) {
-      result = new DeprecatedTextureClientStreamOGL(GetForwarder(), GetTextureInfo());
-    }
-    break;
+    MOZ_CRASH("Unsupported. this should not be reached");
   case TEXTURE_YCBCR:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL ||
-        parentBackend == LayersBackend::LAYERS_D3D9 ||
+    if (parentBackend == LayersBackend::LAYERS_D3D9 ||
         parentBackend == LayersBackend::LAYERS_D3D11 ||
         parentBackend == LayersBackend::LAYERS_BASIC) {
       result = new DeprecatedTextureClientShmemYCbCr(GetForwarder(), GetTextureInfo());
+    } else {
+      MOZ_CRASH("Unsupported. this should not be reached");
     }
     break;
   case TEXTURE_CONTENT:
@@ -222,6 +215,17 @@ CompositableClient::CreateTextureClientForDrawing(SurfaceFormat aFormat,
     }
   }
 #endif
+
+#ifdef MOZ_X11
+  LayersBackend parentBackend = GetForwarder()->GetCompositorBackendType();
+  if (parentBackend == LayersBackend::LAYERS_BASIC &&
+      gfxPlatform::GetPlatform()->ScreenReferenceSurface()->GetType() == gfxSurfaceType::Xlib &&
+      !(aTextureFlags & TEXTURE_ALLOC_FALLBACK))
+  {
+    result = new TextureClientX11(aFormat, aTextureFlags);
+  }
+#endif
+
   // Can't do any better than a buffer texture client.
   if (!result) {
     result = CreateBufferTextureClient(aFormat, aTextureFlags);

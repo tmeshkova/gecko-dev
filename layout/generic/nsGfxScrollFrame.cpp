@@ -1538,6 +1538,7 @@ ScrollFrameHelper::ScrollFrameHelper(nsContainerFrame* aOuter,
   , mOuter(aOuter)
   , mAsyncScroll(nullptr)
   , mOriginOfLastScroll(nullptr)
+  , mScrollGeneration(0)
   , mDestination(0, 0)
   , mScrollPosAtLastPaint(0, 0)
   , mRestorePos(-1, -1)
@@ -2053,6 +2054,7 @@ ScrollFrameHelper::ScrollToImpl(nsPoint aPt, const nsRect& aRange, nsIAtom* aOri
   // Update frame position for scrolling
   mScrolledFrame->SetPosition(mScrollPort.TopLeft() - pt);
   mOriginOfLastScroll = aOrigin;
+  mScrollGeneration++;
 
   // We pass in the amount to move visually
   ScrollVisual(oldScrollFramePos);
@@ -2188,17 +2190,8 @@ public:
   virtual nsDisplayItem* WrapItem(nsDisplayListBuilder* aBuilder,
                                   nsDisplayItem* aItem) {
 
-    // If the display item is for a frame that is absolutely positioned, it
-    // should only scroll with the scrolled content if its frame its contained
-    // within the scrolled content's frame.
-    bool shouldWrap = !aItem->Frame()->IsAbsolutelyPositioned() ||
-                      nsLayoutUtils::IsProperAncestorFrame(mScrolledFrame, aItem->Frame(), nullptr);
-    if (shouldWrap) {
-      SetCount(++mCount);
-      return new (aBuilder) nsDisplayScrollLayer(aBuilder, aItem, aItem->Frame(), mScrolledFrame, mScrollFrame);
-    } else {
-      return aItem;
-    }
+    SetCount(++mCount);
+    return new (aBuilder) nsDisplayScrollLayer(aBuilder, aItem, aItem->Frame(), mScrolledFrame, mScrollFrame);
   }
 
 protected:

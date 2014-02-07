@@ -16,11 +16,11 @@
 namespace mozilla {
 namespace dom {
 
+class TextTrackList;
 class TextTrackCue;
 class TextTrackCueList;
 class TextTrackRegion;
 class TextTrackRegionList;
-class HTMLMediaElement;
 
 class TextTrack MOZ_FINAL : public nsDOMEventTargetHelper
 {
@@ -30,9 +30,11 @@ public:
 
   TextTrack(nsISupports* aParent);
   TextTrack(nsISupports* aParent,
-            HTMLMediaElement* aMediaElement);
+            TextTrackKind aKind,
+            const nsAString& aLabel,
+            const nsAString& aLanguage);
   TextTrack(nsISupports* aParent,
-            HTMLMediaElement* aMediaElement,
+            TextTrackList* aTextTrackList,
             TextTrackKind aKind,
             const nsAString& aLabel,
             const nsAString& aLanguage);
@@ -104,13 +106,16 @@ public:
   void CueChanged(TextTrackCue& aCue);
   void SetDirty() { mDirty = true; }
 
+  TextTrackList* GetTextTrackList();
+  void SetTextTrackList(TextTrackList* aTextTrackList);
+
   IMPL_EVENT_HANDLER(cuechange)
 
 private:
   void UpdateActiveCueList();
 
   nsCOMPtr<nsISupports> mParent;
-  nsRefPtr<HTMLMediaElement> mMediaElement;
+  nsRefPtr<TextTrackList> mTextTrackList;
 
   TextTrackKind mKind;
   nsString mLabel;

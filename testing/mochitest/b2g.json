@@ -30,7 +30,6 @@
     "content/media/test/test_info_leak.html": "2 failures",
     "content/media/test/test_media_selection.html": "timed out",
     "content/media/test/test_mediarecorder_record_4ch_audiocontext.html": "",
-    "content/media/test/test_mediarecorder_creation_fail.html": "",
     "content/media/test/test_playback.html": "Test timed out, bug 668973?",
     "content/media/test/test_playback_rate.html": "",
     "content/media/test/test_playback_rate_playpause.html": "",
@@ -47,6 +46,7 @@
     "content/media/webspeech/synth/test/test_speech_queue.html": "Test timed out",
     "content/media/webspeech/synth/test/test_speech_simple.html": "Test timed out",
 
+    "content/media/webaudio/test/test_audioBufferSourceNodeOffset.html": "bug 906752",
     "content/media/webaudio/test/test_mozaudiochannel.html": "",
 
     "dom/imptests/editing/selecttest/test_addRange.html": "oom?, bug 775227",
@@ -227,6 +227,8 @@
 
     "dom/imptests/html/webgl":"",
 
+	"dom/apps/tests/test_packaged_app_update.html":"bug 915879",
+
     "dom/browser-element/mochitest/test_browserElement_inproc_Alert.html":"",
     "dom/browser-element/mochitest/test_browserElement_inproc_AppFramePermission.html":"",
     "dom/browser-element/mochitest/test_browserElement_inproc_AppWindowNamespace.html":"",
@@ -312,6 +314,11 @@
     "dom/tests/mochitest/general/test_clipboard_events.html":"clipboard undefined",
     "content/base/test/test_copypaste.html":"clipboard undefined",
     "content/base/test/test_bug166235.html":"clipboard undefined",
+	
+    "dom/tests/mochitest/dom-level0": "Bug 932350 - Frequent timeouts",
+    "dom/tests/mochitest/dom-level1-core": "Bug 932350 - Frequent timeouts",
+    "dom/tests/mochitest/dom-level2-core": "Bug 932350 - Frequent timeouts",
+    "dom/tests/mochitest/dom-level2-html": "Bug 932350 - Frequent timeouts",
 
     "dom/tests/mochitest/general/test_idleapi_permissions.html":"",
     "dom/tests/mochitest/general/test_paste_selection.html":"No clipboard",
@@ -348,10 +355,13 @@
     "dom/tests/mochitest/localstorage/test_localStorageQuotaSessionOnly2.html":"needs https support",
     "dom/tests/mochitest/sessionstorage/test_cookieSession.html":"4 failures",
     "dom/tests/mochitest/sessionstorage/test_sessionStorageBase.html":"no storage chrome event received",
+    "dom/tests/mochitest/sessionstorage/test_sessionStorageBaseSessionOnly.html":"bug 967737",
+    "dom/tests/mochitest/sessionstorage/test_sessionStorageClone.html":"bug 968051",
     "dom/tests/mochitest/sessionstorage/test_sessionStorageHttpHttps.html":"needs https to work",
 
     "dom/tests/mochitest/pointerlock/test_pointerlock-api.html":"window.open focus issues (using fullscreen)",
     "dom/tests/mochitest/webapps/test_bug_779982.html":"",
+    "dom/tests/mochitest/whatwg/test_postMessage_closed.html":"bug 894914 - wrong data - got FAIL, expected message",
 
     "dom/workers/test/test_suspend.html":"test timed out, might need more time",
     "dom/workers/test/test_xhr_parameters.html":"",
@@ -378,6 +388,8 @@
     "layout/generic/test/test_selection_expanding.html":"mouse selection not working",
 
     "layout/style/test/test_transitions_per_property.html":"times out, needs more time + various failures",
+	"layout/style/test/test_initial_storage.html":"bug 965655",
+	"layout/style/test/test_value_storage.html":"bug 965655",
 
     "content/html/content/test/test_bug209275.xhtml":"timed out, 47 tests, bug 870262, :visited support",
     "content/html/content/test/test_bug481335.xhtml":"timed out, bug 870262, :visited support",

@@ -1705,7 +1705,7 @@ NS_METHOD nsTableFrame::Reflow(nsPresContext*           aPresContext,
   aDesiredSize.Width() = aReflowState.AvailableWidth();
 
   // Check for an overflow list, and append any row group frames being pushed
-  MoveOverflowToChildList(aPresContext);
+  MoveOverflowToChildList();
 
   bool haveDesiredHeight = false;
   SetHaveReflowedColGroups(false);
@@ -1949,13 +1949,13 @@ nsTableFrame::PushChildren(const RowGroupArray& aRowGroups,
     }
     // When pushing and pulling frames we need to check for whether any
     // views need to be reparented.
-    ReparentFrameViewList(PresContext(), frames, this, nextInFlow);
+    ReparentFrameViewList(frames, this, nextInFlow);
     nextInFlow->mFrames.InsertFrames(nextInFlow, prevSibling,
                                      frames);
   }
   else {
     // Add the frames to our overflow list.
-    SetOverflowFrames(PresContext(), frames);
+    SetOverflowFrames(frames);
   }
 }
 
@@ -2956,7 +2956,14 @@ nsTableFrame::ReflowChildren(nsTableReflowState& aReflowState,
           mFrames.InsertFrame(nullptr, kidFrame, kidNextInFlow);
           // and in rowGroups after childX so that it will get pushed below.
           rowGroups.InsertElementAt(childX + 1,
-                      static_cast <nsTableRowGroupFrame*>(kidNextInFlow));
+                      static_cast<nsTableRowGroupFrame*>(kidNextInFlow));
+        } else if (kidNextInFlow == kidFrame->GetNextSibling()) {
+          // OrderRowGroups excludes NIFs in the child list from 'rowGroups'
+          // so we deal with that here to make sure they get pushed.
+          MOZ_ASSERT(!rowGroups.Contains(kidNextInFlow),
+                     "OrderRowGroups must not put our NIF in 'rowGroups'");
+          rowGroups.InsertElementAt(childX + 1,
+                      static_cast<nsTableRowGroupFrame*>(kidNextInFlow));
         }
 
         // We've used up all of our available space so push the remaining

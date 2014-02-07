@@ -1313,6 +1313,7 @@ const Class CloneBufferObject::class_ = {
     nullptr,                  /* hasInstance */
     nullptr,                  /* construct */
     nullptr,                  /* trace */
+    JS_NULL_CLASS_SPEC,
     JS_NULL_CLASS_EXT,
     JS_NULL_OBJECT_OPS
 };
@@ -1405,7 +1406,11 @@ static bool
 WorkerThreadCount(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    args.rval().setNumber(static_cast<double>(cx->runtime()->workerThreadCount()));
+#ifdef JS_THREADSAFE
+    args.rval().setInt32(cx->runtime()->useHelperThreads() ? WorkerThreadState().threadCount : 0);
+#else
+    args.rval().setInt32(0);
+#endif
     return true;
 }
 

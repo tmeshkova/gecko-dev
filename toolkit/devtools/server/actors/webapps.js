@@ -564,15 +564,15 @@ WebappsActor.prototype = {
       return { error: "appNotFound" };
     }
 
-    if (this._isAppAllowedForManifest(app.manifestURL)) {
-      let deferred = promise.defer();
-      reg.getManifestFor(manifestURL, function (manifest) {
+    return this._isAppAllowedForURL(app.manifestURL).then(allowed => {
+      if (!allowed) {
+        return { error: "forbidden" };
+      }
+      return reg.getManifestFor(manifestURL).then(function (manifest) {
         app.manifest = manifest;
-        deferred.resolve({app: app});
+        return { app: app };
       });
-      return deferred.promise;
-    }
-    return { error: "forbidden" };
+    });
   },
 
   _areCertifiedAppsAllowed: function wa__areCertifiedAppsAllowed() {

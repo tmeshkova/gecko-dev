@@ -74,10 +74,6 @@ let AboutFlyoutPanel = {
 };
 
 #ifdef MOZ_UPDATER
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
-
 function onUnload(aEvent) {
   if (!gAppUpdater) {
     return;
@@ -278,12 +274,15 @@ appUpdater.prototype =
         return;
       }
 
+      Services.metro.updatePending = true;
       appStartup.quit(Components.interfaces.nsIAppStartup.eAttemptQuit |
                       Components.interfaces.nsIAppStartup.eRestartTouchEnvironment);
       return;
     }
 
-    const URI_UPDATE_PROMPT_DIALOG = "chrome://mozapps/content/update/updates.xul";
+    // XXX We can't create dialogs in metro, and we currently don't support addons, so
+    // commenting this out for now.
+    /* const URI_UPDATE_PROMPT_DIALOG = "chrome://mozapps/content/update/updates.xul";
     // Firefox no longer displays a license for updates and the licenseURL check
     // is just in case a distibution does.
     if (this.update && (this.update.billboardURL || this.update.licenseURL ||
@@ -296,7 +295,7 @@ appUpdater.prototype =
       Services.ww.openWindow(null, URI_UPDATE_PROMPT_DIALOG, "", openFeatures, ary);
       window.close();
       return;
-    }
+    }*/
 
     this.selectPanel("checkingForUpdates");
     this.isChecking = true;

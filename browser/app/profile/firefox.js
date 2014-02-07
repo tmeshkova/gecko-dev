@@ -858,6 +858,10 @@ pref("browser.sessionstore.max_windows_undo", 3);
 // number of crashes that can occur before the about:sessionrestore page is displayed
 // (this pref has no effect if more than 6 hours have passed since the last crash)
 pref("browser.sessionstore.max_resumed_crashes", 1);
+// number of back button session history entries to restore (-1 = all of them)
+pref("browser.sessionstore.max_serialize_back", 10);
+// number of forward button session history entries to restore (-1 = all of them)
+pref("browser.sessionstore.max_serialize_forward", -1);
 // restore_on_demand overrides MAX_CONCURRENT_TAB_RESTORES (sessionstore constant)
 // and restore_hidden_tabs. When true, tabs will not be restored until they are
 // focused (also applies to tabs that aren't visible). When false, the values
@@ -1094,12 +1098,18 @@ pref("devtools.toolbox.toolbarSpec", '["splitconsole", "paintflashing toggle","t
 pref("devtools.toolbox.sideEnabled", true);
 pref("devtools.toolbox.zoomValue", "1");
 
+// Inspector preferences
 // Enable the Inspector
 pref("devtools.inspector.enabled", true);
+// What was the last active sidebar in the inspector
 pref("devtools.inspector.activeSidebar", "ruleview");
+// Enable the markup preview
 pref("devtools.inspector.markupPreview", false);
 pref("devtools.inspector.remote", false);
+// Expand pseudo-elements by default in the rule-view
 pref("devtools.inspector.show_pseudo_elements", true);
+// The default size for image preview tooltips in the rule-view/computed-view/markup-view
+pref("devtools.inspector.imagePreviewTooltipSize", 300);
 
 // DevTools default color unit
 pref("devtools.defaultColorUnit", "hex");
@@ -1118,7 +1128,7 @@ pref("devtools.debugger.pause-on-exceptions", false);
 pref("devtools.debugger.ignore-caught-exceptions", true);
 pref("devtools.debugger.source-maps-enabled", true);
 pref("devtools.debugger.pretty-print-enabled", true);
-pref("devtools.debugger.auto-pretty-print", true);
+pref("devtools.debugger.auto-pretty-print", false);
 pref("devtools.debugger.tracer", false);
 
 // The default Debugger UI settings
@@ -1141,6 +1151,7 @@ pref("devtools.netmonitor.enabled", true);
 // The default Network Monitor UI settings
 pref("devtools.netmonitor.panes-network-details-width", 450);
 pref("devtools.netmonitor.panes-network-details-height", 450);
+pref("devtools.netmonitor.statistics", true);
 
 // Enable the Tilt inspector
 pref("devtools.tilt.enabled", true);
@@ -1236,9 +1247,11 @@ pref("devtools.hud.loglimit.console", 200);
 // - tabsize: how many spaces to use when a Tab character is displayed.
 // - expandtab: expand Tab characters to spaces.
 // - keymap: which keymap to use (can be 'default', 'emacs' or 'vim')
+// - autoclosebrackets: whether to permit automatic bracket/quote closing.
 pref("devtools.editor.tabsize", 4);
 pref("devtools.editor.expandtab", true);
 pref("devtools.editor.keymap", "default");
+pref("devtools.editor.autoclosebrackets", true);
 
 // Enable the Font Inspector
 pref("devtools.fontinspector.enabled", true);
@@ -1340,6 +1353,10 @@ pref("browser.uiCustomization.debug", false);
 // The URL where remote content that composes the UI for Firefox Accounts should
 // be fetched. Must use HTTPS.
 pref("identity.fxaccounts.remote.uri", "https://accounts.firefox.com/?service=sync&context=fx_desktop_v1");
+
+// The URL where remote content that forces re-authentication for Firefox Accounts
+// should be fetched.  Must use HTTPS.
+pref("identity.fxaccounts.remote.force_auth.uri", "https://accounts.firefox.com/force_auth?service=sync&context=fx_desktop_v1");
 
 // The URL we take the user to when they opt to "manage" their Firefox Account.
 // Note that this will always need to be in the same TLD as the

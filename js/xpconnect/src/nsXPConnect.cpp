@@ -78,7 +78,6 @@ const char XPC_XPCONNECT_CONTRACTID[]     = "@mozilla.org/js/xpc/XPConnect;1";
 
 nsXPConnect::nsXPConnect()
     :   mRuntime(nullptr),
-        mDefaultSecurityManager(nullptr),
         mShuttingDown(false),
         mEventDepth(0)
 {
@@ -112,7 +111,7 @@ nsXPConnect::~nsXPConnect()
     // maps that our finalize callback depends on.
     JS_GC(mRuntime->Runtime());
 
-    NS_IF_RELEASE(mDefaultSecurityManager);
+    mDefaultSecurityManager = nullptr;
     gScriptSecurityManager = nullptr;
 
     // shutdown the logging system
@@ -160,25 +159,6 @@ nsXPConnect::ReleaseXPConnectSingleton()
     if (xpc) {
         nsThread::SetMainThreadObserver(nullptr);
 
-#ifdef DEBUG
-        // force a dump of the JavaScript gc heap if JS is still alive
-        // if requested through XPC_SHUTDOWN_HEAP_DUMP environment variable
-        {
-            const char* dumpName = getenv("XPC_SHUTDOWN_HEAP_DUMP");
-            if (dumpName) {
-                FILE* dumpFile = (*dumpName == '\0' ||
-                                  strcmp(dumpName, "stdout") == 0)
-                                 ? stdout
-                                 : fopen(dumpName, "w");
-                if (dumpFile) {
-                    JS_DumpHeap(xpc->GetRuntime()->Runtime(), dumpFile, nullptr,
-                                JSTRACE_OBJECT, nullptr, static_cast<size_t>(-1), nullptr);
-                    if (dumpFile != stdout)
-                        fclose(dumpFile);
-                }
-            }
-        }
-#endif
         nsrefcnt cnt;
         NS_RELEASE2(xpc, cnt);
     }
@@ -619,7 +599,8 @@ nsXPConnect::JSValToVariant(JSContext *cx,
 {
     NS_PRECONDITION(aResult, "bad param");
 
-    *aResult = XPCVariant::newVariant(cx, aJSVal);
+    nsRefPtr<XPCVariant> variant = XPCVariant::newVariant(cx, aJSVal);
+    variant.forget(aResult);
     NS_ENSURE_TRUE(*aResult, NS_ERROR_OUT_OF_MEMORY);
 
     return NS_OK;
@@ -660,14 +641,14 @@ nsXPConnect::GetWrappedNativeOfJSObject(JSContext * aJSContext,
 
     RootedObject aJSObj(aJSContext, aJSObjArg);
     aJSObj = js::CheckedUnwrap(aJSObj, /* stopAtOuter = */ false);
-    if (aJSObj && IS_WN_REFLECTOR(aJSObj)) {
-        NS_IF_ADDREF(*_retval = XPCWrappedNative::Get(aJSObj));
-        return NS_OK;
+    if (!aJSObj || !IS_WN_REFLECTOR(aJSObj)) {
+        *_retval = nullptr;
+        return NS_ERROR_FAILURE;
     }
 
-    // else...
-    *_retval = nullptr;
-    return NS_ERROR_FAILURE;
+    nsRefPtr<XPCWrappedNative> temp = XPCWrappedNative::Get(aJSObj);
+    temp.forget(_retval);
+    return NS_OK;
 }
 
 /* nsISupports getNativeOfWrapper(in JSContextPtr aJSContext, in JSObjectPtr  aJSObj); */
@@ -798,8 +779,6 @@ nsXPConnect::RescueOrphansInScope(JSContext *aJSContext, JSObject *aScopeArg)
 NS_IMETHODIMP
 nsXPConnect::SetDefaultSecurityManager(nsIXPCSecurityManager *aManager)
 {
-    NS_IF_ADDREF(aManager);
-    NS_IF_RELEASE(mDefaultSecurityManager);
     mDefaultSecurityManager = aManager;
 
     nsCOMPtr<nsIScriptSecurityManager> ssm =
@@ -948,7 +927,7 @@ nsXPConnect::DebugDump(int16_t depth)
     XPC_LOG_INDENT();
         XPC_LOG_ALWAYS(("gSelf @ %x", gSelf));
         XPC_LOG_ALWAYS(("gOnceAliveNowDead is %d", (int)gOnceAliveNowDead));
-        XPC_LOG_ALWAYS(("mDefaultSecurityManager @ %x", mDefaultSecurityManager));
+        XPC_LOG_ALWAYS(("mDefaultSecurityManager @ %x", mDefaultSecurityManager.get()));
         if (mRuntime) {
             if (depth)
                 mRuntime->DebugDump(depth);
@@ -1076,7 +1055,8 @@ nsXPConnect::JSToVariant(JSContext* ctx, HandleValue value, nsIVariant** _retval
     NS_PRECONDITION(ctx, "bad param");
     NS_PRECONDITION(_retval, "bad param");
 
-    *_retval = XPCVariant::newVariant(ctx, value);
+    nsRefPtr<XPCVariant> variant = XPCVariant::newVariant(ctx, value);
+    variant.forget(_retval);
     if (!(*_retval))
         return NS_ERROR_FAILURE;
 

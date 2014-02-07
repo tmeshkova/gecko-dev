@@ -3294,6 +3294,13 @@ nsresult HTMLMediaElement::DispatchAsyncEvent(const nsAString& aName)
   LOG_EVENT(PR_LOG_DEBUG, ("%p Queuing event %s", this,
             NS_ConvertUTF16toUTF8(aName).get()));
 
+  // Save events that occur while in the bfcache. These will be dispatched
+  // if the page comes out of the bfcache.
+  if (mEventDeliveryPaused) {
+    mPendingEvents.AppendElement(aName);
+    return NS_OK;
+  }
+
   nsCOMPtr<nsIRunnable> event = new nsAsyncEventRunner(aName, this);
   NS_DispatchToMainThread(event, NS_DISPATCH_NORMAL);
   return NS_OK;
@@ -3352,7 +3359,8 @@ void HTMLMediaElement::NotifyDecoderPrincipalChanged()
 
   bool subsumes;
   mDecoder->UpdateSameOriginStatus(
-    NS_SUCCEEDED(NodePrincipal()->Subsumes(principal, &subsumes)) && subsumes);
+    !principal ||
+    (NS_SUCCEEDED(NodePrincipal()->Subsumes(principal, &subsumes)) && subsumes));
 
   for (uint32_t i = 0; i < mOutputStreams.Length(); ++i) {
     OutputMediaStream* ms = &mOutputStreams[i];

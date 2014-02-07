@@ -1835,7 +1835,7 @@ ContentParent::RecvAddNewProcess(const uint32_t& aPid,
                                 MAGIC_PREALLOCATED_APP_MANIFEST_URL,
                                 aPid,
                                 aFds,
-                                base::PRIVILEGES_DEFAULT);
+                                base::PRIVILEGES_INHERIT);
     content->Init();
     PreallocatedProcessManager::PublishSpareProcess(content);
     return true;
@@ -2012,7 +2012,7 @@ ContentParent::AllocPJavaScriptParent()
 bool
 ContentParent::DeallocPJavaScriptParent(PJavaScriptParent *parent)
 {
-    static_cast<mozilla::jsipc::JavaScriptParent *>(parent)->destroyFromContent();
+    static_cast<mozilla::jsipc::JavaScriptParent *>(parent)->decref();
     return true;
 }
 
@@ -2256,6 +2256,11 @@ void
 ContentParent::FriendlyName(nsAString& aName)
 {
     aName.Truncate();
+#ifdef MOZ_NUWA_PROCESS
+    if (IsNuwaProcess()) {
+        aName.AssignLiteral("(Nuwa)");
+    } else
+#endif
     if (IsPreallocated()) {
         aName.AssignLiteral("(Preallocated)");
     } else if (mIsForBrowser) {
@@ -3251,6 +3256,22 @@ ContentParent::RecvRemoveIdleObserver(const uint64_t& aObserver, const uint32_t&
   }
 
   return true;
+}
+
+bool
+ContentParent::RecvBackUpXResources(const FileDescriptor& aXSocketFd)
+{
+#ifndef MOZ_X11
+    NS_RUNTIMEABORT("This message only makes sense on X11 platforms");
+#else
+    NS_ABORT_IF_FALSE(0 > mChildXSocketFdDup.get(),
+                      "Already backed up X resources??");
+    mChildXSocketFdDup.forget();
+    if (aXSocketFd.IsValid()) {
+      mChildXSocketFdDup.reset(aXSocketFd.PlatformHandle());
+    }
+#endif
+    return true;
 }
 
 } // namespace dom

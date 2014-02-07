@@ -29,11 +29,11 @@ XPCOMUtils.defineLazyModuleGetter(this, "VariablesViewController",
 const GRADIENT_RE = /\b(repeating-)?(linear|radial)-gradient\(((rgb|hsl)a?\(.+?\)|[^\)])+\)/gi;
 const BORDERCOLOR_RE = /^border-[-a-z]*color$/ig;
 const BORDER_RE = /^border(-(top|bottom|left|right))?$/ig;
-const BACKGROUND_IMAGE_RE = /url\([\'\"]?(.*?)[\'\"]?\)/;
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 const SPECTRUM_FRAME = "chrome://browser/content/devtools/spectrum-frame.xhtml";
 const ESCAPE_KEYCODE = Ci.nsIDOMKeyEvent.DOM_VK_ESCAPE;
 const ENTER_KEYCODE = Ci.nsIDOMKeyEvent.DOM_VK_RETURN;
+const POPUP_EVENTS = ["shown", "hidden", "showing", "hiding"];
 
 /**
  * Tooltip widget.
@@ -136,14 +136,27 @@ let PanelFactory = {
  * @param {XULDocument} doc
  *        The XUL document hosting this tooltip
  * @param {Object} options
- *        Optional options that give options to consumers
+ *        Optional options that give options to consumers:
  *        - consumeOutsideClick {Boolean} Wether the first click outside of the
  *        tooltip should close the tooltip and be consumed or not.
- *        Defaults to false
+ *        Defaults to false.
  *        - closeOnKeys {Array} An array of key codes that should close the
- *        tooltip. Defaults to [27] (escape key)
+ *        tooltip. Defaults to [27] (escape key).
+ *        - closeOnEvents [{emitter: {Object}, event: {String}, useCapture: {Boolean}}]
+ *        Provide an optional list of emitter objects and event names here to
+ *        trigger the closing of the tooltip when these events are fired by the
+ *        emitters. The emitter objects should either implement on/off(event, cb)
+ *        or addEventListener/removeEventListener(event, cb). Defaults to [].
+ *        For instance, the following would close the tooltip whenever the
+ *        toolbox selects a new tool and when a DOM node gets scrolled:
+ *        new Tooltip(doc, {
+ *          closeOnEvents: [
+ *            {emitter: toolbox, event: "select"},
+ *            {emitter: myContainer, event: "scroll", useCapture: true}
+ *          ]
+ *        });
  *        - noAutoFocus {Boolean} Should the focus automatically go to the panel
- *        when it opens. Defaults to true
+ *        when it opens. Defaults to true.
  *
  * Fires these events:
  * - showing : just before the tooltip shows
@@ -159,7 +172,8 @@ function Tooltip(doc, options) {
   this.options = new OptionsStore({
     consumeOutsideClick: false,
     closeOnKeys: [ESCAPE_KEYCODE],
-    noAutoFocus: true
+    noAutoFocus: true,
+    closeOnEvents: []
   }, options);
   this.panel = PanelFactory.get(doc, this.options);
 
@@ -167,7 +181,7 @@ function Tooltip(doc, options) {
   this.uid = "tooltip-" + Date.now();
 
   // Emit show/hide events
-  for (let event of ["shown", "hidden", "showing", "hiding"]) {
+  for (let event of POPUP_EVENTS) {
     this["_onPopup" + event] = ((e) => {
       return () => this.emit(e);
     })(event);
@@ -187,6 +201,18 @@ function Tooltip(doc, options) {
     }
   };
   win.addEventListener("keypress", this._onKeyPress, false);
+
+  // Listen to custom emitters' events to close the tooltip
+  this.hide = this.hide.bind(this);
+  let closeOnEvents = this.options.get("closeOnEvents");
+  for (let {emitter, event, useCapture} of closeOnEvents) {
+    for (let add of ["addEventListener", "on"]) {
+      if (add in emitter) {
+        emitter[add](event, this.hide, useCapture);
+        break;
+      }
+    }
+  }
 }
 
 module.exports.Tooltip = Tooltip;
@@ -264,13 +290,23 @@ Tooltip.prototype = {
   destroy: function () {
     this.hide();
 
-    for (let event of ["shown", "hidden", "showing", "hiding"]) {
+    for (let event of POPUP_EVENTS) {
       this.panel.removeEventListener("popup" + event,
         this["_onPopup" + event], false);
     }
 
     let win = this.doc.querySelector("window");
     win.removeEventListener("keypress", this._onKeyPress, false);
+
+    let closeOnEvents = this.options.get("closeOnEvents");
+    for (let {emitter, event, useCapture} of closeOnEvents) {
+      for (let remove of ["removeEventListener", "off"]) {
+        if (remove in emitter) {
+          emitter[remove](event, this.hide, useCapture);
+          break;
+        }
+      }
+    }
 
     this.content = null;
 
@@ -414,7 +450,14 @@ Tooltip.prototype = {
    * @param {boolean} isAlertTooltip [optional]
    *        Pass true to add an alert image for your tooltip.
    */
-  setTextContent: function({ messages, messagesClass, containerClass, isAlertTooltip }) {
+  setTextContent: function(
+    {
+      messages,
+      messagesClass,
+      containerClass,
+      isAlertTooltip
+    },
+    extraButtons = []) {
     messagesClass = messagesClass || "default-tooltip-simple-text-colors";
     containerClass = containerClass || "default-tooltip-simple-text-colors";
 
@@ -428,6 +471,14 @@ Tooltip.prototype = {
       description.className = "devtools-tooltip-simple-text " + messagesClass;
       description.textContent = text;
       vbox.appendChild(description);
+    }
+
+    for (let { label, className, command } of extraButtons) {
+      let button = this.doc.createElement("button");
+      button.className = className;
+      button.setAttribute("label", label);
+      button.addEventListener("command", command);
+      vbox.appendChild(button);
     }
 
     if (isAlertTooltip) {
@@ -461,36 +512,47 @@ Tooltip.prototype = {
    *        Pass false to instantiate a brand new widget for this variable.
    *        Otherwise, if a variable was previously inspected, its widget
    *        will be reused.
+   * @param {Toolbox} toolbox [optional]
+   *        Pass the instance of the current toolbox if you want the variables
+   *        view widget to allow highlighting and selection of DOM nodes
    */
   setVariableContent: function(
     objectActor,
     viewOptions = {},
     controllerOptions = {},
     relayEvents = {},
-    reuseCachedWidget = true) {
+    extraButtons = [],
+    toolbox = null) {
 
-    if (reuseCachedWidget && this._cachedVariablesView) {
-      var [vbox, widget] = this._cachedVariablesView;
-    } else {
-      var vbox = this.doc.createElement("vbox");
-      vbox.className = "devtools-tooltip-variables-view-box";
-      vbox.setAttribute("flex", "1");
+    let vbox = this.doc.createElement("vbox");
+    vbox.className = "devtools-tooltip-variables-view-box";
+    vbox.setAttribute("flex", "1");
 
-      let innerbox = this.doc.createElement("vbox");
-      innerbox.className = "devtools-tooltip-variables-view-innerbox";
-      innerbox.setAttribute("flex", "1");
-      vbox.appendChild(innerbox);
+    let innerbox = this.doc.createElement("vbox");
+    innerbox.className = "devtools-tooltip-variables-view-innerbox";
+    innerbox.setAttribute("flex", "1");
+    vbox.appendChild(innerbox);
 
-      var widget = new VariablesView(innerbox, viewOptions);
-
-      // Analyzing state history isn't useful with transient object inspectors.
-      widget.commitHierarchy = () => {};
-
-      for (let e in relayEvents) widget.on(e, relayEvents[e]);
-      VariablesViewController.attach(widget, controllerOptions);
-
-      this._cachedVariablesView = [vbox, widget];
+    for (let { label, className, command } of extraButtons) {
+      let button = this.doc.createElement("button");
+      button.className = className;
+      button.setAttribute("label", label);
+      button.addEventListener("command", command);
+      vbox.appendChild(button);
     }
+
+    let widget = new VariablesView(innerbox, viewOptions);
+
+    // If a toolbox was provided, link it to the vview
+    if (toolbox) {
+      widget.toolbox = toolbox;
+    }
+
+    // Analyzing state history isn't useful with transient object inspectors.
+    widget.commitHierarchy = () => {};
+
+    for (let e in relayEvents) widget.on(e, relayEvents[e]);
+    VariablesViewController.attach(widget, controllerOptions);
 
     // Some of the view options are allowed to change between uses.
     widget.searchPlaceholder = viewOptions.searchPlaceholder;
@@ -506,9 +568,45 @@ Tooltip.prototype = {
   },
 
   /**
-   * Fill the tooltip with an image, displayed over a tiled background useful
-   * for transparent images. Also adds the image dimension as a label at the
-   * bottom.
+   * Uses the provided inspectorFront's getImageDataFromURL method to resolve
+   * the relative URL on the server-side, in the page context, and then sets the
+   * tooltip content with the resulting image just like |setImageContent| does.
+   *
+   * @return a promise that resolves when the image is shown in the tooltip
+   */
+  setRelativeImageContent: function(imageUrl, inspectorFront, maxDim) {
+    if (imageUrl.startsWith("data:")) {
+      // If the imageUrl already is a data-url, save ourselves a round-trip
+      this.setImageContent(imageUrl, {maxDim: maxDim});
+      return promise.resolve();
+    } else if (inspectorFront) {
+      return inspectorFront.getImageDataFromURL(imageUrl, maxDim).then(res => {
+        res.size.maxDim = maxDim;
+        return res.data.string().then(str => {
+          this.setImageContent(str, res.size);
+        });
+      }, () => {
+        this.setBrokenImageContent();
+      });
+    }
+    return promise.resolve();
+  },
+
+  /**
+   * Fill the tooltip with a message explaining the the image is missing
+   */
+  setBrokenImageContent: function() {
+    this.setTextContent({
+      messages: [l10n.strings.GetStringFromName("previewTooltip.image.brokenImage")]
+    });
+  },
+
+  /**
+   * Fill the tooltip with an image and add the image dimension at the bottom.
+   *
+   * Only use this for absolute URLs that can be queried from the devtools
+   * client-side. For relative URLs, use |setRelativeImageContent|.
+   *
    * @param {string} imageUrl
    *        The url to load the image from
    * @param {Object} options
@@ -522,56 +620,45 @@ Tooltip.prototype = {
    *        a number here
    */
   setImageContent: function(imageUrl, options={}) {
-    // Main container
-    let vbox = this.doc.createElement("vbox");
-    vbox.setAttribute("align", "center");
+    if (imageUrl) {
+      // Main container
+      let vbox = this.doc.createElement("vbox");
+      vbox.setAttribute("align", "center");
 
-    // Display the image
-    let image = this.doc.createElement("image");
-    image.setAttribute("src", imageUrl);
-    if (options.maxDim) {
-      image.style.maxWidth = options.maxDim + "px";
-      image.style.maxHeight = options.maxDim + "px";
-    }
-    vbox.appendChild(image);
-
-    // Dimension label
-    let label = this.doc.createElement("label");
-    label.classList.add("devtools-tooltip-caption");
-    label.classList.add("theme-comment");
-    if (options.naturalWidth && options.naturalHeight) {
-      label.textContent = this._getImageDimensionLabel(options.naturalWidth,
-        options.naturalHeight);
-    } else {
-      // If no dimensions were provided, load the image to get them
-      label.textContent = l10n.strings.GetStringFromName("previewTooltip.image.brokenImage");
-      let imgObj = new this.doc.defaultView.Image();
-      imgObj.src = imageUrl;
-      imgObj.onload = () => {
-        imgObj.onload = null;
-        label.textContent = this._getImageDimensionLabel(imgObj.naturalWidth,
-          imgObj.naturalHeight);
+      // Display the image
+      let image = this.doc.createElement("image");
+      image.setAttribute("src", imageUrl);
+      if (options.maxDim) {
+        image.style.maxWidth = options.maxDim + "px";
+        image.style.maxHeight = options.maxDim + "px";
       }
-    }
-    vbox.appendChild(label);
+      vbox.appendChild(image);
 
-    this.content = vbox;
+      // Dimension label
+      let label = this.doc.createElement("label");
+      label.classList.add("devtools-tooltip-caption");
+      label.classList.add("theme-comment");
+      if (options.naturalWidth && options.naturalHeight) {
+        label.textContent = this._getImageDimensionLabel(options.naturalWidth,
+          options.naturalHeight);
+      } else {
+        // If no dimensions were provided, load the image to get them
+        label.textContent = l10n.strings.GetStringFromName("previewTooltip.image.brokenImage");
+        let imgObj = new this.doc.defaultView.Image();
+        imgObj.src = imageUrl;
+        imgObj.onload = () => {
+          imgObj.onload = null;
+          label.textContent = this._getImageDimensionLabel(imgObj.naturalWidth,
+            imgObj.naturalHeight);
+        }
+      }
+      vbox.appendChild(label);
+
+      this.content = vbox;
+    }
   },
 
   _getImageDimensionLabel: (w, h) => w + " x " + h,
-
-  /**
-   * Exactly the same as the `image` function but takes a css background image
-   * value instead : url(....)
-   */
-  setCssBackgroundImageContent: function(cssBackground, sheetHref, maxDim=400) {
-    let uri = getBackgroundImageUri(cssBackground, sheetHref);
-    if (uri) {
-      this.setImageContent(uri, {
-        maxDim: maxDim
-      });
-    }
-  },
 
   /**
    * Fill the tooltip with a new instance of the spectrum color picker widget
@@ -876,24 +963,6 @@ function isColorOnly(property, value) {
   return property === "background-color" ||
          property === "color" ||
          property.match(BORDERCOLOR_RE);
-}
-
-/**
- * Internal util, returns the background image uri if any
- */
-function getBackgroundImageUri(value, sheetHref) {
-  let uriMatch = BACKGROUND_IMAGE_RE.exec(value);
-  let uri = null;
-
-  if (uriMatch && uriMatch[1]) {
-    uri = uriMatch[1];
-    if (sheetHref) {
-      let sheetUri = IOService.newURI(sheetHref, null, null);
-      uri = sheetUri.resolve(uri);
-    }
-  }
-
-  return uri;
 }
 
 /**

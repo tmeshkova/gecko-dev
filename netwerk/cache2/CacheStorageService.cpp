@@ -9,12 +9,13 @@
 
 #include "nsICacheStorageVisitor.h"
 #include "nsIObserverService.h"
-#include "nsICacheService.h" // for old cache preference
 #include "CacheStorage.h"
 #include "AppCacheStorage.h"
 #include "CacheEntry.h"
 
 #include "OldWrappers.h"
+#include "nsCacheService.h"
+#include "nsDeleteDir.h"
 
 #include "nsIFile.h"
 #include "nsIURI.h"
@@ -384,6 +385,25 @@ void CacheStorageService::DropPrivateBrowsingEntries()
     DoomStorageEntries(keys[i], true, nullptr);
 }
 
+// static
+void CacheStorageService::WipeCacheDirectory(uint32_t aVersion)
+{
+  nsCOMPtr<nsIFile> cacheDir;
+  switch (aVersion) {
+  case 0:
+    nsCacheService::GetDiskCacheDirectory(getter_AddRefs(cacheDir));
+    break;
+  case 1:
+    CacheFileIOManager::GetCacheDirectory(getter_AddRefs(cacheDir));
+    break;
+  }
+
+  if (!cacheDir)
+    return;
+
+  nsDeleteDir::DeleteDir(cacheDir, true, 30000);
+}
+
 // Helper methods
 
 // static
@@ -445,12 +465,16 @@ NS_IMETHODIMP CacheStorageService::DiskCacheStorage(nsILoadContextInfo *aLoadCon
 
   // TODO save some heap granularity - cache commonly used storages.
 
+  // When disk cache is disabled, still provide a storage, but just keep stuff
+  // in memory.
+  bool useDisk = CacheObserver::UseDiskCache();
+
   nsCOMPtr<nsICacheStorage> storage;
   if (CacheObserver::UseNewCache()) {
-    storage = new CacheStorage(aLoadContextInfo, true, aLookupAppCache);
+    storage = new CacheStorage(aLoadContextInfo, useDisk, aLookupAppCache);
   }
   else {
-    storage = new _OldStorage(aLoadContextInfo, true, aLookupAppCache, false, nullptr);
+    storage = new _OldStorage(aLoadContextInfo, useDisk, aLookupAppCache, false, nullptr);
   }
 
   storage.forget(_retval);

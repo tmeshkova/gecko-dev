@@ -747,7 +747,7 @@ var Browser = {
     Services.metro.pinTileAsync(this._currentPageTileID,
                                 Browser.selectedBrowser.contentTitle, // short name
                                 Browser.selectedBrowser.contentTitle, // display name
-                                "metrobrowser -url " + Browser.selectedBrowser.currentURI.spec,
+                                "-url " + Browser.selectedBrowser.currentURI.spec,
                             uriSpec, uriSpec);
   },
 
@@ -1260,7 +1260,7 @@ function Tab(aURI, aParams, aOwner) {
   if ("private" in aParams) {
     this._private = aParams.private;
   } else if (aOwner) {
-    this._private = aOwner.private;
+    this._private = aOwner._private;
   }
 
   this.owner = aOwner || null;

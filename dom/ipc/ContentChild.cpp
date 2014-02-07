@@ -54,6 +54,7 @@
 #include "nsHashPropertyBag.h"
 #include "nsLayoutStylesheetCache.h"
 #include "nsIJSRuntimeService.h"
+#include "nsThreadManager.h"
 
 #include "IHistory.h"
 #include "nsNetUtil.h"
@@ -89,6 +90,10 @@
 #ifdef XP_WIN
 #include <process.h>
 #define getpid _getpid
+#endif
+
+#ifdef MOZ_X11
+#include "mozilla/X11Util.h"
 #endif
 
 #ifdef ACCESSIBILITY
@@ -340,8 +345,23 @@ ContentChild::Init(MessageLoop* aIOLoop,
 
     NS_ASSERTION(!sSingleton, "only one ContentChild per child");
 
+    // Once we start sending IPC messages, we need the thread manager to be
+    // initialized so we can deal with the responses. Do that here before we
+    // try to construct the crash reporter.
+    nsresult rv = nsThreadManager::get()->Init();
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+    }
+
     Open(aChannel, aParentHandle, aIOLoop);
     sSingleton = this;
+
+#ifdef MOZ_X11
+    // Send the parent our X socket to act as a proxy reference for our X
+    // resources.
+    int xSocketFd = ConnectionNumber(DefaultXDisplay());
+    SendBackUpXResources(FileDescriptor(xSocketFd));
+#endif
 
 #ifdef MOZ_CRASHREPORTER
     SendPCrashReporterConstructor(CrashReporter::CurrentThreadId(),
@@ -545,8 +565,9 @@ ContentChild::RecvDumpGCAndCCLogsToFile(const nsString& aIdentifier,
 {
     nsCOMPtr<nsIMemoryInfoDumper> dumper = do_GetService("@mozilla.org/memory-info-dumper;1");
 
+    nsString gcLogPath, ccLogPath;
     dumper->DumpGCAndCCLogsToFile(aIdentifier, aDumpAllTraces,
-                                  aDumpChildProcesses);
+                                  aDumpChildProcesses, gcLogPath, ccLogPath);
     return true;
 }
 

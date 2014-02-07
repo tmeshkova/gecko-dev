@@ -60,6 +60,12 @@ if (typeof Mozilla == 'undefined') {
 
 	Mozilla.UITour.DEFAULT_THEME_CYCLE_DELAY = 10 * 1000;
 
+	Mozilla.UITour.registerPageID = function(pageID) {
+		_sendEvent('registerPageID', {
+			pageID: pageID
+		});
+	};
+
 	Mozilla.UITour.showHighlight = function(target, effect) {
 		_sendEvent('showHighlight', {
 			target: target,
@@ -78,6 +84,7 @@ if (typeof Mozilla == 'undefined') {
 				buttonData.push({
 					label: buttons[i].label,
 					icon: buttons[i].icon,
+					style: buttons[i].style,
 					callbackID: _waitForCallback(buttons[i].callback)
 			});
 			}

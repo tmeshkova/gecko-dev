@@ -1157,7 +1157,6 @@ NS_IMPL_ISUPPORTS3(nsOfflineCacheUpdate,
 
 nsOfflineCacheUpdate::nsOfflineCacheUpdate()
     : mState(STATE_UNINITIALIZED)
-    , mOwner(nullptr)
     , mAddedItems(false)
     , mPartialUpdate(false)
     , mOnlyCheckUpdate(false)
@@ -1248,7 +1247,9 @@ nsOfflineCacheUpdate::Init(nsIURI *aManifestURI,
     mDocumentURI = aDocumentURI;
 
     if (aCustomProfileDir) {
-        rv = GetCacheKey(aManifestURI, mGroupID);
+        rv = cacheService->BuildGroupIDForApp(aManifestURI,
+                                              aAppID, aInBrowser,
+                                              mGroupID);
         NS_ENSURE_SUCCESS(rv, rv);
 
         // Create only a new offline application cache in the custom profile
@@ -1984,7 +1985,7 @@ void
 nsOfflineCacheUpdate::SetOwner(nsOfflineCacheUpdateOwner *aOwner)
 {
     NS_ASSERTION(!mOwner, "Tried to set cache update owner twice.");
-    mOwner = aOwner;
+    mOwner = aOwner->asWeakPtr();
 }
 
 bool
@@ -2105,7 +2106,9 @@ nsOfflineCacheUpdate::FinishNoNotify()
 
     if (mOwner) {
         rv = mOwner->UpdateFinished(this);
-        mOwner = nullptr;
+        // mozilla::WeakPtr is missing some key features, like setting it to
+        // null explicitly.
+        mOwner = mozilla::WeakPtr<nsOfflineCacheUpdateOwner>();
     }
 
     return rv;

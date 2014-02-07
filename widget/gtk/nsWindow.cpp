@@ -1617,14 +1617,6 @@ nsWindow::Invalidate(const nsIntRect &aRect)
     return NS_OK;
 }
 
-void
-nsWindow::Update()
-{
-    if (!ShouldUseOffMainThreadCompositing() && mGdkWindow) {
-        gdk_window_process_updates(mGdkWindow, true);
-    }
-}
-
 void*
 nsWindow::GetNativeData(uint32_t aDataType)
 {
@@ -3593,6 +3585,23 @@ nsWindow::Create(nsIWidget        *aParent,
                 gint wmd = ConvertBorderStyles(mBorderStyle);
                 if (wmd != -1)
                   gdk_window_set_decorations(gtk_widget_get_window(mShell), (GdkWMDecoration) wmd);
+            }
+
+            // If the popup ignores mouse events, set an empty input shape.
+            if (aInitData->mMouseTransparent) {
+#if (MOZ_WIDGET_GTK == 2)
+              GdkRectangle rect = { 0, 0, 0, 0 };
+              GdkRegion *region = gdk_region_rectangle(&rect);
+
+              gdk_window_input_shape_combine_region(mGdkWindow, region, 0, 0);
+              gdk_region_destroy(region);
+#else
+              cairo_rectangle_int_t rect = { 0, 0, 0, 0 };
+              cairo_region_t *region = cairo_region_create_rectangle(&rect);
+
+              gdk_window_input_shape_combine_region(mGdkWindow, region, 0, 0);
+              cairo_region_destroy(region);
+#endif
             }
         }
     }

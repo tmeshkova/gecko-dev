@@ -107,7 +107,7 @@ public:
   DataTextureSourceD3D9(gfx::SurfaceFormat aFormat,
                         CompositorD3D9* aCompositor,
                         TextureFlags aFlags = TEXTURE_FLAGS_DEFAULT,
-                        StereoMode aStereoMode = STEREO_MODE_MONO);
+                        StereoMode aStereoMode = StereoMode::MONO);
 
   DataTextureSourceD3D9(gfx::SurfaceFormat aFormat,
                         gfx::IntSize aSize,
@@ -227,6 +227,7 @@ private:
   gfx::IntSize mSize;
   gfx::SurfaceFormat mFormat;
   bool mIsLocked;
+  bool mNeedsClear;
 };
 
 /**

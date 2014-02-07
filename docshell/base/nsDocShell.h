@@ -287,7 +287,8 @@ protected:
                                bool aIsNewWindowTarget,
                                bool aBypassClassifier,
                                bool aForceAllowCookies,
-                               const nsAString &aSrcdoc);
+                               const nsAString &aSrcdoc,
+                               nsIURI * baseURI);
     NS_IMETHOD AddHeadersToChannel(nsIInputStream * aHeadersData, 
                                   nsIChannel * aChannel);
     virtual nsresult DoChannelLoad(nsIChannel * aChannel,
@@ -666,6 +667,21 @@ protected:
         eFrameTypeBrowser,
         eFrameTypeApp
     };
+
+    static const nsCString FrameTypeToString(FrameType aFrameType)
+    {
+      switch (aFrameType) {
+      case FrameType::eFrameTypeApp:
+        return NS_LITERAL_CSTRING("app");
+      case FrameType::eFrameTypeBrowser:
+        return NS_LITERAL_CSTRING("browser");
+      case FrameType::eFrameTypeRegular:
+        return NS_LITERAL_CSTRING("regular");
+      default:
+        NS_ERROR("Unknown frame type");
+        return EmptyCString();
+      }
+    }
 
     FrameType GetInheritedFrameType();
 

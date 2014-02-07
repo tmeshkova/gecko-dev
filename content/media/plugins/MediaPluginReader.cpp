@@ -73,7 +73,7 @@ nsresult MediaPluginReader::ReadMetadata(MediaInfo* aInfo,
     // that our video frame creation code doesn't overflow.
     nsIntSize displaySize(width, height);
     nsIntSize frameSize(width, height);
-    if (!VideoInfo::ValidateVideoRegion(frameSize, pictureRect, displaySize)) {
+    if (!IsValidVideoRegion(frameSize, pictureRect, displaySize)) {
       return NS_ERROR_FAILURE;
     }
 
@@ -294,32 +294,28 @@ bool MediaPluginReader::DecodeAudioData()
   int64_t pos = mDecoder->GetResource()->Tell();
 
   // Read next frame
-  MPAPI::AudioFrame frame;
-  if (!mPlugin->ReadAudio(mPlugin, &frame, mAudioSeekTimeUs)) {
+  MPAPI::AudioFrame source;
+  if (!mPlugin->ReadAudio(mPlugin, &source, mAudioSeekTimeUs)) {
     return false;
   }
   mAudioSeekTimeUs = -1;
 
   // Ignore empty buffers which stagefright media read will sporadically return
-  if (frame.mSize == 0)
+  if (source.mSize == 0)
     return true;
 
-  nsAutoArrayPtr<AudioDataValue> buffer(new AudioDataValue[frame.mSize/2] );
-  memcpy(buffer.get(), frame.mData, frame.mSize);
+  uint32_t frames = source.mSize / (source.mAudioChannels *
+                                    sizeof(AudioDataValue));
 
-  uint32_t frames = frame.mSize / (2 * frame.mAudioChannels);
-  CheckedInt64 duration = FramesToUsecs(frames, frame.mAudioSampleRate);
-  if (!duration.isValid()) {
-    return false;
-  }
-
-  mAudioQueue.Push(new AudioData(pos,
-                                 frame.mTimeUs,
-                                 duration.value(),
-                                 frames,
-                                 buffer.forget(),
-                                 frame.mAudioChannels));
-  return true;
+  typedef AudioCompactor::NativeCopy MPCopy;
+  return mAudioCompactor.Push(pos,
+                              source.mTimeUs,
+                              source.mAudioSampleRate,
+                              frames,
+                              source.mAudioChannels,
+                              MPCopy(static_cast<uint8_t *>(source.mData),
+                                     source.mSize,
+                                     source.mAudioChannels));
 }
 
 nsresult MediaPluginReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aEndTime, int64_t aCurrentTime)
@@ -373,9 +369,7 @@ uint8_t *
 MediaPluginReader::ImageBufferCallback::CreateI420Image(size_t aWidth,
                                                         size_t aHeight)
 {
-  ImageFormat format = PLANAR_YCBCR;
-
-  mImage = mImageContainer->CreateImage(&format, 1 /* numFormats */);
+  mImage = mImageContainer->CreateImage(ImageFormat::PLANAR_YCBCR);
   PlanarYCbCrImage *yuvImage = static_cast<PlanarYCbCrImage *>(mImage.get());
 
   if (!yuvImage) {

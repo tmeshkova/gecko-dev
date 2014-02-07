@@ -15,8 +15,10 @@
       </vbox>
 
       <footer id="PanelUI-footer">
-        <toolbarbutton id="PanelUI-fxa-status" label="&fxaSignIn.label;"
-                       oncommand="gFxAccounts.toggle(event);"
+        <toolbarbutton id="PanelUI-fxa-status"
+                       defaultlabel="&fxaSignIn.label;"
+                       errorlabel="&fxaSignInError.label;"
+                       oncommand="gFxAccounts.onMenuPanelCommand(event);"
                        hidden="true"/>
 
         <hbox id="PanelUI-footer-inner">
@@ -24,15 +26,18 @@
                          exitLabel="&appMenuCustomizeExit.label;"
                          tooltiptext="&appMenuCustomize.tooltip;"
                          exitTooltiptext="&appMenuCustomizeExit.tooltip;"
+                         closemenu="none"
                          oncommand="gCustomizeMode.toggle();"/>
           <toolbarseparator/>
           <toolbarbutton id="PanelUI-help" label="&helpMenu.label;"
+                         closemenu="none"
                          tooltiptext="&appMenuHelp.tooltip;"
                          oncommand="PanelUI.showHelpView(this.parentNode);"/>
           <toolbarseparator/>
           <toolbarbutton id="PanelUI-quit"
 #ifdef XP_WIN
                          label="&quitApplicationCmdWin.label;"
+                         tooltiptext="&quitApplicationCmdWin.tooltip;"
 #else
 #ifdef XP_MACOSX
                          label="&quitApplicationCmdMac.label;"
@@ -84,8 +89,8 @@
     <panelview id="PanelUI-bookmarks" flex="1" class="PanelUI-subView">
       <label value="&bookmarksMenu.label;" class="panel-subview-header"/>
       <toolbarbutton id="panelMenuBookmarkThisPage"
-                     label="&bookmarkThisPageCmd.label;"
                      class="subviewbutton"
+                     observes="bookmarkThisPageBroadcaster"
                      command="Browser:AddBookmarkAs"
                      onclick="PanelUI.hide();"/>
       <toolbarseparator/>
@@ -147,8 +152,12 @@
     <panelview id="PanelUI-characterEncodingView" flex="1">
       <label value="&charsetMenu.label;" class="panel-subview-header"/>
 
-      <vbox id="PanelUI-characterEncodingView-customlist"
+      <vbox id="PanelUI-characterEncodingView-pinned"
             class="PanelUI-characterEncodingView-list"/>
+      <toolbarseparator/>
+      <vbox id="PanelUI-characterEncodingView-charsets"
+            class="PanelUI-characterEncodingView-list"/>
+      <toolbarseparator/>
       <vbox>
         <label id="PanelUI-characterEncodingView-autodetect-label"/>
         <vbox id="PanelUI-characterEncodingView-autodetect"
@@ -191,6 +200,18 @@
               accesskey="&customizeMenu.addMoreItems.accesskey;"
               label="&customizeMenu.addMoreItems.label;"/>
   </menupopup>
+  <svg:svg height="0">
+    <svg:defs>
+      <svg:linearGradient gradientUnits="objectBoundingBox" id="menuPanelButtonTextFadeOut" x2="0" y2="1">
+        <svg:stop stop-color="white" offset=".66"/>
+        <svg:stop stop-color="rgb(128,128,128)" offset=".72"/>
+        <svg:stop stop-color="black" offset=".9"/>
+      </svg:linearGradient>
+      <svg:mask id="menuPanelButtonTextFadeOutMask" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="100%" height="100%">
+        <svg:rect width="1" height="1" fill="url(#menuPanelButtonTextFadeOut)"/>
+      </svg:mask>
+    </svg:defs>
+  </svg:svg>
 </panel>
 
 <panel id="widget-overflow"

@@ -1049,7 +1049,7 @@
 
             if (!this._previewMode) {
               this.mCurrentTab.removeAttribute("unread");
-              this.selectedTab.lastAccessed = Date.now();
+              oldTab.lastAccessed = Date.now();
 
               let oldFindBar = oldTab._findBar;
               if (oldFindBar &&
@@ -1092,8 +1092,13 @@
             // Focus is suppressed in the event that the main browser window is minimized - focusing a tab would restore the window
             if (!this._previewMode) {
               // We've selected the new tab, so go ahead and notify listeners.
-              let event = document.createEvent("Events");
-              event.initEvent("TabSelect", true, false);
+              let event = new CustomEvent("TabSelect", {
+                bubbles: true,
+                cancelable: false,
+                detail: {
+                  previousTab: oldTab
+                }
+              });
               this.mCurrentTab.dispatchEvent(event);
 
               this._tabAttrModified(oldTab);
@@ -1708,11 +1713,13 @@
           // solve the problem of windows "obscuring" the prompt.
           // see bug #350299 for more details
           window.focus();
+          var warningMessage =
+            PluralForm.get(tabsToClose, bundle.getString("tabs.closeWarningMultiple"))
+                      .replace("#1", tabsToClose);
           var buttonPressed =
             ps.confirmEx(window,
                          bundle.getString("tabs.closeWarningTitle"),
-                         bundle.getFormattedString("tabs.closeWarningMultipleTabs",
-                                                   [tabsToClose]),
+                         warningMessage,
                          (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0)
                          + (ps.BUTTON_TITLE_CANCEL * ps.BUTTON_POS_1),
                          bundle.getString("tabs.closeButtonMultiple"),
@@ -4717,10 +4724,19 @@
         </getter>
       </property>
 
+      <property name="lastAccessed">
+        <getter>
+          return this.selected ? Date.now() : this._lastAccessed;
+        </getter>
+        <setter>
+          this._lastAccessed = val;
+        </setter>
+      </property>
+      <field name="_lastAccessed">0</field>
+
       <field name="mOverCloseButton">false</field>
       <field name="mCorrespondingMenuitem">null</field>
       <field name="closing">false</field>
-      <field name="lastAccessed">0</field>
 
       <method name="_mouseenter">
         <body><![CDATA[

@@ -40,6 +40,7 @@
 #include "js/Vector.h"
 #include "vm/CommonPropertyNames.h"
 #include "vm/DateTime.h"
+#include "vm/MallocProvider.h"
 #include "vm/SPSProfiler.h"
 #include "vm/Stack.h"
 #include "vm/ThreadPool.h"
@@ -83,7 +84,6 @@ class Activation;
 class ActivationIterator;
 class AsmJSActivation;
 class MathCache;
-class WorkerThreadState;
 
 namespace jit {
 class JitRuntime;
@@ -476,15 +476,31 @@ AtomStateOffsetToName(const JSAtomState &atomState, size_t offset)
     return *(js::FixedHeapPtr<js::PropertyName>*)((char*)&atomState + offset);
 }
 
+// There are several coarse locks in the enum below. These may be either
+// per-runtime or per-process. When acquiring more than one of these locks,
+// the acquisition must be done in the order below to avoid deadlocks.
+enum RuntimeLock {
+    ExclusiveAccessLock,
+    WorkerThreadStateLock,
+    CompilationLock,
+    OperationCallbackLock,
+    GCLock
+};
+
+#ifdef DEBUG
+void AssertCurrentThreadCanLock(RuntimeLock which);
+#else
+inline void AssertCurrentThreadCanLock(RuntimeLock which) {}
+#endif
+
 /*
  * Encapsulates portions of the runtime/context that are tied to a
- * single active thread.  Normally, as most JS is single-threaded,
- * there is only one instance of this struct, embedded in the
- * JSRuntime as the field |mainThread|.  During Parallel JS sections,
- * however, there will be one instance per worker thread.
+ * single active thread.  Instances of this structure can occur for
+ * the main thread as |JSRuntime::mainThread|, for select operations
+ * performed off thread, such as parsing, and for Parallel JS worker
+ * threads.
  */
-class PerThreadData : public PerThreadDataFriendFields,
-                      public mozilla::LinkedListElement<PerThreadData>
+class PerThreadData : public PerThreadDataFriendFields
 {
     /*
      * Backpointer to the full shared JSRuntime* with which this
@@ -537,6 +553,7 @@ class PerThreadData : public PerThreadDataFriendFields,
     friend class js::AsmJSActivation;
 #ifdef DEBUG
     friend bool js::CurrentThreadCanReadCompilationData();
+    friend void js::AssertCurrentThreadCanLock(RuntimeLock which);
 #endif
 
     /*
@@ -597,8 +614,6 @@ class PerThreadData : public PerThreadDataFriendFields,
     ~PerThreadData();
 
     bool init();
-    void addToThreadList();
-    void removeFromThreadList();
 
     bool associatedWith(const JSRuntime *rt) { return runtime_ == rt; }
     inline JSRuntime *runtimeFromMainThread();
@@ -608,86 +623,31 @@ class PerThreadData : public PerThreadDataFriendFields,
     inline void addActiveCompilation();
     inline void removeActiveCompilation();
 
+    // For threads which may be associated with different runtimes, depending
+    // on the work they are doing.
+    class AutoEnterRuntime
+    {
+        PerThreadData *pt;
+
+      public:
+        AutoEnterRuntime(PerThreadData *pt, JSRuntime *rt)
+          : pt(pt)
+        {
+            JS_ASSERT(!pt->runtime_);
+            pt->runtime_ = rt;
+        }
+
+        ~AutoEnterRuntime() {
+            pt->runtime_ = nullptr;
+        }
+    };
+
 #ifdef JS_ARM_SIMULATOR
     js::jit::Simulator *simulator() const;
     void setSimulator(js::jit::Simulator *sim);
     js::jit::SimulatorRuntime *simulatorRuntime() const;
     uintptr_t *addressOfSimulatorStackLimit();
 #endif
-};
-
-template<class Client>
-struct MallocProvider
-{
-    void *malloc_(size_t bytes) {
-        Client *client = static_cast<Client *>(this);
-        client->updateMallocCounter(bytes);
-        void *p = js_malloc(bytes);
-        return MOZ_LIKELY(!!p) ? p : client->onOutOfMemory(nullptr, bytes);
-    }
-
-    void *calloc_(size_t bytes) {
-        Client *client = static_cast<Client *>(this);
-        client->updateMallocCounter(bytes);
-        void *p = js_calloc(bytes);
-        return MOZ_LIKELY(!!p) ? p : client->onOutOfMemory(reinterpret_cast<void *>(1), bytes);
-    }
-
-    void *realloc_(void *p, size_t oldBytes, size_t newBytes) {
-        Client *client = static_cast<Client *>(this);
-        /*
-         * For compatibility we do not account for realloc that decreases
-         * previously allocated memory.
-         */
-        if (newBytes > oldBytes)
-            client->updateMallocCounter(newBytes - oldBytes);
-        void *p2 = js_realloc(p, newBytes);
-        return MOZ_LIKELY(!!p2) ? p2 : client->onOutOfMemory(p, newBytes);
-    }
-
-    void *realloc_(void *p, size_t bytes) {
-        Client *client = static_cast<Client *>(this);
-        /*
-         * For compatibility we do not account for realloc that increases
-         * previously allocated memory.
-         */
-        if (!p)
-            client->updateMallocCounter(bytes);
-        void *p2 = js_realloc(p, bytes);
-        return MOZ_LIKELY(!!p2) ? p2 : client->onOutOfMemory(p, bytes);
-    }
-
-    template <class T>
-    T *pod_malloc() {
-        return (T *)malloc_(sizeof(T));
-    }
-
-    template <class T>
-    T *pod_calloc() {
-        return (T *)calloc_(sizeof(T));
-    }
-
-    template <class T>
-    T *pod_malloc(size_t numElems) {
-        if (numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value) {
-            Client *client = static_cast<Client *>(this);
-            client->reportAllocationOverflow();
-            return nullptr;
-        }
-        return (T *)malloc_(numElems * sizeof(T));
-    }
-
-    template <class T>
-    T *pod_calloc(size_t numElems, JSCompartment *comp = nullptr, JSContext *cx = nullptr) {
-        if (numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value) {
-            Client *client = static_cast<Client *>(this);
-            client->reportAllocationOverflow();
-            return nullptr;
-        }
-        return (T *)calloc_(numElems * sizeof(T));
-    }
-
-    JS_DECLARE_NEW_METHODS(new_, malloc_, MOZ_ALWAYS_INLINE)
 };
 
 namespace gc {
@@ -720,12 +680,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::PerThreadData mainThread;
 
     /*
-     * List of per-thread data in the runtime, including mainThread. Currently
-     * this does not include instances of PerThreadData created for PJS.
-     */
-    mozilla::LinkedList<js::PerThreadData> threadList;
-
-    /*
      * If non-zero, we were been asked to call the operation callback as soon
      * as possible.
      */
@@ -741,20 +695,10 @@ struct JSRuntime : public JS::shadow::Runtime,
     /* Branch callback */
     JSOperationCallback operationCallback;
 
-    // There are several per-runtime locks indicated by the enum below. When
-    // acquiring multiple of these locks, the acquisition must be done in the
-    // order below to avoid deadlocks.
-    enum RuntimeLock {
-        ExclusiveAccessLock,
-        WorkerThreadStateLock,
-        CompilationLock,
-        OperationCallbackLock,
-        GCLock
-    };
 #ifdef DEBUG
-    void assertCanLock(RuntimeLock which);
+    void assertCanLock(js::RuntimeLock which);
 #else
-    void assertCanLock(RuntimeLock which) {}
+    void assertCanLock(js::RuntimeLock which) {}
 #endif
 
   private:
@@ -775,7 +719,7 @@ struct JSRuntime : public JS::shadow::Runtime,
       public:
         AutoLockForOperationCallback(JSRuntime *rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM) : rt(rt) {
             MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-            rt->assertCanLock(JSRuntime::OperationCallbackLock);
+            rt->assertCanLock(js::OperationCallbackLock);
 #ifdef JS_THREADSAFE
             PR_Lock(rt->operationCallbackLock);
             rt->operationCallbackOwner = PR_GetCurrentThread();
@@ -805,8 +749,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     }
 
 #ifdef JS_THREADSAFE
-
-    js::WorkerThreadState *workerThreadState;
 
   private:
     /*
@@ -1457,7 +1399,7 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     void lockGC() {
 #ifdef JS_THREADSAFE
-        assertCanLock(GCLock);
+        assertCanLock(js::GCLock);
         PR_Lock(gcLock);
         JS_ASSERT(!gcLockOwner);
 #ifdef DEBUG
@@ -1790,7 +1732,6 @@ struct JSRuntime : public JS::shadow::Runtime,
   private:
 
     JSUseHelperThreads useHelperThreads_;
-    unsigned cpuCount_;
 
     // Settings for how helper threads can be used.
     bool parallelIonCompilationEnabled_;
@@ -1812,39 +1753,14 @@ struct JSRuntime : public JS::shadow::Runtime,
 #endif
     }
 
-    // This allows the JS shell to override GetCPUCount() when passed the
-    // --thread-count=N option.
-    void setFakeCPUCount(size_t count) {
-        cpuCount_ = count;
-    }
-
-    // Return a cached value of GetCPUCount() to avoid making the syscall all
-    // the time. Furthermore, this avoids pathological cases where the result of
-    // GetCPUCount() changes during execution.
-    unsigned cpuCount() const {
-        JS_ASSERT(cpuCount_ > 0);
-        return cpuCount_;
-    }
-
-    // The number of worker threads that will be available after
-    // EnsureWorkerThreadsInitialized has been called successfully.
-    unsigned workerThreadCount() const {
-        if (!useHelperThreads())
-            return 0;
-        return js::Max(2u, cpuCount());
-    }
-
     // Note: these values may be toggled dynamically (in response to about:config
     // prefs changing).
     void setParallelIonCompilationEnabled(bool value) {
         parallelIonCompilationEnabled_ = value;
     }
     bool canUseParallelIonCompilation() const {
-        // Require cpuCount_ > 1 so that Ion compilation jobs and main-thread
-        // execution are not competing for the same resources.
         return useHelperThreads() &&
-               parallelIonCompilationEnabled_ &&
-               cpuCount_ > 1;
+               parallelIonCompilationEnabled_;
     }
     void setParallelParsingEnabled(bool value) {
         parallelParsingEnabled_ = value;

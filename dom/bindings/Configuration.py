@@ -368,17 +368,11 @@ class Descriptor(DescriptorProvider):
             raise TypeError("Descriptor for %s has unrecognized value (%s) "
                             "for nativeOwnership" %
                             (self.interface.identifier.name, self.nativeOwnership))
-        self.customFinalize = desc.get('customFinalize', False)
-        self.customWrapperManagement = desc.get('customWrapperManagement', False)
         if desc.get('wantsQI', None) != None:
             self._wantsQI = desc.get('wantsQI', None)
         self.wrapperCache = (not self.interface.isCallback() and
                              (self.nativeOwnership != 'owned' and
                               desc.get('wrapperCache', True)))
-        if self.customWrapperManagement and not self.wrapperCache:
-            raise TypeError("Descriptor for %s has customWrapperManagement "
-                            "but is not wrapperCached." %
-                            (self.interface.identifier.name))
 
         def make_name(name):
             return name + "_workers" if self.workers else name
@@ -489,10 +483,29 @@ class Descriptor(DescriptorProvider):
         static methods or attributes.
         """
         return (self.interface.isExternal() or self.concrete or
-            self.interface.getExtendedAttribute("PrefControlled") or
             self.interface.hasInterfacePrototypeObject() or
             any((m.isAttr() or m.isMethod()) and m.isStatic() for m
                 in self.interface.members))
+
+    def isExposedConditionally(self):
+        return (self.interface.getExtendedAttribute("Pref") or
+                self.interface.getExtendedAttribute("ChromeOnly") or
+                self.interface.getExtendedAttribute("Func") or
+                self.interface.getExtendedAttribute("AvailableIn"))
+
+    def needsXrayResolveHooks(self):
+        """
+        Generally, any interface with NeedNewResolve needs Xray
+        resolveOwnProperty and enumerateOwnProperties hooks.  But for
+        the special case of plugin-loading elements, we do NOT want
+        those, because we don't want to instantiate plug-ins simply
+        due to chrome touching them and that's all those hooks do on
+        those elements.  So we special-case those here.
+        """
+        return (self.interface.getExtendedAttribute("NeedNewResolve") and
+                self.interface.identifier.name not in ["HTMLObjectElement",
+                                                       "HTMLEmbedElement",
+                                                       "HTMLAppletElement"])
 
 # Some utility methods
 def getTypesFromDescriptor(descriptor):

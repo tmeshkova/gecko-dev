@@ -36,10 +36,7 @@ let CustomizationHandler = {
     let cmd = document.getElementById("cmd_CustomizeToolbars");
     cmd.setAttribute("disabled", "true");
 
-    let splitter = document.getElementById("urlbar-search-splitter");
-    if (splitter) {
-      splitter.parentNode.removeChild(splitter);
-    }
+    UpdateUrlbarSearchSplitterState();
 
     CombinedStopReload.uninit();
     CombinedBackForward.uninit();
@@ -100,7 +97,6 @@ let CustomizationHandler = {
     if (gURLBar) {
       URLBarSetURI();
       XULBrowserWindow.asyncUpdateUI();
-      BookmarkingUI.updateStarState();
     }
 
     // Re-enable parts of the UI we disabled during the dialog

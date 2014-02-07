@@ -512,7 +512,7 @@ HandleExceptionBaseline(JSContext *cx, const IonFrameIterator &frame, ResumeFrom
 
         // Unwind scope chain (pop block objects).
         if (cx->isExceptionPending())
-            UnwindScope(cx, si, tn->stackDepth);
+            UnwindScope(cx, si, script->main() + tn->start);
 
         // Compute base pointer and stack pointer.
         rfe->framePointer = frame.fp() - BaselineFrame::FramePointerOffset;
@@ -688,15 +688,15 @@ HandleException(ResumeFromException *rfe)
 void
 HandleParallelFailure(ResumeFromException *rfe)
 {
-    ForkJoinSlice *slice = ForkJoinSlice::current();
-    IonFrameIterator iter(slice->perThreadData->ionTop, ParallelExecution);
+    ForkJoinContext *cx = ForkJoinContext::current();
+    IonFrameIterator iter(cx->perThreadData->ionTop, ParallelExecution);
 
     parallel::Spew(parallel::SpewBailouts, "Bailing from VM reentry");
 
     while (!iter.isEntry()) {
         if (iter.isScripted()) {
-            slice->bailoutRecord->updateCause(ParallelBailoutUnsupportedVM,
-                                              iter.script(), iter.script(), nullptr);
+            cx->bailoutRecord->updateCause(ParallelBailoutUnsupportedVM,
+                                           iter.script(), iter.script(), nullptr);
             break;
         }
         ++iter;

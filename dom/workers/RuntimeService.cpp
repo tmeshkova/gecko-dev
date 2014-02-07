@@ -142,7 +142,6 @@ static_assert(MAX_WORKERS_PER_DOMAIN >= 1,
 #define PREF_DOM_WINDOW_DUMP_ENABLED "browser.dom.window.dump.enabled"
 #endif
 
-#define PREF_PROMISE_ENABLED "dom.promise.enabled"
 #define PREF_WORKERS_LATEST_JS_VERSION "dom.workers.latestJSVersion"
 
 namespace {
@@ -185,7 +184,7 @@ const char* gStringChars[] = {
   // thread.
 };
 
-static_assert(NS_ARRAY_LENGTH(gStringChars) == ID_COUNT,
+static_assert(MOZ_ARRAY_LENGTH(gStringChars) == ID_COUNT,
               "gStringChars should have the right length.");
 
 class LiteralRebindingCString : public nsDependentCString
@@ -274,6 +273,30 @@ GetWorkerPref(const nsACString& aPref,
   }
 
   return result;
+}
+
+// This function creates a key for a SharedWorker composed by "name|scriptSpec".
+// If the name contains a '|', this will be replaced by '||'.
+void
+GenerateSharedWorkerKey(const nsACString& aScriptSpec, const nsACString& aName,
+                        nsCString& aKey)
+{
+  aKey.Truncate();
+  aKey.SetCapacity(aScriptSpec.Length() + aName.Length() + 1);
+
+  nsACString::const_iterator start, end;
+  aName.BeginReading(start);
+  aName.EndReading(end);
+  for (; start != end; ++start) {
+    if (*start == '|') {
+      aKey.AppendASCII("||");
+    } else {
+      aKey.Append(*start);
+    }
+  }
+
+  aKey.Append('|');
+  aKey.Append(aScriptSpec);
 }
 
 void
@@ -1258,7 +1281,7 @@ RuntimeService::RegisterWorker(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
 
   bool isSharedWorker = aWorkerPrivate->IsSharedWorker();
 
-  const nsString& sharedWorkerName = aWorkerPrivate->SharedWorkerName();
+  const nsCString& sharedWorkerName = aWorkerPrivate->SharedWorkerName();
   nsCString sharedWorkerScriptSpec;
 
   if (isSharedWorker) {
@@ -1307,13 +1330,14 @@ RuntimeService::RegisterWorker(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
     }
 
     if (isSharedWorker) {
-      MOZ_ASSERT(!domainInfo->mSharedWorkerInfos.Get(sharedWorkerScriptSpec));
+      nsAutoCString key;
+      GenerateSharedWorkerKey(sharedWorkerScriptSpec, sharedWorkerName, key);
+      MOZ_ASSERT(!domainInfo->mSharedWorkerInfos.Get(key));
 
       SharedWorkerInfo* sharedWorkerInfo =
         new SharedWorkerInfo(aWorkerPrivate, sharedWorkerScriptSpec,
                              sharedWorkerName);
-      domainInfo->mSharedWorkerInfos.Put(sharedWorkerScriptSpec,
-                                         sharedWorkerInfo);
+      domainInfo->mSharedWorkerInfos.Put(key, sharedWorkerInfo);
     }
   }
 
@@ -1403,8 +1427,10 @@ RuntimeService::UnregisterWorker(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
                                                    &match);
 
       if (match.mSharedWorkerInfo) {
-        domainInfo->mSharedWorkerInfos.Remove(
-          match.mSharedWorkerInfo->mScriptSpec);
+        nsAutoCString key;
+        GenerateSharedWorkerKey(match.mSharedWorkerInfo->mScriptSpec,
+                                match.mSharedWorkerInfo->mName, key);
+        domainInfo->mSharedWorkerInfos.Remove(key);
       }
     }
 
@@ -1664,10 +1690,6 @@ RuntimeService::Init()
                                   PREF_DOM_WINDOW_DUMP_ENABLED,
                                   reinterpret_cast<void *>(WORKERPREF_DUMP))) ||
 #endif
-      NS_FAILED(Preferences::RegisterCallbackAndCall(
-                               WorkerPrefChanged,
-                               PREF_PROMISE_ENABLED,
-                               reinterpret_cast<void *>(WORKERPREF_PROMISE))) ||
       NS_FAILED(Preferences::RegisterCallback(LoadJSContextOptions,
                                               PREF_JS_OPTIONS_PREFIX,
                                               nullptr)) ||
@@ -1827,10 +1849,6 @@ RuntimeService::Cleanup()
         NS_FAILED(Preferences::UnregisterCallback(LoadJSContextOptions,
                                                   PREF_WORKERS_OPTIONS_PREFIX,
                                                   nullptr)) ||
-        NS_FAILED(Preferences::UnregisterCallback(
-                               WorkerPrefChanged,
-                               PREF_PROMISE_ENABLED,
-                               reinterpret_cast<void *>(WORKERPREF_PROMISE))) ||
 #if DUMP_CONTROLLED_BY_PREF
         NS_FAILED(Preferences::UnregisterCallback(
                                   WorkerPrefChanged,
@@ -2060,7 +2078,7 @@ RuntimeService::ResumeWorkersForWindow(nsPIDOMWindow* aWindow)
 nsresult
 RuntimeService::CreateSharedWorker(const GlobalObject& aGlobal,
                                    const nsAString& aScriptURL,
-                                   const nsAString& aName,
+                                   const nsACString& aName,
                                    SharedWorker** aSharedWorker)
 {
   AssertIsOnMainThread();
@@ -2088,9 +2106,11 @@ RuntimeService::CreateSharedWorker(const GlobalObject& aGlobal,
     WorkerDomainInfo* domainInfo;
     SharedWorkerInfo* sharedWorkerInfo;
 
+    nsAutoCString key;
+    GenerateSharedWorkerKey(scriptSpec, aName, key);
+
     if (mDomainMap.Get(loadInfo.mDomain, &domainInfo) &&
-        domainInfo->mSharedWorkerInfos.Get(scriptSpec, &sharedWorkerInfo) &&
-        sharedWorkerInfo->mName == aName) {
+        domainInfo->mSharedWorkerInfos.Get(key, &sharedWorkerInfo)) {
       workerPrivate = sharedWorkerInfo->mWorkerPrivate;
     }
   }
@@ -2153,8 +2173,10 @@ RuntimeService::ForgetSharedWorker(WorkerPrivate* aWorkerPrivate)
                                                  &match);
 
     if (match.mSharedWorkerInfo) {
-      domainInfo->mSharedWorkerInfos.Remove(
-        match.mSharedWorkerInfo->mScriptSpec);
+      nsAutoCString key;
+      GenerateSharedWorkerKey(match.mSharedWorkerInfo->mScriptSpec,
+                              match.mSharedWorkerInfo->mName, key);
+      domainInfo->mSharedWorkerInfos.Remove(key);
     }
   }
 }
@@ -2302,16 +2324,13 @@ RuntimeService::WorkerPrefChanged(const char* aPrefName, void* aClosure)
   MOZ_ASSERT(tmp < WORKERPREF_COUNT);
   WorkerPreference key = static_cast<WorkerPreference>(tmp);
 
-  if (key == WORKERPREF_PROMISE) {
-    sDefaultPreferences[WORKERPREF_PROMISE] =
-      Preferences::GetBool(PREF_PROMISE_ENABLED, false);
 #ifdef DUMP_CONTROLLED_BY_PREF
-  } else if (key == WORKERPREF_DUMP) {
+  if (key == WORKERPREF_DUMP) {
     key = WORKERPREF_DUMP;
     sDefaultPreferences[WORKERPREF_DUMP] =
       Preferences::GetBool(PREF_DOM_WINDOW_DUMP_ENABLED, false);
-#endif
   }
+#endif
 
   // This function should never be registered as a callback for a preference it
   // does not handle.

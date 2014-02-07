@@ -15,8 +15,65 @@ if CONFIG['OS_ARCH'] == 'WINNT':
         'nsDllMain.cpp',
     ]
 
+# component libraries
+additional_defines = (
+    'MOZ_AUTH_EXTENSION',
+    'MOZ_GIO_COMPONENT',
+    'MOZ_JSDEBUGGER',
+    'MOZ_PERMISSIONS',
+    'MOZ_PREF_EXTENSIONS',
+    'MOZ_SPELLCHECK',
+    'MOZ_UNIVERSALCHARDET',
+    'MOZ_ZIPWRITER',
+)
+
+for var in additional_defines:
+    if CONFIG[var]:
+        DEFINES[var] = True
+
+if CONFIG['MOZ_DEBUG'] and CONFIG['ENABLE_TESTS']:
+    DEFINES['ENABLE_LAYOUTDEBUG'] = True
+
+if CONFIG['MOZ_WIDGET_TOOLKIT'] not in ('android', 'gonk', 'qt', 'os2',
+                                        'cocoa', 'windows') and \
+   CONFIG['MOZ_XUL']:
+    DEFINES['MOZ_FILEVIEW'] = True
+
+# Platform-specific icon channel stuff - supported mostly-everywhere
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'os2', 'mac', 'cocoa',
+                                    'gtk2', 'gtk3', 'qt', 'android'):
+    DEFINES['ICON_DECODER'] = True
+
 FAIL_ON_WARNINGS = True
 
 MSVC_ENABLE_PGO = True
 
 FORCE_SHARED_LIB = True
+
+DELAYLOAD_DLLS += [
+    'comdlg32.dll',
+    'dbghelp.dll',
+    'psapi.dll',
+    'rasapi32.dll',
+    'rasdlg.dll',
+    'secur32.dll',
+    'wininet.dll',
+    'winspool.drv'
+]
+
+if CONFIG['MOZ_METRO']:
+    if CONFIG['MOZ_DEBUG']:
+        DELAYLOAD_DLLS += ['VCCORLIB' + CONFIG['CRTDLLVERSION'] + 'D.DLL']
+    else:
+        DELAYLOAD_DLLS += ['VCCORLIB' + CONFIG['CRTDLLVERSION'] + '.DLL']
+    DELAYLOAD_DLLS += [
+        'API-MS-WIN-CORE-WINRT-L' + CONFIG['CRTEXPDLLVERSION'] + '.DLL',
+        'API-MS-WIN-CORE-WINRT-STRING-L' + CONFIG['CRTEXPDLLVERSION'] + '.DLL',
+        'uiautomationcore.dll'
+    ]
+
+if CONFIG['ACCESSIBILITY']:
+    DELAYLOAD_DLLS += ['oleacc.dll']
+
+if CONFIG['MOZ_WEBRTC']:
+    DELAYLOAD_DLLS += ['msdmo.dll']

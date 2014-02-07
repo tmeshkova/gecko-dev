@@ -183,6 +183,30 @@ class NS_ConvertUTF8toUTF16 : public nsAutoString
   };
 
 
+#ifdef MOZ_USE_CHAR16_WRAPPER
+
+inline char16_t*
+wwc(wchar_t *str)
+{
+    return reinterpret_cast<char16_t*>(str);
+}
+
+inline wchar_t*
+wwc(char16_t *str)
+{
+    return reinterpret_cast<wchar_t*>(str);
+}
+
+#else
+
+inline char16_t*
+wwc(char16_t *str)
+{
+    return str;
+}
+
+#endif
+
 // the following are included/declared for backwards compatibility
 typedef nsAutoString nsVoidableString;
 
@@ -203,16 +227,6 @@ typedef nsAutoString nsVoidableString;
 #include <string.h>
 #include <stdio.h>
 #include "plhash.h"
-
-inline int32_t MinInt(int32_t x, int32_t y)
-  {
-    return XPCOM_MIN(x, y);
-  }
-
-inline int32_t MaxInt(int32_t x, int32_t y)
-  {
-    return XPCOM_MAX(x, y);
-  }
 
 /**
  * Deprecated: don't use |Recycle|, just call |nsMemory::Free| directly

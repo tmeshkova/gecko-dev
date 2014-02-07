@@ -18,7 +18,9 @@
 #include "AccessCheck.h"
 #include "jsfriendapi.h"
 #include "js/OldDebugAPI.h"
+#include "nsContentUtils.h"
 #include "nsIDOMGlobalPropertyInitializer.h"
+#include "nsIPrincipal.h"
 #include "nsIXPConnect.h"
 #include "WrapperFactory.h"
 #include "xpcprivate.h"
@@ -1498,9 +1500,9 @@ GetXrayExpandoChain(JSObject* obj)
 {
   const js::Class* clasp = js::GetObjectClass(obj);
   JS::Value v;
-  if (IsDOMClass(clasp) || IsDOMIfaceAndProtoClass(clasp)) {
+  if (IsNonProxyDOMClass(clasp) || IsDOMIfaceAndProtoClass(clasp)) {
     v = js::GetReservedSlot(obj, DOM_XRAY_EXPANDO_SLOT);
-  } else if (js::IsProxyClass(clasp)) {
+  } else if (clasp->isProxy()) {
     MOZ_ASSERT(js::GetProxyHandler(obj)->family() == ProxyFamily());
     v = js::GetProxyExtra(obj, JSPROXYSLOT_XRAY_EXPANDO);
   } else {
@@ -1515,9 +1517,9 @@ SetXrayExpandoChain(JSObject* obj, JSObject* chain)
 {
   JS::Value v = chain ? JS::ObjectValue(*chain) : JSVAL_VOID;
   const js::Class* clasp = js::GetObjectClass(obj);
-  if (IsDOMClass(clasp) || IsDOMIfaceAndProtoClass(clasp)) {
+  if (IsNonProxyDOMClass(clasp) || IsDOMIfaceAndProtoClass(clasp)) {
     js::SetReservedSlot(obj, DOM_XRAY_EXPANDO_SLOT, v);
-  } else if (js::IsProxyClass(clasp)) {
+  } else if (clasp->isProxy()) {
     MOZ_ASSERT(js::GetProxyHandler(obj)->family() == ProxyFamily());
     js::SetProxyExtra(obj, JSPROXYSLOT_XRAY_EXPANDO, v);
   } else {
@@ -1527,9 +1529,9 @@ SetXrayExpandoChain(JSObject* obj, JSObject* chain)
 }
 
 bool
-MainThreadDictionaryBase::ParseJSON(JSContext *aCx,
-                                    const nsAString& aJSON,
-                                    JS::MutableHandle<JS::Value> aVal)
+DictionaryBase::ParseJSON(JSContext* aCx,
+                          const nsAString& aJSON,
+                          JS::MutableHandle<JS::Value> aVal)
 {
   if (aJSON.IsEmpty()) {
     return true;
@@ -1596,22 +1598,18 @@ NativeToString(JSContext* cx, JS::Handle<JSObject*> wrapper,
         str = nullptr;
       }
     } else {
-      if (IsDOMProxy(obj)) {
-        str = JS_BasicObjectToString(cx, obj);
+      const js::Class* clasp = js::GetObjectClass(obj);
+      if (IsDOMClass(clasp)) {
+        str = JS_NewStringCopyZ(cx, clasp->name);
+        str = ConcatJSString(cx, "[object ", str, "]");
+      } else if (IsDOMIfaceAndProtoClass(clasp)) {
+        const DOMIfaceAndProtoJSClass* ifaceAndProtoJSClass =
+          DOMIfaceAndProtoJSClass::FromJSClass(clasp);
+        str = JS_NewStringCopyZ(cx, ifaceAndProtoJSClass->mToString);
       } else {
-        const js::Class* clasp = js::GetObjectClass(obj);
-        if (IsDOMClass(clasp)) {
-          str = JS_NewStringCopyZ(cx, clasp->name);
-          str = ConcatJSString(cx, "[object ", str, "]");
-        } else if (IsDOMIfaceAndProtoClass(clasp)) {
-          const DOMIfaceAndProtoJSClass* ifaceAndProtoJSClass =
-            DOMIfaceAndProtoJSClass::FromJSClass(clasp);
-          str = JS_NewStringCopyZ(cx, ifaceAndProtoJSClass->mToString);
-        } else {
-          MOZ_ASSERT(JS_IsNativeFunction(obj, Constructor));
-          JS::Rooted<JSFunction*> fun(cx, JS_GetObjectFunction(obj));
-          str = JS_DecompileFunction(cx, fun, 0);
-        }
+        MOZ_ASSERT(JS_IsNativeFunction(obj, Constructor));
+        JS::Rooted<JSFunction*> fun(cx, JS_GetObjectFunction(obj));
+        str = JS_DecompileFunction(cx, fun, 0);
       }
       str = ConcatJSString(cx, pre, str, post);
     }
@@ -1890,7 +1888,7 @@ InterfaceHasInstance(JSContext* cx, JS::Handle<JSObject*> obj,
   JS::Rooted<JSObject*> unwrapped(cx, js::CheckedUnwrap(instance, true));
   if (unwrapped && jsipc::JavaScriptParent::IsCPOW(unwrapped)) {
     bool boolp = false;
-    if (!jsipc::JavaScriptParent::DOMInstanceOf(unwrapped, clasp->mPrototypeID,
+    if (!jsipc::JavaScriptParent::DOMInstanceOf(cx, unwrapped, clasp->mPrototypeID,
                                                 clasp->mDepth, &boolp)) {
       return false;
     }
@@ -2145,11 +2143,29 @@ ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
 }
 
 bool
-ThreadsafeCheckIsChrome(JSContext* aCx, JSObject* aObj)
+IsInPrivilegedApp(JSContext* aCx, JSObject* aObj)
 {
   using mozilla::dom::workers::GetWorkerPrivateFromContext;
-  return NS_IsMainThread() ? xpc::AccessCheck::isChrome(aObj):
-                             GetWorkerPrivateFromContext(aCx)->UsesSystemPrincipal();
+  if (!NS_IsMainThread()) {
+    return GetWorkerPrivateFromContext(aCx)->IsInPrivilegedApp();
+  }
+
+  nsIPrincipal* principal = nsContentUtils::GetObjectPrincipal(aObj);
+  uint16_t appStatus = principal->GetAppStatus();
+  return (appStatus == nsIPrincipal::APP_STATUS_CERTIFIED ||
+          appStatus == nsIPrincipal::APP_STATUS_PRIVILEGED);
+}
+
+bool
+IsInCertifiedApp(JSContext* aCx, JSObject* aObj)
+{
+  using mozilla::dom::workers::GetWorkerPrivateFromContext;
+  if (!NS_IsMainThread()) {
+    return GetWorkerPrivateFromContext(aCx)->IsInCertifiedApp();
+  }
+
+  nsIPrincipal* principal = nsContentUtils::GetObjectPrincipal(aObj);
+  return principal->GetAppStatus() == nsIPrincipal::APP_STATUS_CERTIFIED;
 }
 
 void
