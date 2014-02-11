@@ -402,6 +402,7 @@ private:
 NS_IMPL_ISUPPORTS1(ICUReporter, nsIMemoryReporter)
 
 /* static */ Atomic<size_t> ICUReporter::sAmount;
+static bool sICUReporterInititialized = false;
 
 EXPORT_XPCOM_API(nsresult)
 NS_InitXPCOM2(nsIServiceManager* *result,
@@ -554,10 +555,7 @@ NS_InitXPCOM2(nsIServiceManager* *result,
     // can't define the alloc/free functions in the JS engine, because it can't
     // depend on the XPCOM-based memory reporting goop.  So for now, we have
     // this oddness.
-    if (!JS_SetICUMemoryFunctions(ICUReporter::Alloc, ICUReporter::Realloc,
-                                  ICUReporter::Free)) {
-        NS_RUNTIMEABORT("JS_SetICUMemoryFunctions failed.");
-    }
+    mozilla::SetICUMemoryFunctions();
 
     // Initialize the JS engine.
     if (!JS_Init()) {
@@ -657,6 +655,17 @@ NS_ShutdownXPCOM(nsIServiceManager* servMgr)
 }
 
 namespace mozilla {
+
+void
+SetICUMemoryFunctions()
+{
+    if (!sICUReporterInititialized &&
+        !JS_SetICUMemoryFunctions(ICUReporter::Alloc, ICUReporter::Realloc,
+                                  ICUReporter::Free)) {
+        NS_RUNTIMEABORT("JS_SetICUMemoryFunctions failed.");
+    }
+    sICUReporterInititialized = true;
+}
 
 nsresult
 ShutdownXPCOM(nsIServiceManager* servMgr)

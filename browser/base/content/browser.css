@@ -249,6 +249,11 @@ toolbarpaletteitem > toolbaritem[sdkstylewidget="true"] > iframe {
   display: none;
 }
 
+toolbarpaletteitem[removable="false"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
 #bookmarks-toolbar-placeholder,
 toolbarpaletteitem > #personal-bookmarks > #PlacesToolbar,
 #personal-bookmarks[cui-areatype="menu-panel"] > #PlacesToolbar,
@@ -275,10 +280,6 @@ toolbarpaletteitem > #personal-bookmarks > #bookmarks-toolbar-placeholder,
   direction: rtl;
 }
 
-#panelMenu_bookmarksMenu {
-  overflow-x: hidden;
-  overflow-y: auto;
-}
 #panelMenu_bookmarksMenu > .bookmark-item {
   max-width: none;
 }
@@ -755,14 +756,6 @@ toolbarpaletteitem[place="palette"] > toolbarbutton[type="badged"] > .toolbarbut
   max-height: 32px;
 }
 
-toolbarbutton[sdk-button="true"] > .toolbarbutton-icon {
-  max-height: 32px;
-}
-
-toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
-  max-height: 18px;
-}
-
 panelview > .social-panel-frame {
   width: auto;
   height: auto;
@@ -897,14 +890,14 @@ chatbox:-moz-full-screen-ancestor > .chat-titlebar {
 }
 
 /* Customize mode */
-#navigator-toolbox > toolbar:not(#TabsToolbar),
+#navigator-toolbox > toolbar,
 #content-deck {
   transition-property: margin-left, margin-right;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
 }
 
-#tab-view-deck[fastcustomizeanimation] #navigator-toolbox > toolbar:not(#TabsToolbar),
+#tab-view-deck[fastcustomizeanimation] #navigator-toolbox > toolbar,
 #tab-view-deck[fastcustomizeanimation] #content-deck {
   transition-duration: 1ms;
   transition-timing-function: linear;

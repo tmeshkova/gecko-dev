@@ -407,7 +407,8 @@ this.UITour = {
 
   teardownTour: function(aWindow, aWindowClosing = false) {
     aWindow.gBrowser.tabContainer.removeEventListener("TabSelect", this);
-    aWindow.PanelUI.panel.removeEventListener("popuphiding", this.onAppMenuHiding);
+    aWindow.PanelUI.panel.removeEventListener("popuphiding", this.hidePanelAnnotations);
+    aWindow.PanelUI.panel.removeEventListener("ViewShowing", this.hidePanelAnnotations);
     aWindow.removeEventListener("SSWindowClosing", this);
 
     let originTabs = this.originTabs.get(aWindow);
@@ -421,6 +422,7 @@ this.UITour = {
       this.hideHighlight(aWindow);
       this.hideInfo(aWindow);
       aWindow.PanelUI.panel.removeAttribute("noautohide");
+      this.recreatePopup(aWindow.PanelUI.panel);
     }
 
     this.endUrlbarCapture(aWindow);
@@ -821,7 +823,12 @@ this.UITour = {
 
     if (aMenuName == "appMenu") {
       aWindow.PanelUI.panel.setAttribute("noautohide", "true");
-      aWindow.PanelUI.panel.addEventListener("popuphiding", this.onAppMenuHiding);
+      // If the popup is already opened, don't recreate the widget as it may cause a flicker.
+      if (aWindow.PanelUI.panel.state != "open") {
+        this.recreatePopup(aWindow.PanelUI.panel);
+      }
+      aWindow.PanelUI.panel.addEventListener("popuphiding", this.hidePanelAnnotations);
+      aWindow.PanelUI.panel.addEventListener("ViewShowing", this.hidePanelAnnotations);
       if (aOpenCallback) {
         aWindow.PanelUI.panel.addEventListener("popupshown", onPopupShown);
       }
@@ -841,12 +848,13 @@ this.UITour = {
     if (aMenuName == "appMenu") {
       aWindow.PanelUI.panel.removeAttribute("noautohide");
       aWindow.PanelUI.hide();
+      this.recreatePopup(aWindow.PanelUI.panel);
     } else if (aMenuName == "bookmarks") {
       closeMenuButton("bookmarks-menu-button");
     }
   },
 
-  onAppMenuHiding: function(aEvent) {
+  hidePanelAnnotations: function(aEvent) {
     let win = aEvent.target.ownerDocument.defaultView;
     let annotationElements = new Map([
       // [annotationElement (panel), method to hide the annotation]
@@ -869,6 +877,14 @@ this.UITour = {
       }
     });
     UITour.appMenuOpenForAnnotation.clear();
+  },
+
+  recreatePopup: function(aPanel) {
+    // After changing popup attributes that relate to how the native widget is created
+    // (e.g. @noautohide) we need to re-create the frame/widget for it to take effect.
+    aPanel.hidden = true;
+    aPanel.clientWidth; // flush
+    aPanel.hidden = false;
   },
 
   startUrlbarCapture: function(aWindow, aExpectedText, aUrl) {

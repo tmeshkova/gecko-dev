@@ -333,6 +333,8 @@ public:
    */
   bool HasScrollgrab() const { return mFrameMetrics.mHasScrollgrab; }
 
+  void FlushRepaintForOverscrollHandoff();
+
 protected:
   /**
    * Helper method for touches beginning. Sets everything up for panning and any
@@ -505,6 +507,15 @@ protected:
    * layers code.
    */
   const FrameMetrics& GetFrameMetrics();
+
+  /**
+   * Sets the timer for content response to a series of touch events, if it
+   * hasn't been already. This is to prevent us from batching up touch events
+   * indefinitely in the case that content doesn't respond with whether or not
+   * it wants to preventDefault. When the timer is fired, the touch event queue
+   * will be flushed.
+   */
+  void SetContentResponseTimer();
 
   /**
    * Timeout function for content response. This should be called on a timer
