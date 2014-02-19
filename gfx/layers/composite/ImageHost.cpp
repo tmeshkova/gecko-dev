@@ -42,6 +42,16 @@ ImageHost::UseTextureHost(TextureHost* aTexture)
   mFrontBuffer = aTexture;
 }
 
+void
+ImageHost::RemoveTextureHost(TextureHost* aTexture)
+{
+  CompositableHost::RemoveTextureHost(aTexture);
+  if (aTexture && mFrontBuffer == aTexture) {
+    aTexture->SetCompositableBackendSpecificData(nullptr);
+    mFrontBuffer = nullptr;
+  }
+}
+
 TextureHost*
 ImageHost::GetAsTextureHost()
 {
@@ -69,6 +79,7 @@ ImageHost::Composite(EffectChain& aEffectChain,
 
   // Make sure the front buffer has a compositor
   mFrontBuffer->SetCompositor(GetCompositor());
+  mFrontBuffer->SetCompositableBackendSpecificData(GetCompositableBackendSpecificData());
 
   AutoLockTextureHost autoLock(mFrontBuffer);
   if (autoLock.Failed()) {

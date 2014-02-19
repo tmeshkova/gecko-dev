@@ -287,30 +287,6 @@ nsJSEnvironmentObserver::Observe(nsISupports* aSubject, const char* aTopic,
   return NS_OK;
 }
 
-class nsRootedJSValueArray {
-public:
-  explicit nsRootedJSValueArray(JSContext *cx) : avr(cx, vals.Length(), vals.Elements()) {}
-
-  void SetCapacity(JSContext *cx, size_t capacity) {
-    vals.SetCapacity(capacity);
-    // Values must be safe for the GC to inspect (they must not contain garbage).
-    memset(vals.Elements(), 0, vals.Capacity() * sizeof(JS::Value));
-    resetRooter(cx);
-  }
-
-  JS::Value *Elements() {
-    return vals.Elements();
-  }
-
-private:
-  void resetRooter(JSContext *cx) {
-    avr.changeArray(vals.Elements(), vals.Length());
-  }
-
-  nsAutoTArray<JS::Value, 16> vals;
-  JS::AutoArrayRooter avr;
-};
-
 /****************************************************************
  ************************** AutoFree ****************************
  ****************************************************************/
@@ -1175,59 +1151,56 @@ nsJSContext::InitializeExternalClasses()
 nsresult
 nsJSContext::SetProperty(JS::Handle<JSObject*> aTarget, const char* aPropName, nsISupports* aArgs)
 {
-  uint32_t  argc;
-  JS::Value *argv = nullptr;
-
   nsCxPusher pusher;
   pusher.Push(mContext);
 
-  Maybe<nsRootedJSValueArray> tempStorage;
+  JS::AutoValueVector args(mContext);
 
   JS::Rooted<JSObject*> global(mContext, GetWindowProxy());
   nsresult rv =
-    ConvertSupportsTojsvals(aArgs, global, &argc, &argv, tempStorage);
+    ConvertSupportsTojsvals(aArgs, global, args);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  JS::AutoArrayRooter array(mContext, argc, argv);
 
   // got the arguments, now attach them.
 
-  for (uint32_t i = 0; i < argc; ++i) {
-    if (!JS_WrapValue(mContext, array.handleAt(i))) {
+  for (uint32_t i = 0; i < args.length(); ++i) {
+    if (!JS_WrapValue(mContext, args.handleAt(i))) {
       return NS_ERROR_FAILURE;
     }
   }
 
-  JSObject *args = ::JS_NewArrayObject(mContext, argc, array.start());
-  if (!args) {
+  JSObject* array = ::JS_NewArrayObject(mContext, args);
+  if (!array) {
     return NS_ERROR_FAILURE;
   }
-  JS::Value vargs = OBJECT_TO_JSVAL(args);
+  JS::Rooted<JS::Value> arrayVal(mContext, JS::ObjectValue(*array));
 
-  return JS_DefineProperty(mContext, aTarget, aPropName, vargs,
-  						   nullptr, nullptr, 0) ? NS_OK : NS_ERROR_FAILURE;
+  return JS_DefineProperty(mContext, aTarget, aPropName, arrayVal,
+                           nullptr, nullptr, 0) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 nsresult
-nsJSContext::ConvertSupportsTojsvals(nsISupports *aArgs,
+nsJSContext::ConvertSupportsTojsvals(nsISupports* aArgs,
                                      JS::Handle<JSObject*> aScope,
-                                     uint32_t *aArgc,
-                                     JS::Value **aArgv,
-                                     Maybe<nsRootedJSValueArray> &aTempStorage)
+                                     JS::AutoValueVector& aArgsOut)
 {
   nsresult rv = NS_OK;
 
-  // If the array implements nsIJSArgArray, just grab the values directly.
+  // If the array implements nsIJSArgArray, copy the contents and return.
   nsCOMPtr<nsIJSArgArray> fastArray = do_QueryInterface(aArgs);
-  if (fastArray != nullptr)
-    return fastArray->GetArgs(aArgc, reinterpret_cast<void **>(aArgv));
+  if (fastArray) {
+    uint32_t argc;
+    JS::Value* argv;
+    rv = fastArray->GetArgs(&argc, reinterpret_cast<void **>(&argv));
+    if (NS_SUCCEEDED(rv) && !aArgsOut.append(argv, argc)) {
+      rv = NS_ERROR_OUT_OF_MEMORY;
+    }
+    return rv;
+  }
 
   // Take the slower path converting each item.
   // Handle only nsIArray and nsIVariant.  nsIArray is only needed for
   // SetProperty('arguments', ...);
-
-  *aArgv = nullptr;
-  *aArgc = 0;
 
   nsIXPConnect *xpc = nsContentUtils::XPConnect();
   NS_ENSURE_TRUE(xpc, NS_ERROR_UNEXPECTED);
@@ -1250,30 +1223,28 @@ nsJSContext::ConvertSupportsTojsvals(nsISupports *aArgs,
   }
 
   // Use the caller's auto guards to release and unroot.
-  aTempStorage.construct((JSContext*)cx);
-  aTempStorage.ref().SetCapacity(cx, argCount);
-  JS::Value *argv = aTempStorage.ref().Elements();
+  if (!aArgsOut.resize(argCount)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
 
   if (argsArray) {
     for (uint32_t argCtr = 0; argCtr < argCount && NS_SUCCEEDED(rv); argCtr++) {
       nsCOMPtr<nsISupports> arg;
-      JS::Value *thisval = argv + argCtr;
+      JS::MutableHandle<JS::Value> thisVal = aArgsOut.handleAt(argCtr);
       argsArray->QueryElementAt(argCtr, NS_GET_IID(nsISupports),
                                 getter_AddRefs(arg));
       if (!arg) {
-        *thisval = JSVAL_NULL;
+        thisVal.setNull();
         continue;
       }
       nsCOMPtr<nsIVariant> variant(do_QueryInterface(arg));
       if (variant != nullptr) {
-        JS::Rooted<JS::Value> temp(cx);
-        rv = xpc->VariantToJS(cx, aScope, variant, &temp);
-        *thisval = temp.get();
+        rv = xpc->VariantToJS(cx, aScope, variant, thisVal);
       } else {
         // And finally, support the nsISupportsPrimitives supplied
         // by the AppShell.  It generally will pass only strings, but
         // as we have code for handling all, we may as well use it.
-        rv = AddSupportsPrimitiveTojsvals(arg, thisval);
+        rv = AddSupportsPrimitiveTojsvals(arg, thisVal.address());
         if (rv == NS_ERROR_NO_INTERFACE) {
           // something else - probably an event object or similar -
           // just wrap it.
@@ -1284,30 +1255,20 @@ nsJSContext::ConvertSupportsTojsvals(nsISupports *aArgs,
           NS_ASSERTION(prim == nullptr,
                        "Don't pass nsISupportsPrimitives - use nsIVariant!");
 #endif
-          JS::Rooted<JS::Value> v(cx);
-          rv = nsContentUtils::WrapNative(cx, aScope, arg, &v);
-          if (NS_SUCCEEDED(rv)) {
-            *thisval = v;
-          }
+          rv = nsContentUtils::WrapNative(cx, aScope, arg, thisVal);
         }
       }
     }
   } else {
     nsCOMPtr<nsIVariant> variant = do_QueryInterface(aArgs);
     if (variant) {
-      JS::Rooted<JS::Value> temp(cx);
-      rv = xpc->VariantToJS(cx, aScope, variant, &temp);
-      *argv = temp.get();
+      rv = xpc->VariantToJS(cx, aScope, variant, aArgsOut.handleAt(0));
     } else {
       NS_ERROR("Not an array, not an interface?");
       rv = NS_ERROR_UNEXPECTED;
     }
   }
-  if (NS_FAILED(rv))
-    return rv;
-  *aArgv = argv;
-  *aArgc = argCount;
-  return NS_OK;
+  return rv;
 }
 
 // This really should go into xpconnect somewhere...
@@ -2235,10 +2196,15 @@ nsJSContext::EndCycleCollectionCallback(CycleCollectorResults &aResults)
     PokeGC(JS::gcreason::CC_WAITING);
   }
 
-  TimeStamp endCCTime = TimeStamp::Now();
+  TimeStamp endCCTimeStamp = TimeStamp::Now();
+
+  PRTime endCCTime;
+  if (sPostGCEventsToObserver) {
+    endCCTime = PR_Now();
+  }
 
   // Log information about the CC via telemetry, JSON and the console.
-  uint32_t ccNowDuration = TimeBetween(gCCStats.mBeginTime, endCCTime);
+  uint32_t ccNowDuration = TimeBetween(gCCStats.mBeginTime, endCCTimeStamp);
   Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_FINISH_IGC, gCCStats.mAnyLockedOut);
   Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_SYNC_SKIPPABLE, gCCStats.mRanSyncForgetSkippable);
   Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_FULL, ccNowDuration);
@@ -2248,7 +2214,7 @@ nsJSContext::EndCycleCollectionCallback(CycleCollectorResults &aResults)
     uint32_t timeBetween = TimeBetween(sLastCCEndTime, gCCStats.mBeginTime);
     Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_TIME_BETWEEN, timeBetween);
   }
-  sLastCCEndTime = endCCTime;
+  sLastCCEndTime = endCCTimeStamp;
 
   Telemetry::Accumulate(Telemetry::FORGET_SKIPPABLE_MAX,
                         sMaxForgetSkippableTime / PR_USEC_PER_MSEC);
@@ -2298,11 +2264,11 @@ nsJSContext::EndCycleCollectionCallback(CycleCollectorResults &aResults)
   if (sPostGCEventsToObserver) {
     NS_NAMED_MULTILINE_LITERAL_STRING(kJSONFmt,
        MOZ_UTF16("{ \"timestamp\": %llu, ")
-         MOZ_UTF16("\"duration\": %llu, ")
-         MOZ_UTF16("\"max_slice_pause\": %llu, ")
-         MOZ_UTF16("\"total_slice_pause\": %llu, ")
-         MOZ_UTF16("\"max_finish_gc_duration\": %llu, ")
-         MOZ_UTF16("\"max_sync_skippable_duration\": %llu, ")
+         MOZ_UTF16("\"duration\": %lu, ")
+         MOZ_UTF16("\"max_slice_pause\": %lu, ")
+         MOZ_UTF16("\"total_slice_pause\": %lu, ")
+         MOZ_UTF16("\"max_finish_gc_duration\": %lu, ")
+         MOZ_UTF16("\"max_sync_skippable_duration\": %lu, ")
          MOZ_UTF16("\"suspected\": %lu, ")
          MOZ_UTF16("\"visited\": { ")
              MOZ_UTF16("\"RCed\": %lu, ")
@@ -3010,6 +2976,16 @@ AsmJSCacheOpenEntryForWrite(JS::Handle<JSObject*> aGlobal,
                                        aHandle);
 }
 
+static void
+OnLargeAllocationFailure()
+{
+  nsCOMPtr<nsIObserverService> os =
+    mozilla::services::GetObserverService();
+  if (os) {
+    os->NotifyObservers(nullptr, "memory-pressure", MOZ_UTF16("heap-minimize"));
+  }
+}
+
 static NS_DEFINE_CID(kDOMScriptObjectFactoryCID, NS_DOM_SCRIPT_OBJECT_FACTORY_CID);
 
 void
@@ -3065,6 +3041,8 @@ nsJSContext::EnsureStatics()
     asmjscache::GetBuildId
   };
   JS::SetAsmJSCacheOps(sRuntime, &asmJSCacheOps);
+
+  JS::SetLargeAllocationFailureCallback(sRuntime, OnLargeAllocationFailure);
 
   // Set these global xpconnect options...
   Preferences::RegisterCallbackAndCall(ReportAllJSExceptionsPrefChangedCallback,

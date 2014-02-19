@@ -6,6 +6,7 @@
 package org.mozilla.gecko;
 
 import org.mozilla.gecko.SiteIdentity.SecurityMode;
+import org.mozilla.gecko.db.BrowserContract.Bookmarks;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.gfx.Layer;
 import org.mozilla.gecko.util.ThreadUtils;
@@ -119,6 +120,8 @@ public class Tab {
         // when the LayerView is created. Shortly after, this background color
         // will be used before the tab's content is shown.
         mBackgroundColor = DEFAULT_BACKGROUND_COLOR;
+
+        updateBookmark();
     }
 
     private ContentResolver getContentResolver() {
@@ -259,7 +262,6 @@ public class Tab {
     public synchronized void updateURL(String url) {
         if (url != null && url.length() > 0) {
             mUrl = url;
-            updateBookmark();
         }
     }
 
@@ -405,18 +407,21 @@ public class Tab {
     }
 
     void updateBookmark() {
+        if (getURL() == null) {
+            return;
+        }
+
         ThreadUtils.postToBackgroundThread(new Runnable() {
             @Override
             public void run() {
                 final String url = getURL();
-                if (url == null)
+                if (url == null) {
                     return;
-
-                if (url.equals(getURL())) {
-                    mBookmark = BrowserDB.isBookmark(getContentResolver(), url);
-                    mReadingListItem = BrowserDB.isReadingListItem(getContentResolver(), url);
                 }
 
+                final int flags = BrowserDB.getItemFlags(getContentResolver(), url);
+                mBookmark = (flags & Bookmarks.FLAG_BOOKMARK) > 0;
+                mReadingListItem = (flags & Bookmarks.FLAG_READING) > 0;
                 Tabs.getInstance().notifyListeners(Tab.this, Tabs.TabEvents.MENU_UPDATED);
             }
         });
@@ -607,18 +612,23 @@ public class Tab {
     void handleLocationChange(JSONObject message) throws JSONException {
         final String uri = message.getString("uri");
         final String oldUrl = getURL();
+        final boolean sameDocument = message.getBoolean("sameDocument");
         mEnteringReaderMode = ReaderModeUtils.isEnteringReaderMode(oldUrl, uri);
 
-        if (TextUtils.equals(oldUrl, uri)) {
-            Log.d(LOGTAG, "Ignoring location change event: URIs are the same.");
-            return;
+        if (!TextUtils.equals(oldUrl, uri)) {
+            updateURL(uri);
+            updateBookmark();
+            if (!sameDocument) {
+                // We can unconditionally clear the favicon and title here: we
+                // already filtered both cases in which this was a (pseudo-)
+                // spurious location change, so we're definitely loading a new
+                // page.
+                clearFavicon();
+                updateTitle(null);
+            }
         }
 
-        updateURL(uri);
-        updateUserSearch(message.getString("userSearch"));
-
-        mBaseDomain = message.optString("baseDomain");
-        if (message.getBoolean("sameDocument")) {
+        if (sameDocument) {
             // We can get a location change event for the same document with an anchor tag
             // Notify listeners so that buttons like back or forward will update themselves
             Tabs.getInstance().notifyListeners(this, Tabs.TabEvents.LOCATION_CHANGE, oldUrl);
@@ -626,16 +636,11 @@ public class Tab {
         }
 
         setContentType(message.getString("contentType"));
-
-        // We can unconditionally clear the favicon here: we already
-        // short-circuited for both cases in which this was a (pseudo-)
-        // spurious location change, so we're definitely loading a new page.
-        // The same applies to all of the other fields we're wiping out.
-        clearFavicon();
+        updateUserSearch(message.getString("userSearch"));
+        mBaseDomain = message.optString("baseDomain");
 
         setHasFeeds(false);
         setHasOpenSearch(false);
-        updateTitle(null);
         updateIdentityData(null);
         setReaderEnabled(false);
         setZoomConstraints(new ZoomConstraints(true));

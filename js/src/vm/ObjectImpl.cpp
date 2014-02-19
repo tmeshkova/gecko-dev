@@ -335,22 +335,21 @@ js::ObjectImpl::nativeLookupPure(jsid id)
 }
 
 uint32_t
-js::ObjectImpl::numFixedSlotsForCompilation() const
+js::ObjectImpl::dynamicSlotsCount(uint32_t nfixed, uint32_t span, const Class *clasp)
 {
-    // This is an alternative method for getting the number of fixed slots
-    // in an object. It requires more logic and memory accesses than
-    // numFixedSlots() but is safe to be called from the compilation thread,
-    // even if the main thread is actively mutating the VM.
-    if (static_cast<const JSObject *>(this)->is<ArrayObject>())
+    if (span <= nfixed)
         return 0;
-#ifdef JSGC_GENERATIONAL
-    // The compiler does not have access to nursery things, so if this object
-    // is in the nursery we can fall back to numFixedSlots().
-    if (IsInsideNursery(GetGCThingRuntime(this), this))
-        return numFixedSlots();
-#endif
-    gc::AllocKind kind = tenuredGetAllocKind();
-    return gc::GetGCKindSlots(kind, getClass());
+    span -= nfixed;
+
+    // Increase the slots to SLOT_CAPACITY_MIN to decrease the likelihood
+    // the dynamic slots need to get increased again. ArrayObjects ignore
+    // this because slots are uncommon in that case.
+    if (clasp != &ArrayObject::class_ && span <= SLOT_CAPACITY_MIN)
+        return SLOT_CAPACITY_MIN;
+
+    uint32_t slots = mozilla::RoundUpPow2(span);
+    MOZ_ASSERT(slots >= span);
+    return slots;
 }
 
 void

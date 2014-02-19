@@ -328,7 +328,7 @@ nsListControlFrame::GetMinWidth(nsRenderingContext *aRenderingContext)
   return result;
 }
 
-NS_IMETHODIMP 
+nsresult 
 nsListControlFrame::Reflow(nsPresContext*           aPresContext, 
                            nsHTMLReflowMetrics&     aDesiredSize,
                            const nsHTMLReflowState& aReflowState, 
@@ -848,7 +848,7 @@ nsListControlFrame::CaptureMouseEvents(bool aGrabMouseEvents)
 }
 
 //---------------------------------------------------------
-NS_IMETHODIMP 
+nsresult 
 nsListControlFrame::HandleEvent(nsPresContext* aPresContext,
                                 WidgetGUIEvent* aEvent,
                                 nsEventStatus* aEventStatus)
@@ -897,7 +897,7 @@ nsListControlFrame::HandleEvent(nsPresContext* aPresContext,
 
 
 //---------------------------------------------------------
-NS_IMETHODIMP
+nsresult
 nsListControlFrame::SetInitialChildList(ChildListID    aListID,
                                         nsFrameList&   aChildList)
 {
@@ -1436,7 +1436,7 @@ nsListControlFrame::AboutToRollup()
   }
 }
 
-NS_IMETHODIMP
+nsresult
 nsListControlFrame::DidReflow(nsPresContext*           aPresContext,
                               const nsHTMLReflowState* aReflowState,
                               nsDidReflowStatus        aStatus)
@@ -1472,7 +1472,7 @@ nsListControlFrame::GetType() const
 }
 
 #ifdef DEBUG_FRAME_DUMP
-NS_IMETHODIMP
+nsresult
 nsListControlFrame::GetFrameName(nsAString& aResult) const
 {
   return MakeFrameName(NS_LITERAL_STRING("ListControl"), aResult);
@@ -2201,7 +2201,7 @@ nsListControlFrame::KeyDown(nsIDOMEvent* aKeyEvent)
                                 0, -1);
       break;
 
-#if defined(XP_WIN) || defined(XP_OS2)
+#if defined(XP_WIN)
     case NS_VK_F4:
       if (!isControlOrMeta) {
         DropDownToggleKey(aKeyEvent);

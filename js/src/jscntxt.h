@@ -555,16 +555,6 @@ struct JSContext : public js::ExclusiveContext,
     void enterGenerator(JSGenerator *gen);
     void leaveGenerator(JSGenerator *gen);
 
-    void *onOutOfMemory(void *p, size_t nbytes) {
-        return runtime()->onOutOfMemory(p, nbytes, this);
-    }
-    void updateMallocCounter(size_t nbytes) {
-        runtime()->updateMallocCounter(zone(), nbytes);
-    }
-    void reportAllocationOverflow() {
-        js_ReportAllocationOverflow(this);
-    }
-
     bool isExceptionPending() {
         return throwing;
     }
@@ -891,43 +881,6 @@ class AutoShapeVector : public AutoVectorRooter<Shape *>
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-class AutoValueArray : public AutoGCRooter
-{
-    Value *start_;
-    unsigned length_;
-    SkipRoot skip;
-
-  public:
-    AutoValueArray(JSContext *cx, Value *start, unsigned length
-                   MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : AutoGCRooter(cx, VALARRAY), start_(start), length_(length), skip(cx, start, length)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-
-    Value *start() { return start_; }
-    unsigned length() const { return length_; }
-
-    MutableHandleValue handleAt(unsigned i) {
-        JS_ASSERT(i < length_);
-        return MutableHandleValue::fromMarkedLocation(&start_[i]);
-    }
-    HandleValue handleAt(unsigned i) const {
-        JS_ASSERT(i < length_);
-        return HandleValue::fromMarkedLocation(&start_[i]);
-    }
-    MutableHandleValue operator[](unsigned i) {
-        JS_ASSERT(i < length_);
-        return MutableHandleValue::fromMarkedLocation(&start_[i]);
-    }
-    HandleValue operator[](unsigned i) const {
-        JS_ASSERT(i < length_);
-        return HandleValue::fromMarkedLocation(&start_[i]);
-    }
-
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
 class AutoObjectObjectHashMap : public AutoHashMapRooter<JSObject *, JSObject *>
 {
   public:
@@ -964,6 +917,62 @@ class AutoObjectHashSet : public AutoHashSetRooter<JSObject *>
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     }
 
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+};
+
+/* AutoArrayRooter roots an external array of Values. */
+class AutoArrayRooter : private AutoGCRooter
+{
+  public:
+    AutoArrayRooter(JSContext *cx, size_t len, Value *vec
+                    MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+      : AutoGCRooter(cx, len), array(vec), skip(cx, array, len)
+    {
+        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+        JS_ASSERT(tag_ >= 0);
+    }
+
+    void changeLength(size_t newLength) {
+        tag_ = ptrdiff_t(newLength);
+        JS_ASSERT(tag_ >= 0);
+    }
+
+    void changeArray(Value *newArray, size_t newLength) {
+        changeLength(newLength);
+        array = newArray;
+    }
+
+    Value *start() {
+        return array;
+    }
+
+    size_t length() {
+        JS_ASSERT(tag_ >= 0);
+        return size_t(tag_);
+    }
+
+    MutableHandleValue handleAt(size_t i) {
+        JS_ASSERT(i < size_t(tag_));
+        return MutableHandleValue::fromMarkedLocation(&array[i]);
+    }
+    HandleValue handleAt(size_t i) const {
+        JS_ASSERT(i < size_t(tag_));
+        return HandleValue::fromMarkedLocation(&array[i]);
+    }
+    MutableHandleValue operator[](size_t i) {
+        JS_ASSERT(i < size_t(tag_));
+        return MutableHandleValue::fromMarkedLocation(&array[i]);
+    }
+    HandleValue operator[](size_t i) const {
+        JS_ASSERT(i < size_t(tag_));
+        return HandleValue::fromMarkedLocation(&array[i]);
+    }
+
+    friend void AutoGCRooter::trace(JSTracer *trc);
+
+  private:
+    Value *array;
+    js::SkipRoot skip;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
@@ -1070,69 +1079,6 @@ class AutoLockForExclusiveAccess
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     }
     ~AutoLockForExclusiveAccess() {
-        // An empty destructor is needed to avoid warnings from clang about
-        // unused local variables of this type.
-    }
-#endif // JS_THREADSAFE
-
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
-class AutoLockForCompilation
-{
-#ifdef JS_THREADSAFE
-    JSRuntime *runtime;
-
-    void init(JSRuntime *rt) {
-        runtime = rt;
-        if (runtime->numCompilationThreads) {
-            runtime->assertCanLock(CompilationLock);
-            PR_Lock(runtime->compilationLock);
-#ifdef DEBUG
-            runtime->compilationLockOwner = PR_GetCurrentThread();
-#endif
-        } else {
-#ifdef DEBUG
-            JS_ASSERT(!runtime->mainThreadHasCompilationLock);
-            runtime->mainThreadHasCompilationLock = true;
-#endif
-        }
-    }
-
-  public:
-    AutoLockForCompilation(ExclusiveContext *cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM) {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-        if (cx->isJSContext())
-            init(cx->asJSContext()->runtime());
-        else
-            runtime = nullptr;
-    }
-    AutoLockForCompilation(jit::CompileCompartment *compartment MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
-    ~AutoLockForCompilation() {
-        if (runtime) {
-            if (runtime->numCompilationThreads) {
-                JS_ASSERT(runtime->compilationLockOwner == PR_GetCurrentThread());
-#ifdef DEBUG
-                runtime->compilationLockOwner = nullptr;
-#endif
-                PR_Unlock(runtime->compilationLock);
-            } else {
-#ifdef DEBUG
-                JS_ASSERT(runtime->mainThreadHasCompilationLock);
-                runtime->mainThreadHasCompilationLock = false;
-#endif
-            }
-        }
-    }
-#else // JS_THREADSAFE
-  public:
-    AutoLockForCompilation(ExclusiveContext *cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM) {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-    AutoLockForCompilation(jit::CompileCompartment *compartment MOZ_GUARD_OBJECT_NOTIFIER_PARAM) {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-    ~AutoLockForCompilation() {
         // An empty destructor is needed to avoid warnings from clang about
         // unused local variables of this type.
     }

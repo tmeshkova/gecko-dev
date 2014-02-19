@@ -289,10 +289,6 @@ class JSObject : public js::ObjectImpl
     }
 
     bool isBoundFunction() const {
-        // Note: This function can race when it is called during off thread compilation.
-        js::AutoThreadSafeAccess ts0(this);
-        js::AutoThreadSafeAccess ts1(lastProperty());
-        js::AutoThreadSafeAccess ts2(lastProperty()->base());
         return lastProperty()->hasObjectFlag(js::BaseShape::BOUND_FUNCTION);
     }
 
@@ -354,10 +350,6 @@ class JSObject : public js::ObjectImpl
         return lastProperty()->entryCount();
     }
 
-    uint32_t propertyCountForCompilation() const {
-        return lastProperty()->entryCountForCompilation();
-    }
-
     bool hasShapeTable() const {
         return lastProperty()->hasTable();
     }
@@ -376,13 +368,13 @@ class JSObject : public js::ObjectImpl
 
     /* Whether a slot is at a fixed offset from this object. */
     bool isFixedSlot(size_t slot) {
-        return slot < numFixedSlotsForCompilation();
+        return slot < numFixedSlots();
     }
 
     /* Index into the dynamic slots array to use for a dynamic slot. */
     size_t dynamicSlotIndex(size_t slot) {
-        JS_ASSERT(slot >= numFixedSlotsForCompilation());
-        return slot - numFixedSlotsForCompilation();
+        JS_ASSERT(slot >= numFixedSlots());
+        return slot - numFixedSlots();
     }
 
     /*
@@ -1210,6 +1202,15 @@ class JSObject : public js::ObjectImpl
     void operator=(const JSObject &other) MOZ_DELETE;
 };
 
+template <class U>
+MOZ_ALWAYS_INLINE JS::Handle<U*>
+js::RootedBase<JSObject*>::as() const
+{
+    const JS::Rooted<JSObject*> &self = *static_cast<const JS::Rooted<JSObject*>*>(this);
+    JS_ASSERT(self->is<U>());
+    return Handle<U*>::fromMarkedLocation(reinterpret_cast<U* const*>(self.address()));
+}
+
 /*
  * The only sensible way to compare JSObject with == is by identity. We use
  * const& instead of * as a syntactic way to assert non-null. This leads to an
@@ -1257,10 +1258,10 @@ GetOuterObject(JSContext *cx, js::HandleObject obj)
 
 class JSValueArray {
   public:
-    jsval *array;
+    const jsval *array;
     size_t length;
 
-    JSValueArray(jsval *v, size_t c) : array(v), length(c) {}
+    JSValueArray(const jsval *v, size_t c) : array(v), length(c) {}
 };
 
 class ValueArray {

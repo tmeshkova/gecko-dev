@@ -1650,8 +1650,8 @@ BuildTextRunsScanner::ContinueTextRunAcrossFrames(nsTextFrame* aFrame1, nsTextFr
   return fontStyle1->mFont.BaseEquals(fontStyle2->mFont) &&
     sc1->StyleFont()->mLanguage == sc2->StyleFont()->mLanguage &&
     textStyle1->mTextTransform == textStyle2->mTextTransform &&
-    nsLayoutUtils::GetTextRunFlagsForStyle(sc1, fontStyle1, letterSpacing1) ==
-      nsLayoutUtils::GetTextRunFlagsForStyle(sc2, fontStyle2, letterSpacing2);
+    nsLayoutUtils::GetTextRunFlagsForStyle(sc1, fontStyle1, textStyle1, letterSpacing1) ==
+      nsLayoutUtils::GetTextRunFlagsForStyle(sc2, fontStyle2, textStyle2, letterSpacing2);
 }
 
 void BuildTextRunsScanner::ScanFrame(nsIFrame* aFrame)
@@ -2066,7 +2066,7 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
   // frame's style is used, so we use a mixture of the first frame and
   // last frame's style
   textFlags |= nsLayoutUtils::GetTextRunFlagsForStyle(lastStyleContext,
-      fontStyle, LetterSpacing(firstFrame, textStyle));
+      fontStyle, textStyle, LetterSpacing(firstFrame, textStyle));
   // XXX this is a bit of a hack. For performance reasons, if we're favouring
   // performance over quality, don't try to get accurate glyph extents.
   if (!(textFlags & gfxTextRunFactory::TEXT_OPTIMIZE_SPEED)) {
@@ -2890,7 +2890,7 @@ public:
   const gfxSkipCharsIterator& GetEndHint() { return mTempIterator; }
 
 protected:
-  void SetupJustificationSpacing();
+  void SetupJustificationSpacing(bool aPostReflow);
 
   void InitFontGroupAndFontMetrics() {
     float inflation = (mWhichTextRun == nsTextFrame::eInflated)
@@ -3274,7 +3274,7 @@ PropertyProvider::InitializeForDisplay(bool aTrimAfter)
     mFrame->GetTrimmedOffsets(mFrag, aTrimAfter);
   mStart.SetOriginalOffset(trimmed.mStart);
   mLength = trimmed.mLength;
-  SetupJustificationSpacing();
+  SetupJustificationSpacing(true);
 }
 
 void
@@ -3284,7 +3284,7 @@ PropertyProvider::InitializeForMeasure()
     mFrame->GetTrimmedOffsets(mFrag, true, false);
   mStart.SetOriginalOffset(trimmed.mStart);
   mLength = trimmed.mLength;
-  SetupJustificationSpacing();
+  SetupJustificationSpacing(false);
 }
 
 
@@ -3326,7 +3326,7 @@ PropertyProvider::FindJustificationRange(gfxSkipCharsIterator* aStart,
 }
 
 void
-PropertyProvider::SetupJustificationSpacing()
+PropertyProvider::SetupJustificationSpacing(bool aPostReflow)
 {
   NS_PRECONDITION(mLength != INT32_MAX, "Can't call this with undefined length");
 
@@ -3338,7 +3338,7 @@ PropertyProvider::SetupJustificationSpacing()
   // called with false for aTrimAfter, we still shouldn't be assigning
   // justification space to any trailing whitespace.
   nsTextFrame::TrimmedOffsets trimmed =
-    mFrame->GetTrimmedOffsets(mFrag, true);
+    mFrame->GetTrimmedOffsets(mFrag, true, aPostReflow);
   end.AdvanceOriginal(trimmed.mLength);
   gfxSkipCharsIterator realEnd(end);
   FindJustificationRange(&start, &end);
@@ -4192,7 +4192,7 @@ nsTextFrame::~nsTextFrame()
 {
 }
 
-NS_IMETHODIMP
+nsresult
 nsTextFrame::GetCursor(const nsPoint& aPoint,
                        nsIFrame::Cursor& aCursor)
 {
@@ -4364,7 +4364,7 @@ nsTextFrame::ClearTextRun(nsTextFrame* aStartContinuation,
   }
 }
 
-NS_IMETHODIMP
+nsresult
 nsTextFrame::CharacterDataChanged(CharacterDataChangeInfo* aInfo)
 {
   mContent->DeleteProperty(nsGkAtoms::newline);
@@ -6354,7 +6354,7 @@ nsTextFrame::SetSelectedRange(uint32_t aStart, uint32_t aEnd, bool aSelected,
   }
 }
 
-NS_IMETHODIMP
+nsresult
 nsTextFrame::GetPointFromOffset(int32_t inOffset,
                                 nsPoint* outPoint)
 {
@@ -6418,7 +6418,7 @@ nsTextFrame::GetPointFromOffset(int32_t inOffset,
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsTextFrame::GetChildFrameContainingOffset(int32_t   aContentOffset,
                                            bool      aHint,
                                            int32_t*  aOutOffset,
@@ -6799,7 +6799,7 @@ nsTextFrame::PeekOffsetWord(bool aForward, bool aWordSelectEatSpace, bool aIsKey
 
  // TODO this needs to be deCOMtaminated with the interface fixed in
 // nsIFrame.h, but we won't do that until the old textframe is gone.
-NS_IMETHODIMP
+nsresult
 nsTextFrame::CheckVisibility(nsPresContext* aContext, int32_t aStartIndex,
     int32_t aEndIndex, bool aRecurse, bool *aFinished, bool *aRetval)
 {
@@ -6822,7 +6822,7 @@ nsTextFrame::CheckVisibility(nsPresContext* aContext, int32_t aStartIndex,
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsTextFrame::GetOffsets(int32_t &start, int32_t &end) const
 {
   start = GetContentOffset();
@@ -7574,7 +7574,7 @@ struct NewlineProperty {
   }
 };
 
-NS_IMETHODIMP
+nsresult
 nsTextFrame::Reflow(nsPresContext*           aPresContext,
                     nsHTMLReflowMetrics&     aMetrics,
                     const nsHTMLReflowState& aReflowState,
@@ -8450,7 +8450,7 @@ nsTextFrame::ToCString(nsCString& aBuf, int32_t* aTotalContentLength) const
   }
 }
 
-NS_IMETHODIMP
+nsresult
 nsTextFrame::GetFrameName(nsAString& aResult) const
 {
   MakeFrameName(NS_LITERAL_STRING("Text"), aResult);
@@ -8483,7 +8483,7 @@ nsTextFrame::List(FILE* out, const char* aPrefix, uint32_t aFlags) const
 #endif
 
 #ifdef DEBUG
-NS_IMETHODIMP_(nsFrameState)
+nsFrameState
 nsTextFrame::GetDebugStateBits() const
 {
   // mask out our emptystate flags; those are just caches

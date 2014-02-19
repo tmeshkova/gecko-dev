@@ -51,15 +51,14 @@ class GLManagerCompositor;
 class TextureSource;
 struct Effect;
 struct EffectChain;
-struct FPSState;
 
 class CompositorOGL : public Compositor
 {
   typedef mozilla::gl::GLContext GLContext;
-  typedef ShaderProgramType ProgramType;
   
   friend class GLManagerCompositor;
 
+  std::map<ShaderConfigOGL, ShaderProgramOGL*> mPrograms;
 public:
   CompositorOGL(nsIWidget *aWidget, int aSurfaceWidth = -1, int aSurfaceHeight = -1,
                 bool aUseExternalSurfaceSize = false);
@@ -151,7 +150,9 @@ public:
   virtual const char* Name() const MOZ_OVERRIDE { return "OGL"; }
 #endif // MOZ_DUMP_PAINTING
 
-  virtual void NotifyLayersTransaction() MOZ_OVERRIDE;
+  virtual LayersBackend GetBackendType() const MOZ_OVERRIDE {
+    return LayersBackend::LAYERS_OPENGL;
+  }
 
   virtual void Pause() MOZ_OVERRIDE;
   virtual bool Resume() MOZ_OVERRIDE;
@@ -159,10 +160,6 @@ public:
   virtual nsIWidget* GetWidget() const MOZ_OVERRIDE { return mWidget; }
 
   GLContext* gl() const { return mGLContext; }
-  ShaderProgramType GetFBOLayerProgramType() const {
-    return mFBOTextureTarget == LOCAL_GL_TEXTURE_RECTANGLE_ARB ?
-           RGBARectLayerProgramType : RGBALayerProgramType;
-  }
   gfx::SurfaceFormat GetFBOFormat() const {
     return gfx::SurfaceFormat::R8G8B8A8;
   }
@@ -174,6 +171,10 @@ public:
    * (see https://wiki.mozilla.org/Platform/GFX/Gralloc)
    */
   GLuint GetTemporaryTexture(GLenum aUnit);
+
+  const gfx::Matrix4x4& GetProjMatrix() const {
+    return mProjMatrix;
+  }
 private:
   virtual void DrawQuadInternal(const gfx::Rect& aRect,
                                 const gfx::Rect& aClipRect,
@@ -191,32 +192,14 @@ private:
   nsIWidget *mWidget;
   nsIntSize mWidgetSize;
   nsRefPtr<GLContext> mGLContext;
+  gfx::Matrix4x4 mProjMatrix;
 
   /** The size of the surface we are rendering to */
   nsIntSize mSurfaceSize;
 
   ScreenPoint mRenderOffset;
 
-  /** Helper-class used by Initialize **/
-  class ReadDrawFPSPref MOZ_FINAL : public nsRunnable {
-  public:
-    NS_IMETHOD Run() MOZ_OVERRIDE;
-  };
-
   already_AddRefed<mozilla::gl::GLContext> CreateContext();
-
-  /** Shader Programs */
-  struct ShaderProgramVariations {
-    nsAutoTArray<nsAutoPtr<ShaderProgramOGL>, NumMaskTypes> mVariations;
-    ShaderProgramVariations() {
-      MOZ_COUNT_CTOR(ShaderProgramVariations);
-      mVariations.SetLength(NumMaskTypes);
-    }
-    ~ShaderProgramVariations() {
-      MOZ_COUNT_DTOR(ShaderProgramVariations);
-    }
-  };
-  nsTArray<ShaderProgramVariations> mPrograms;
 
   /** Texture target to use for FBOs */
   GLenum mFBOTextureTarget;
@@ -266,25 +249,8 @@ private:
                           gfx::Rect *aClipRectOut = nullptr,
                           gfx::Rect *aRenderBoundsOut = nullptr) MOZ_OVERRIDE;
 
-  ShaderProgramType GetProgramTypeForEffect(Effect* aEffect) const;
-
-  /**
-   * Updates all layer programs with a new projection matrix.
-   */
-  void SetLayerProgramProjectionMatrix(const gfx::Matrix4x4& aMatrix);
-
-  /**
-   * Helper method for Initialize, creates all valid variations of a program
-   * and adds them to mPrograms
-   */
-  void AddPrograms(ShaderProgramType aType);
-
-  ShaderProgramOGL* GetProgram(ShaderProgramType aType,
-                               MaskType aMask = MaskNone) {
-    MOZ_ASSERT(ProgramProfileOGL::ProgramExists(aType, aMask),
-               "Invalid program type.");
-    return mPrograms[aType].mVariations[aMask];
-  }
+  ShaderConfigOGL GetShaderConfigFor(Effect *aEffect, MaskType aMask = MaskNone) const;
+  ShaderProgramOGL* GetShaderProgramFor(const ShaderConfigOGL &aConfig);
 
   /**
    * Create a FBO backed by a texture.
@@ -326,11 +292,6 @@ private:
   void CopyToTarget(gfx::DrawTarget* aTarget, const gfx::Matrix& aWorldMatrix);
 
   /**
-   * Records the passed frame timestamp and returns the current estimated FPS.
-   */
-  double AddFrameAndGetFps(const TimeStamp& timestamp);
-
-  /**
    * Implements the flipping of the y-axis to convert from layers/compositor
    * coordinates to OpenGL coordinates.
    *
@@ -343,7 +304,6 @@ private:
 
   bool mDestroyed;
 
-  nsAutoPtr<FPSState> mFPS;
   // Textures used for direct texturing of buffers like gralloc.
   // The index of the texture in this array must correspond to the texture unit.
   nsTArray<GLuint> mTextures;

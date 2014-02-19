@@ -14,6 +14,9 @@
 #include "mozilla/layers/ISurfaceAllocator.h"  // for ISurfaceAllocator
 #include "mozilla/layers/ImageDataSerializer.h"
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor, etc
+#ifdef MOZ_X11
+#include "mozilla/layers/X11TextureHost.h"
+#endif
 #include "mozilla/layers/YCbCrImageDataSerializer.h"
 #include "nsAString.h"
 #include "nsAutoPtr.h"                  // for nsRefPtr
@@ -183,8 +186,11 @@ TextureHost::Create(const SurfaceDescriptor& aDesc,
         return CreateTextureHostBasic(aDesc, aDeallocator, aFlags);
       }
 #ifdef MOZ_X11
-    case SurfaceDescriptor::TSurfaceDescriptorX11:
-      return CreateTextureHostBasic(aDesc, aDeallocator, aFlags);
+    case SurfaceDescriptor::TSurfaceDescriptorX11: {
+      const SurfaceDescriptorX11& desc = aDesc.get_SurfaceDescriptorX11();
+      RefPtr<TextureHost> result = new X11TextureHost(aFlags, desc);
+      return result;
+    }
 #endif
 #ifdef XP_WIN
     case SurfaceDescriptor::TSurfaceDescriptorD3D9:
@@ -244,8 +250,7 @@ TextureHost::~TextureHost()
 
 void TextureHost::Finalize()
 {
-  if (GetFlags() & TEXTURE_DEALLOCATE_DEFERRED) {
-    MOZ_ASSERT(!(GetFlags() & TEXTURE_DEALLOCATE_CLIENT));
+  if (!(GetFlags() & TEXTURE_DEALLOCATE_CLIENT)) {
     DeallocateSharedData();
     DeallocateDeviceData();
   }
@@ -726,27 +731,17 @@ TextureParent::ActorDestroy(ActorDestroyReason why)
     return;
   }
 
-  bool isDeffered = mTextureHost->GetFlags() & TEXTURE_DEALLOCATE_DEFERRED;
   switch (why) {
   case AncestorDeletion:
-    NS_WARNING("PTexture deleted after ancestor");
-    // fall-through to deletion path
   case Deletion:
-    if (!(mTextureHost->GetFlags() & TEXTURE_DEALLOCATE_CLIENT) && !isDeffered) {
-      mTextureHost->DeallocateSharedData();
-    }
-    break;
-
   case NormalShutdown:
   case AbnormalShutdown:
-    mTextureHost->OnShutdown();
     break;
-
   case FailedConstructor:
     NS_RUNTIMEABORT("FailedConstructor isn't possible in PTexture");
   }
 
-  if (!isDeffered) {
+  if (mTextureHost->GetFlags() & TEXTURE_DEALLOCATE_CLIENT) {
     mTextureHost->ForgetSharedData();
   }
   mTextureHost = nullptr;

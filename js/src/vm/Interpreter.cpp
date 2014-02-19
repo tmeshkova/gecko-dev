@@ -499,7 +499,7 @@ js::Invoke(JSContext *cx, CallArgs args, MaybeConstruct construct)
 }
 
 bool
-js::Invoke(JSContext *cx, const Value &thisv, const Value &fval, unsigned argc, Value *argv,
+js::Invoke(JSContext *cx, const Value &thisv, const Value &fval, unsigned argc, const Value *argv,
            MutableHandleValue rval)
 {
     InvokeArgs args(cx);
@@ -1320,7 +1320,7 @@ SetObjectElementOperation(JSContext *cx, Handle<JSObject*> obj, HandleId id, con
         if ((uint32_t)i >= length) {
             // Annotate script if provided with information (e.g. baseline)
             if (script && script->hasBaselineScript() && *pc == JSOP_SETELEM)
-                script->baselineScript()->noteArrayWriteHole(cx, script->pcToOffset(pc));
+                script->baselineScript()->noteArrayWriteHole(script->pcToOffset(pc));
         }
     }
 #endif

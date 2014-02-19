@@ -25,9 +25,6 @@
 #include <windows.h>
 #undef CreateFile
 #undef CREATE_NEW
-#elif defined(XP_OS2)
-#define INCL_DOSERRORS
-#include <os2.h>
 #else
 // XXX add necessary include file for ftruncate (or equivalent)
 #endif
@@ -919,7 +916,12 @@ CacheFileIOManager::OnProfile()
 {
   LOG(("CacheFileIOManager::OnProfile() [gInstance=%p]", gInstance));
 
-  MOZ_ASSERT(gInstance);
+  nsRefPtr<CacheFileIOManager> ioMan = gInstance;
+  if (!ioMan) {
+    // CacheFileIOManager::Init() failed, probably could not create the IO
+    // thread, just go with it...
+    return NS_ERROR_NOT_INITIALIZED;
+  }
 
   nsresult rv;
 
@@ -944,10 +946,10 @@ CacheFileIOManager::OnProfile()
   }
 
   if (directory) {
-    rv = directory->Clone(getter_AddRefs(gInstance->mCacheDirectory));
+    rv = directory->Clone(getter_AddRefs(ioMan->mCacheDirectory));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = gInstance->mCacheDirectory->Append(NS_LITERAL_STRING("cache2"));
+    rv = ioMan->mCacheDirectory->Append(NS_LITERAL_STRING("cache2"));
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -1638,11 +1640,6 @@ TruncFile(PRFileDesc *aFD, uint32_t aEOF)
     return NS_ERROR_FAILURE;
   if (!SetEndOfFile((HANDLE) PR_FileDesc2NativeHandle(aFD))) {
     NS_ERROR("SetEndOfFile failed");
-    return NS_ERROR_FAILURE;
-  }
-#elif defined(XP_OS2)
-  if (DosSetFileSize((HFILE) PR_FileDesc2NativeHandle(aFD), aEOF) != NO_ERROR) {
-    NS_ERROR("DosSetFileSize failed");
     return NS_ERROR_FAILURE;
   }
 #else

@@ -33,6 +33,7 @@ EXPORTS += [
     'gfxPoint.h',
     'gfxPoint3D.h',
     'gfxPointH3D.h',
+    'gfxPrefs.h',
     'gfxQuad.h',
     'gfxQuaternion.h',
     'gfxRect.h',
@@ -132,21 +133,6 @@ elif CONFIG['MOZ_WIDGET_GTK']:
             'gfxXlibSurface.cpp',
         ]
 
-elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'os2':
-    EXPORTS += [
-        'gfxOS2Fonts.h',
-        'gfxOS2Platform.h',
-        'gfxOS2Surface.h',
-        'gfxPDFSurface.h',
-    ]
-    SOURCES += [
-        'gfxFontconfigUtils.cpp',
-        'gfxOS2Fonts.cpp',
-        'gfxOS2Platform.cpp',
-        'gfxOS2Surface.cpp',
-        'gfxPDFSurface.cpp',
-        'nsUnicodeRange.cpp'
-    ]
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
     EXPORTS += [
         'gfxFT2FontBase.h',
@@ -233,6 +219,7 @@ SOURCES += [
     'gfxPlatform.cpp',
     # Uses FORCE_PR_LOG
     'gfxPlatformFontList.cpp',
+    'gfxPrefs.cpp',
     # Uses FORCE_PR_LOG
     'gfxUserFontSet.cpp',
 ]
@@ -283,7 +270,7 @@ include('/ipc/chromium/chromium-config.mozbuild')
 FINAL_LIBRARY = 'xul'
 
 GENERATED_FILES = [
-    'PremultiplyTables.h',
+    'DeprecatedPremultiplyTables.h',
 ]
 
 LOCAL_INCLUDES += [

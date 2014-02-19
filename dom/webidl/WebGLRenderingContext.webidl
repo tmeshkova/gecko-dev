@@ -806,6 +806,12 @@ interface WebGLExtensionDebugRendererInfo
 };
 
 [NoInterfaceObject]
+interface WebGLExtensionDebugShaders
+{
+    DOMString getTranslatedShaderSource(WebGLShader? shader);
+};
+
+[NoInterfaceObject]
 interface WebGLExtensionDepthTexture
 {
     const GLenum UNSIGNED_INT_24_8_WEBGL = 0x84FA;
@@ -813,6 +819,11 @@ interface WebGLExtensionDepthTexture
 
 [NoInterfaceObject]
 interface WebGLExtensionElementIndexUint
+{
+};
+
+[NoInterfaceObject]
+interface WebGLExtensionFragDepth
 {
 };
 
@@ -899,6 +910,11 @@ interface WebGLExtensionTextureFloatLinear
 interface WebGLExtensionTextureHalfFloat
 {
     const GLenum HALF_FLOAT_OES = 0x8D61;
+};
+
+[NoInterfaceObject]
+interface WebGLExtensionTextureHalfFloatLinear
+{
 };
 
 [NoInterfaceObject]

@@ -468,7 +468,6 @@ pref("browser.tabs.closeButtons", 1);
 pref("browser.tabs.selectOwnerOnClose", true);
 
 pref("browser.ctrlTab.previews", false);
-pref("browser.ctrlTab.recentlyUsedLimit", 7);
 
 // By default, do not export HTML at shutdown.
 // If true, at shutdown the bookmarks in your menu and toolbar will
@@ -978,7 +977,16 @@ pref("dom.ipc.plugins.enabled.x86_64", true);
 pref("dom.ipc.plugins.enabled", true);
 #endif
 
+#if defined(NIGHTLY_BUILD) && defined(XP_MACOSX)
+// In Nightly, browser.tabs.remote is enabled on platforms that
+// support OMTC. However, users won't actually get remote tabs unless
+// they enable browser.tabs.remote.autostart or they use the "New OOP
+// Window" menu option.
+pref("browser.tabs.remote", true);
+#else
 pref("browser.tabs.remote", false);
+#endif
+pref("browser.tabs.remote.autostart", false);
 
 // This pref governs whether we attempt to work around problems caused by
 // plugins using OS calls to manipulate the cursor while running out-of-
@@ -1152,6 +1160,7 @@ pref("devtools.netmonitor.enabled", true);
 pref("devtools.netmonitor.panes-network-details-width", 450);
 pref("devtools.netmonitor.panes-network-details-height", 450);
 pref("devtools.netmonitor.statistics", true);
+pref("devtools.netmonitor.filters", "[\"all\"]");
 
 // Enable the Tilt inspector
 pref("devtools.tilt.enabled", true);
@@ -1181,7 +1190,7 @@ pref("devtools.shadereditor.enabled", false);
 pref("devtools.chrome.enabled", false);
 
 // Default theme ("dark" or "light")
-pref("devtools.theme", "light");
+pref("devtools.theme", "dark");
 
 // Display the introductory text
 pref("devtools.gcli.hideIntro", false);
@@ -1350,6 +1359,9 @@ pref("network.disable.ipc.security", true);
 // CustomizableUI debug logging.
 pref("browser.uiCustomization.debug", false);
 
+// CustomizableUI state of the browser's user interface
+pref("browser.uiCustomization.state", "");
+
 // The URL where remote content that composes the UI for Firefox Accounts should
 // be fetched. Must use HTTPS.
 pref("identity.fxaccounts.remote.uri", "https://accounts.firefox.com/?service=sync&context=fx_desktop_v1");
@@ -1358,6 +1370,9 @@ pref("identity.fxaccounts.remote.uri", "https://accounts.firefox.com/?service=sy
 // should be fetched.  Must use HTTPS.
 pref("identity.fxaccounts.remote.force_auth.uri", "https://accounts.firefox.com/force_auth?service=sync&context=fx_desktop_v1");
 
+// The remote content URL shown for signin in. Must use HTTPS.
+pref("identity.fxaccounts.remote.signin.uri", "https://accounts.firefox.com/signin?service=sync&context=fx_desktop_v1");
+
 // The URL we take the user to when they opt to "manage" their Firefox Account.
 // Note that this will always need to be in the same TLD as the
 // "identity.fxaccounts.remote.uri" pref.
@@ -1365,3 +1380,7 @@ pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings"
 
 // The URL of the Firefox Accounts auth server backend
 pref("identity.fxaccounts.auth.uri", "https://api.accounts.firefox.com/v1");
+
+
+// Temporarily turn the new http cache v2 on for Desktop Firefox only
+pref("browser.cache.use_new_backend_temp", true);

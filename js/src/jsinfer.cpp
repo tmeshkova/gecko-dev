@@ -688,9 +688,6 @@ TypeScript::FreezeTypeSets(CompilerConstraintList *constraints, JSScript *script
                            TemporaryTypeSet **pArgTypes,
                            TemporaryTypeSet **pBytecodeTypes)
 {
-    JS_ASSERT(CurrentThreadCanReadCompilationData());
-    AutoThreadSafeAccess ts(script);
-
     LifoAlloc *alloc = constraints->alloc();
     StackTypeSet *existing = script->types->typeArray();
 
@@ -810,7 +807,6 @@ TypeObjectKey::proto()
 bool
 ObjectImpl::hasTenuredProto() const
 {
-    AutoThreadSafeAccess ts(this);
     return type_->hasTenuredProto();
 }
 
@@ -856,7 +852,6 @@ HeapTypeSetKey
 TypeObjectKey::property(jsid id)
 {
     JS_ASSERT(!unknownProperties());
-    JS_ASSERT(CurrentThreadCanReadCompilationData());
 
     HeapTypeSetKey property;
     property.object_ = this;
@@ -1513,10 +1508,8 @@ ObjectStateChange(ExclusiveContext *cxArg, TypeObject *object, bool markingUnkno
     HeapTypeSet *types = object->maybeGetProperty(JSID_EMPTY);
 
     /* Mark as unknown after getting the types, to avoid assertion. */
-    if (markingUnknown) {
-        AutoLockForCompilation lock(cxArg);
+    if (markingUnknown)
         object->addFlags(OBJECT_FLAG_DYNAMIC_MASK | OBJECT_FLAG_UNKNOWN_PROPERTIES);
-    }
 
     if (types) {
         if (JSContext *cx = cxArg->maybeJSContext()) {
@@ -1712,7 +1705,7 @@ TemporaryTypeSet::getTypedArrayType()
 
     if (clasp && IsTypedArrayClass(clasp))
         return clasp - &TypedArrayObject::classes[0];
-    return ScalarTypeRepresentation::TYPE_MAX;
+    return ScalarTypeDescr::TYPE_MAX;
 }
 
 bool
@@ -2336,7 +2329,6 @@ TypeCompartment::markSetsUnknown(JSContext *cx, TypeObject *target)
         }
     }
 
-    AutoLockForCompilation lock(cx);
     target->addFlags(OBJECT_FLAG_SETS_MARKED_UNKNOWN);
 }
 
@@ -2756,28 +2748,9 @@ TypeCompartment::newTypedObject(JSContext *cx, IdValuePair *properties, size_t n
 // TypeObject
 /////////////////////////////////////////////////////////////////////
 
-#ifdef DEBUG
-void
-TypeObject::assertCanAccessProto() const
-{
-    // The proto pointer for type objects representing singletons may move.
-    JS_ASSERT_IF(singleton(), CurrentThreadCanReadCompilationData());
-
-    // Any proto pointer which is in the nursery may be moved, and may not be
-    // accessed during off thread compilation.
-#if defined(JSGC_GENERATIONAL) && defined(JS_THREADSAFE)
-    PerThreadData *pt = TlsPerThreadData.get();
-    TaggedProto proto(proto_);
-    JS_ASSERT_IF(proto.isObject() && !proto.toObject()->isTenured(),
-                 !pt || !pt->ionCompiling);
-#endif
-}
-#endif // DEBUG
-
 void
 TypeObject::setProto(JSContext *cx, TaggedProto proto)
 {
-    JS_ASSERT(CurrentThreadCanWriteCompilationData());
     JS_ASSERT(singleton());
 
     if (proto.isObject() && IsInsideNursery(cx->runtime(), proto.toObject()))
@@ -3056,10 +3029,7 @@ TypeObject::setFlags(ExclusiveContext *cx, TypeObjectFlags flags)
                      singleton()->lastProperty()->hasObjectFlag(BaseShape::ITERATED_SINGLETON));
     }
 
-    {
-        AutoLockForCompilation lock(cx);
-        addFlags(flags);
-    }
+    addFlags(flags);
 
     InferSpew(ISpewOps, "%s: setFlags 0x%x", TypeObjectString(this), flags);
 
@@ -3104,10 +3074,8 @@ void
 TypeObject::clearAddendum(ExclusiveContext *cx)
 {
     JS_ASSERT(!(flags() & OBJECT_FLAG_ADDENDUM_CLEARED));
-    {
-        AutoLockForCompilation lock(cx);
-        addFlags(OBJECT_FLAG_ADDENDUM_CLEARED);
-    }
+
+    addFlags(OBJECT_FLAG_ADDENDUM_CLEARED);
 
     /*
      * It is possible for the object to not have a new script or other
@@ -3521,10 +3489,7 @@ CheckNewScriptProperties(JSContext *cx, TypeObject *type, JSFunction *fun)
 #endif
     new (newScript) TypeNewScript();
 
-    {
-        AutoLockForCompilation lock(cx);
-        type->setAddendum(newScript);
-    }
+    type->setAddendum(newScript);
 
     if (!newScript) {
         cx->compartment()->types.setPendingNukeTypes(cx);
@@ -3692,10 +3657,7 @@ JSScript::makeTypes(JSContext *cx)
     for (unsigned i = 0; i < count; i++)
         new (&typeArray[i]) StackTypeSet();
 
-    {
-        AutoLockForCompilation lock(cx);
-        types = typeScript;
-    }
+    types = typeScript;
 
 #ifdef DEBUG
     for (unsigned i = 0; i < nTypeSets(); i++) {
@@ -3825,12 +3787,8 @@ JSObject::splicePrototype(JSContext *cx, const Class *clasp, Handle<TaggedProto>
         return true;
     }
 
-    {
-        AutoLockForCompilation lock(cx);
-        type->setClasp(clasp);
-        type->setProto(cx, proto);
-    }
-
+    type->setClasp(clasp);
+    type->setProto(cx, proto);
     return true;
 }
 
@@ -3883,10 +3841,7 @@ JSObject::makeLazyType(JSContext *cx, HandleObject obj)
     if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted())
         type->interpretedFunction = &obj->as<JSFunction>();
 
-    {
-        AutoLockForCompilation lock(cx);
-        obj->type_ = type;
-    }
+    obj->type_ = type;
 
     return type;
 }
@@ -4628,19 +4583,20 @@ TypeScript::printTypes(JSContext *cx, HandleScript script) const
 void
 TypeObject::setAddendum(TypeObjectAddendum *addendum)
 {
-    JS_ASSERT(CurrentThreadCanWriteCompilationData());
     this->addendum = addendum;
 }
 
 bool
-TypeObject::addTypedObjectAddendum(JSContext *cx,
-                                   TypeTypedObject::Kind kind,
-                                   TypeRepresentation *repr)
+TypeObject::addTypedObjectAddendum(JSContext *cx, Handle<TypeDescr*> descr)
 {
     if (!cx->typeInferenceEnabled())
         return true;
 
-    JS_ASSERT(repr);
+    // Type descriptors are always pre-tenured. This is both because
+    // we expect them to live a long time and so that they can be
+    // safely accessed during ion compilation.
+    JS_ASSERT(!IsInsideNursery(cx->runtime(), descr));
+    JS_ASSERT(descr);
 
     if (flags() & OBJECT_FLAG_ADDENDUM_CLEARED)
         return true;
@@ -4649,11 +4605,11 @@ TypeObject::addTypedObjectAddendum(JSContext *cx,
 
     if (addendum) {
         JS_ASSERT(hasTypedObject());
-        JS_ASSERT(typedObject()->typeRepr == repr);
+        JS_ASSERT(&typedObject()->descr() == descr);
         return true;
     }
 
-    TypeTypedObject *typedObject = js_new<TypeTypedObject>(kind, repr);
+    TypeTypedObject *typedObject = js_new<TypeTypedObject>(descr);
     if (!typedObject)
         return false;
     addendum = typedObject;
@@ -4672,10 +4628,14 @@ TypeNewScript::TypeNewScript()
   : TypeObjectAddendum(NewScript)
 {}
 
-TypeTypedObject::TypeTypedObject(Kind kind,
-                                 TypeRepresentation *repr)
+TypeTypedObject::TypeTypedObject(Handle<TypeDescr*> descr)
   : TypeObjectAddendum(TypedObject),
-    kind(kind),
-    typeRepr(repr)
+    descr_(descr)
 {
 }
+
+TypeDescr &
+js::types::TypeTypedObject::descr() {
+    return descr_->as<TypeDescr>();
+}
+

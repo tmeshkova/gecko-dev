@@ -31,6 +31,7 @@
 
 #ifdef JS_ARM_SIMULATOR
 
+#include "jit/arm/Architecture-arm.h"
 #include "jit/IonTypes.h"
 
 namespace js {
@@ -166,15 +167,6 @@ class Simulator
     // below (bad_lr, end_sim_pc).
     bool has_bad_pc() const;
 
-    // EABI variant for double arguments in use.
-    bool use_eabi_hardfloat() {
-#if USE_EABI_HARDFLOAT
-        return true;
-#else
-        return false;
-#endif
-    }
-
   private:
     enum special_values {
         // Known bad pc value to ensure that the simulator does not execute
@@ -281,6 +273,7 @@ class Simulator
     void setCallResultDouble(double result);
     void setCallResultFloat(float result);
     void setCallResult(int64_t res);
+    void scratchVolatileRegisters(bool scratchFloat = true);
 
     template<class ReturnType, int register_size>
     ReturnType getFromVFPRegister(int reg_index);

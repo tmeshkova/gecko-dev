@@ -112,15 +112,14 @@
         <toolbarseparator/>
         <toolbarbutton id="panelMenu_bookmarksToolbar"
                        label="&personalbarCmd.label;"
-                       class="subviewbutton"
+                       class="subviewbutton cui-withicon"
                        oncommand="PlacesCommandHook.showPlacesOrganizer('BookmarksToolbar'); PanelUI.hide();"/>
         <toolbarbutton id="panelMenu_unsortedBookmarks"
                        label="&unsortedBookmarksCmd.label;"
-                       class="subviewbutton"
+                       class="subviewbutton cui-withicon"
                        oncommand="PlacesCommandHook.showPlacesOrganizer('UnfiledBookmarks'); PanelUI.hide();"/>
-        <toolbarseparator/>
+        <toolbarseparator class="small-separator"/>
         <toolbaritem id="panelMenu_bookmarksMenu"
-                     flex="1"
                      orient="vertical"
                      smoothscroll="false"
                      onclick="if (event.button == 1) BookmarkingUI.onPanelMenuViewCommand(event, this._placesView);"
@@ -145,7 +144,7 @@
 
     <panelview id="PanelUI-helpView" flex="1" class="PanelUI-subView">
       <label value="&helpMenu.label;" class="panel-subview-header"/>
-      <vbox id="PanelUI-helpItems"/>
+      <vbox id="PanelUI-helpItems" class="panel-subview-body"/>
     </panelview>
 
     <panelview id="PanelUI-developer" flex="1">
@@ -223,8 +222,10 @@
        role="group"
        type="arrow"
        level="top"
+       context="toolbar-context-menu"
        hidden="true">
   <vbox id="widget-overflow-scroller">
-    <vbox id="widget-overflow-list" class="widget-overflow-list"/>
+    <vbox id="widget-overflow-list" class="widget-overflow-list"
+          overflowfortoolbar="nav-bar"/>
   </vbox>
 </panel>

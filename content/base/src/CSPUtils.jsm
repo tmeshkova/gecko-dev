@@ -45,7 +45,16 @@ const R_GETSCHEME  = new RegExp ("^" + R_SCHEME.source + "(?=\\:)", 'i');
 const R_SCHEMESRC  = new RegExp ("^" + R_SCHEME.source + "\\:$", 'i');
 
 // host-char       = ALPHA / DIGIT / "-"
-const R_HOSTCHAR   = new RegExp ("[a-zA-Z0-9\\-]", 'i');
+// For the app: protocol, we need to add {} to the valid character set
+const HOSTCHAR     = "{}a-zA-Z0-9\\-";
+const R_HOSTCHAR   = new RegExp ("[" + HOSTCHAR + "]", 'i');
+
+// Complementary character set of HOSTCHAR (characters that can't appear)
+const R_COMP_HCHAR = new RegExp ("[^" + HOSTCHAR + "]", "i");
+
+// Invalid character set for host strings (which can include dots and star)
+const R_INV_HCHAR  = new RegExp ("[^" + HOSTCHAR + "\\.\\*]", 'i');
+
 
 // host            = "*" / [ "*." ] 1*host-char *( "." 1*host-char )
 const R_HOST       = new RegExp ("\\*|(((\\*\\.)?" + R_HOSTCHAR.source +
@@ -284,10 +293,14 @@ CSPRep.ALLOW_DIRECTIVE   = "allow";
   *        while the policy-uri is asynchronously fetched
   * @param csp (optional)
   *        the CSP object to update once the policy has been fetched
+  * @param enforceSelfChecks (optional)
+  *        if present, and "true", will check to be sure "self" has the
+  *        appropriate values to inherit when they are omitted from the source.
   * @returns
   *        an instance of CSPRep
   */
-CSPRep.fromString = function(aStr, self, reportOnly, docRequest, csp) {
+CSPRep.fromString = function(aStr, self, reportOnly, docRequest, csp,
+                             enforceSelfChecks) {
   var SD = CSPRep.SRC_DIRECTIVES_OLD;
   var UD = CSPRep.URI_DIRECTIVES;
   var aCSPR = new CSPRep();
@@ -361,7 +374,8 @@ CSPRep.fromString = function(aStr, self, reportOnly, docRequest, csp) {
         CSPdebug("Skipping duplicate directive: \"" + dir + "\"");
         continue directive;
       }
-      var dv = CSPSourceList.fromString(dirvalue, aCSPR, selfUri, true);
+      var dv = CSPSourceList.fromString(dirvalue, aCSPR, selfUri,
+                                        enforceSelfChecks);
       if (dv) {
         aCSPR._directives[SD.DEFAULT_SRC] = dv;
         continue directive;
@@ -372,7 +386,8 @@ CSPRep.fromString = function(aStr, self, reportOnly, docRequest, csp) {
     for each(var sdi in SD) {
       if (dirname === sdi) {
         // process dirs, and enforce that 'self' is defined.
-        var dv = CSPSourceList.fromString(dirvalue, aCSPR, selfUri, true);
+        var dv = CSPSourceList.fromString(dirvalue, aCSPR, selfUri,
+                                          enforceSelfChecks);
         if (dv) {
           aCSPR._directives[sdi] = dv;
           continue directive;
@@ -508,6 +523,15 @@ CSPRep.fromString = function(aStr, self, reportOnly, docRequest, csp) {
     cspWarn(aCSPR, CSPLocalizer.getStr("allowOrDefaultSrcRequired"));
     return CSPRep.fromString("default-src 'none'", null, reportOnly);
   }
+
+  // If this is a Report-Only header and report-uri is not in the directive
+  // list, tell developer either specify report-uri directive or use
+  // a non-Report-Only CSP header.
+  if (aCSPR._reportOnlyMode && !aCSPR._directives.hasOwnProperty(UD.REPORT_URI)) {
+    cspWarn(aCSPR, CSPLocalizer.getFormatStr("reportURInotInReportOnlyHeader",
+                                             [selfUri ? selfUri.prePath : "undefined"]))
+  }
+
   return aCSPR;
 };
 
@@ -526,12 +550,16 @@ CSPRep.fromString = function(aStr, self, reportOnly, docRequest, csp) {
   *        while the policy-uri is asynchronously fetched
   * @param csp (optional)
   *        the CSP object to update once the policy has been fetched
+  * @param enforceSelfChecks (optional)
+  *        if present, and "true", will check to be sure "self" has the
+  *        appropriate values to inherit when they are omitted from the source.
   * @returns
   *        an instance of CSPRep
   */
 // When we deprecate our original CSP implementation, we rename this to
 // CSPRep.fromString and remove the existing CSPRep.fromString above.
-CSPRep.fromStringSpecCompliant = function(aStr, self, reportOnly, docRequest, csp) {
+CSPRep.fromStringSpecCompliant = function(aStr, self, reportOnly, docRequest, csp,
+                                          enforceSelfChecks) {
   var SD = CSPRep.SRC_DIRECTIVES_NEW;
   var UD = CSPRep.URI_DIRECTIVES;
   var aCSPR = new CSPRep(true);
@@ -607,7 +635,8 @@ CSPRep.fromStringSpecCompliant = function(aStr, self, reportOnly, docRequest, cs
     for each(var sdi in SD) {
       if (dirname === sdi) {
         // process dirs, and enforce that 'self' is defined.
-        var dv = CSPSourceList.fromString(dirvalue, aCSPR, self, true);
+        var dv = CSPSourceList.fromString(dirvalue, aCSPR, self,
+                                          enforceSelfChecks);
         if (dv) {
           // Check for unsafe-inline in style-src
           if (sdi === "style-src" && dv._allowUnsafeInline) {
@@ -742,6 +771,14 @@ CSPRep.fromStringSpecCompliant = function(aStr, self, reportOnly, docRequest, cs
     cspWarn(aCSPR, CSPLocalizer.getFormatStr("couldNotProcessUnknownDirective", [dirname]));
 
   } // end directive: loop
+
+  // If this is a Report-Only header and report-uri is not in the directive
+  // list, tell developer either specify report-uri directive or use
+  // a non-Report-Only CSP header.
+  if (aCSPR._reportOnlyMode && !aCSPR._directives.hasOwnProperty(UD.REPORT_URI)) {
+    cspWarn(aCSPR, CSPLocalizer.getFormatStr("reportURInotInReportOnlyHeader",
+                                             [selfUri ? selfUri.prePath : "undefined"]));
+  }
 
   return aCSPR;
 };
@@ -1321,6 +1358,18 @@ CSPSource.fromString = function(aStr, aCSPRep, self, enforceSelfChecks) {
     self = CSPSource.create(self, aCSPRep, undefined, false);
   }
 
+  // check for 'unsafe-inline' (case insensitive)
+  if (aStr.toLowerCase() === "'unsafe-inline'"){
+    sObj._allowUnsafeInline = true;
+    return sObj;
+  }
+
+  // check for 'unsafe-eval' (case insensitive)
+  if (aStr.toLowerCase() === "'unsafe-eval'"){
+    sObj._allowUnsafeEval = true;
+    return sObj;
+  }
+
   // Check for scheme-source match - this only matches if the source
   // string is just a scheme with no host.
   if (R_SCHEMESRC.test(aStr)) {
@@ -1409,18 +1458,6 @@ CSPSource.fromString = function(aStr, aCSPRep, self, enforceSelfChecks) {
     return sObj;
   }
 
-  // check for 'unsafe-inline' (case insensitive)
-  if (aStr.toLowerCase() === "'unsafe-inline'"){
-    sObj._allowUnsafeInline = true;
-    return sObj;
-  }
-
-  // check for 'unsafe-eval' (case insensitive)
-  if (aStr.toLowerCase() === "'unsafe-eval'"){
-    sObj._allowUnsafeEval = true;
-    return sObj;
-  }
-
   cspError(aCSPRep, CSPLocalizer.getFormatStr("couldntParseInvalidSource",
                                               [aStr]));
   return null;
@@ -1490,10 +1527,10 @@ CSPSource.prototype = {
       return this._self.toString();
 
     if (this._allowUnsafeInline)
-      return "unsafe-inline";
+      return "'unsafe-inline'";
 
     if (this._allowUnsafeEval)
-      return "unsafe-eval";
+      return "'unsafe-eval'";
 
     var s = "";
     if (this.scheme)
@@ -1607,7 +1644,7 @@ CSPHost.fromString = function(aStr) {
   if (!aStr) return null;
 
   // host string must be LDH with dots and stars.
-  var invalidChar = aStr.match(/[^a-zA-Z0-9\-\.\*]/);
+  var invalidChar = aStr.match(R_INV_HCHAR);
   if (invalidChar) {
     CSPdebug("Invalid character '" + invalidChar + "' in host " + aStr);
     return null;
@@ -1628,7 +1665,7 @@ CSPHost.fromString = function(aStr) {
         return null;
       }
     }
-    else if (seg.match(/[^a-zA-Z0-9\-]/)) {
+    else if (seg.match(R_COMP_HCHAR)) {
       // Non-wildcard segment must be LDH string
       CSPdebug("Invalid segment '" + seg + "' in host value");
       return null;

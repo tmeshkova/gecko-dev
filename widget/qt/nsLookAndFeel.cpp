@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+#include <QGuiApplication>
+#include <QFont>
+#include <QScreen>
+
 #include "nsLookAndFeel.h"
 #include "nsStyleConsts.h"
 #include "gfxFont.h"
@@ -414,13 +418,24 @@ nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
                            gfxFontStyle& aFontStyle,
                            float aDevPixPerCSSPixel)
 {
-    aFontName.AssignLiteral("\"Fira Sans OT\"");
-    aFontStyle.style = NS_FONT_STYLE_NORMAL;
-    aFontStyle.weight = NS_FONT_WEIGHT_NORMAL;
-    aFontStyle.stretch = NS_FONT_STRETCH_NORMAL;
-    aFontStyle.size = 9.0 * 96.0f / 72.0f;
-    aFontStyle.systemFont = true;
-    return true;
+  QFont qFont = QGuiApplication::font();
+
+  NS_NAMED_LITERAL_STRING(quote, "\"");
+  nsString family((char16_t*)qFont.family().data());
+  aFontName = quote + family + quote;
+
+  aFontStyle.systemFont = true;
+  aFontStyle.style = qFont.style();
+  aFontStyle.weight = qFont.weight();
+  aFontStyle.stretch = qFont.stretch();
+  // use pixel size directly if it is set, otherwise compute from point size
+  if (qFont.pixelSize() != -1) {
+    aFontStyle.size = qFont.pixelSize();
+  } else {
+    aFontStyle.size = qFont.pointSizeF() * qApp->primaryScreen()->logicalDotsPerInch() / 72.0f;
+  }
+
+  return true;
 }
 
 /*virtual*/

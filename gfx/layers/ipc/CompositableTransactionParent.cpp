@@ -220,6 +220,15 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
       tileComposer->PaintedTiledLayerBuffer(this, tileDesc);
       break;
     }
+    case CompositableOperation::TOpRemoveTexture: {
+      const OpRemoveTexture& op = aEdit.get_OpRemoveTexture();
+      CompositableHost* compositable = AsCompositable(op);
+      RefPtr<TextureHost> tex = TextureHost::AsTextureHost(op.textureParent());
+
+      MOZ_ASSERT(tex.get());
+      compositable->RemoveTextureHost(tex);
+      break;
+    }
     case CompositableOperation::TOpUseTexture: {
       const OpUseTexture& op = aEdit.get_OpUseTexture();
       CompositableHost* compositable = AsCompositable(op);
@@ -230,6 +239,11 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
 
       if (IsAsync()) {
         ScheduleComposition(op);
+        // Async layer updates don't trigger invalidation, manually tell the layer
+        // that its content have changed.
+        if (compositable->GetLayer()) {
+          compositable->GetLayer()->SetInvalidRectToVisibleRegion();
+        }
       }
       break;
     }

@@ -157,17 +157,17 @@ private:
 bool
 DispatchNFCEvent::RunTask(JSContext* aCx)
 {
-    JSObject* obj = JS::CurrentGlobalOrNull(aCx);
+    JS::Rooted<JSObject*> obj(aCx, JS::CurrentGlobalOrNull(aCx));
 
     JSObject* array = JS_NewUint8Array(aCx, mMessage->mSize);
     if (!array) {
         return false;
     }
+    JS::Rooted<JS::Value> arrayVal(aCx, JS::ObjectValue(*array));
 
     memcpy(JS_GetArrayBufferViewData(array), mMessage->mData, mMessage->mSize);
-    JS::Value argv[] = { OBJECT_TO_JSVAL(array) };
-    return JS_CallFunctionName(aCx, obj, "onNfcMessage",
-                               mozilla::ArrayLength(argv), argv, argv);
+    JS::Rooted<JS::Value> rval(aCx);
+    return JS_CallFunctionName(aCx, obj, "onNfcMessage", arrayVal, &rval);
 }
 
 class NfcConnector : public mozilla::ipc::UnixSocketConnector
@@ -344,7 +344,8 @@ NfcConsumer::OnDisconnect()
 {
     CHROMIUM_LOG("NFC: %s\n", __FUNCTION__);
     if (!mShutdown) {
-        ConnectSocket(new NfcConnector(), mAddress.get(), 1000);
+        ConnectSocket(new NfcConnector(), mAddress.get(),
+                      GetSuggestedConnectDelayMs());
     }
 }
 

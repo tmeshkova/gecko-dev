@@ -116,7 +116,6 @@ js::ExistingCloneFunctionAtCallsite(const CallsiteCloneTable &table, JSFunction 
     JS_ASSERT(fun->nonLazyScript()->shouldCloneAtCallsite());
     JS_ASSERT(!fun->nonLazyScript()->enclosingStaticScope());
     JS_ASSERT(types::UseNewTypeForClone(fun));
-    JS_ASSERT(CurrentThreadCanReadCompilationData());
 
     /*
      * If we start allocating function objects in the nursery, then the callsite
@@ -153,8 +152,6 @@ js::CloneFunctionAtCallsite(JSContext *cx, HandleFunction fun, HandleScript scri
 
     typedef CallsiteCloneKey Key;
     typedef CallsiteCloneTable Table;
-
-    AutoLockForCompilation lock(cx);
 
     Table &table = cx->compartment()->callsiteClones;
     if (!table.initialized() && !table.init())
@@ -1001,14 +998,14 @@ js_InvokeOperationCallback(JSContext *cx)
     JS_ASSERT_REQUEST_DEPTH(cx);
 
     JSRuntime *rt = cx->runtime();
-    JS_ASSERT(rt->interrupt != 0);
+    JS_ASSERT(rt->interrupt);
 
     /*
      * Reset the callback counter first, then run GC and yield. If another
      * thread is racing us here we will accumulate another callback request
      * which will be serviced at the next opportunity.
      */
-    rt->interrupt = 0;
+    rt->interrupt = false;
 
     /*
      * IonMonkey sets its stack limit to UINTPTR_MAX to trigger operation

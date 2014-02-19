@@ -64,12 +64,6 @@ const TextureFlags TEXTURE_COPY_PREVIOUS      = 1 << 24;
 // deallocation.
 // The default behaviour is to deallocate on the host side.
 const TextureFlags TEXTURE_DEALLOCATE_CLIENT  = 1 << 25;
-// The host side is responsible for deallocation, but that may not happen
-// immediately after the client side requests it. Exactly when the texture is
-// deallocated is up to the compositable. The texture must be deallocated by
-// the time the compositable or texture host is destroyed. A texture may not
-// have both TEXTURE_DEALLOCATE_CLIENT and TEXTURE_DEALLOCATE_DEFERRED flags.
-const TextureFlags TEXTURE_DEALLOCATE_DEFERRED  = 1 << 26;
 // After being shared ith the compositor side, an immutable texture is never
 // modified, it can only be read. It is safe to not Lock/Unlock immutable
 // textures.
@@ -130,10 +124,7 @@ enum EffectTypes
 {
   EFFECT_MASK,
   EFFECT_MAX_SECONDARY, // sentinel for the count of secondary effect types
-  EFFECT_BGRX,
-  EFFECT_RGBX,
-  EFFECT_BGRA,
-  EFFECT_RGBA,
+  EFFECT_RGB,
   EFFECT_YCBCR,
   EFFECT_COMPONENT_ALPHA,
   EFFECT_SOLID_COLOR,

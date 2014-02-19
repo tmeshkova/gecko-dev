@@ -25,12 +25,7 @@
 
 namespace js {
 
-#ifdef DEBUG
-bool CurrentThreadCanWriteCompilationData();
-bool CurrentThreadCanReadCompilationData();
-#endif
-
-class TypeRepresentation;
+class TypeDescr;
 
 class TaggedProto
 {
@@ -847,23 +842,17 @@ struct TypeNewScript : public TypeObjectAddendum
 
 struct TypeTypedObject : public TypeObjectAddendum
 {
-    enum Kind {
-        TypeDescriptor,
-        Datum,
-    };
+  private:
+    HeapPtrObject descr_;
 
-    TypeTypedObject(Kind kind, TypeRepresentation *repr);
+  public:
+    TypeTypedObject(Handle<TypeDescr*> descr);
 
-    const Kind kind;
-    TypeRepresentation *const typeRepr;
-
-    bool isTypeDescriptor() const {
-        return kind == TypeDescriptor;
+    HeapPtrObject &descrHeapPtr() {
+        return descr_;
     }
 
-    bool isDatum() const {
-        return kind == Datum;
-    }
+    TypeDescr &descr();
 };
 
 /*
@@ -896,12 +885,6 @@ struct TypeObject : gc::BarrieredCell<TypeObject>
     /* Prototype shared by objects using this type. */
     HeapPtrObject proto_;
 
-#ifdef DEBUG
-    void assertCanAccessProto() const;
-#else
-    void assertCanAccessProto() const {}
-#endif
-
     /*
      * Whether there is a singleton JS object with this type. That JS object
      * must appear in type sets instead of this; we include the back reference
@@ -912,24 +895,19 @@ struct TypeObject : gc::BarrieredCell<TypeObject>
   public:
 
     const Class *clasp() const {
-        AutoThreadSafeAccess ts(this);
         return clasp_;
     }
 
     void setClasp(const Class *clasp) {
-        JS_ASSERT(CurrentThreadCanWriteCompilationData());
         JS_ASSERT(singleton());
         clasp_ = clasp;
     }
 
     TaggedProto proto() const {
-        AutoThreadSafeAccess ts(this);
-        assertCanAccessProto();
         return TaggedProto(proto_);
     }
 
     JSObject *singleton() const {
-        AutoThreadSafeAccess ts(this);
         return singleton_;
     }
 
@@ -971,42 +949,30 @@ struct TypeObject : gc::BarrieredCell<TypeObject>
   public:
 
     TypeObjectFlags flags() const {
-        JS_ASSERT(CurrentThreadCanReadCompilationData());
-        AutoThreadSafeAccess ts(this);
         return flags_;
     }
 
     void addFlags(TypeObjectFlags flags) {
-        JS_ASSERT(CurrentThreadCanWriteCompilationData());
         flags_ |= flags;
     }
 
     void clearFlags(TypeObjectFlags flags) {
-        JS_ASSERT(CurrentThreadCanWriteCompilationData());
         flags_ &= ~flags;
     }
 
     bool hasNewScript() const {
-        JS_ASSERT(CurrentThreadCanReadCompilationData());
-        AutoThreadSafeAccess ts(this);
         return addendum && addendum->isNewScript();
     }
 
     TypeNewScript *newScript() {
-        JS_ASSERT(CurrentThreadCanReadCompilationData());
-        AutoThreadSafeAccess ts(this);
         return addendum->asNewScript();
     }
 
     bool hasTypedObject() {
-        JS_ASSERT(CurrentThreadCanReadCompilationData());
-        AutoThreadSafeAccess ts(this);
         return addendum && addendum->isTypedObject();
     }
 
     TypeTypedObject *typedObject() {
-        JS_ASSERT(CurrentThreadCanReadCompilationData());
-        AutoThreadSafeAccess ts(this);
         return addendum->asTypedObject();
     }
 
@@ -1019,9 +985,7 @@ struct TypeObject : gc::BarrieredCell<TypeObject>
      * this addendum must already be associated with the same TypeRepresentation,
      * and the method has no effect.
      */
-    bool addTypedObjectAddendum(JSContext *cx,
-                                TypeTypedObject::Kind kind ,
-                                TypeRepresentation *repr);
+    bool addTypedObjectAddendum(JSContext *cx, Handle<TypeDescr*> descr);
 
   private:
     /*

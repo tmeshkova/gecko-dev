@@ -18,7 +18,6 @@ import org.mozilla.gecko.mozglue.JNITarget;
 import org.mozilla.gecko.mozglue.RobocopTarget;
 import org.mozilla.gecko.prompts.PromptService;
 import org.mozilla.gecko.util.ActivityResultHandler;
-import org.mozilla.gecko.util.EventDispatcher;
 import org.mozilla.gecko.util.GeckoEventListener;
 import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.ProxySelector;
@@ -195,7 +194,6 @@ public class GeckoAppShell
 
     private static volatile boolean mLocationHighAccuracy;
 
-    public static ActivityHandlerHelper sActivityHelper = new ActivityHandlerHelper();
     static NotificationClient sNotificationClient;
 
     /* The Android-side API: API methods that Android calls */
@@ -720,7 +718,7 @@ public class GeckoAppShell
         gRestartScheduled = true;
     }
 
-    public static Intent getWebAppIntent(String aURI, String aOrigin, String aTitle, Bitmap aIcon) {
+    public static Intent getWebappIntent(String aURI, String aOrigin, String aTitle, Bitmap aIcon) {
         Intent intent;
 
         if (AppConstants.MOZ_ANDROID_SYNTHAPKS) {
@@ -738,21 +736,21 @@ public class GeckoAppShell
         } else {
             int index;
             if (aIcon != null && !TextUtils.isEmpty(aTitle))
-                index = WebAppAllocator.getInstance(getContext()).findAndAllocateIndex(aOrigin, aTitle, aIcon);
+                index = WebappAllocator.getInstance(getContext()).findAndAllocateIndex(aOrigin, aTitle, aIcon);
             else
-                index = WebAppAllocator.getInstance(getContext()).getIndexForApp(aOrigin);
+                index = WebappAllocator.getInstance(getContext()).getIndexForApp(aOrigin);
 
             if (index == -1)
                 return null;
 
-            intent = getWebAppIntent(index, aURI);
+            intent = getWebappIntent(index, aURI);
         }
 
         return intent;
     }
 
-    // The old implementation of getWebAppIntent.  Not used by MOZ_ANDROID_SYNTHAPKS.
-    public static Intent getWebAppIntent(int aIndex, String aURI) {
+    // The old implementation of getWebappIntent.  Not used by MOZ_ANDROID_SYNTHAPKS.
+    public static Intent getWebappIntent(int aIndex, String aURI) {
         Intent intent = new Intent();
         intent.setAction(GeckoApp.ACTION_WEBAPP_PREFIX + aIndex);
         intent.setData(Uri.parse(aURI));
@@ -807,7 +805,7 @@ public class GeckoAppShell
         // The intent to be launched by the shortcut.
         Intent shortcutIntent;
         if (aType.equalsIgnoreCase(SHORTCUT_TYPE_WEBAPP)) {
-            shortcutIntent = getWebAppIntent(aURI, aUniqueURI, aTitle, aIcon);
+            shortcutIntent = getWebappIntent(aURI, aUniqueURI, aTitle, aIcon);
         } else {
             shortcutIntent = new Intent();
             shortcutIntent.setAction(GeckoApp.ACTION_BOOKMARK);
@@ -844,7 +842,7 @@ public class GeckoAppShell
                 // the intent to be launched by the shortcut
                 Intent shortcutIntent;
                 if (aType.equalsIgnoreCase(SHORTCUT_TYPE_WEBAPP)) {
-                    shortcutIntent = getWebAppIntent(aURI, aUniqueURI, "", null);
+                    shortcutIntent = getWebappIntent(aURI, aUniqueURI, "", null);
                     if (shortcutIntent == null)
                         return;
                 } else {
@@ -1425,20 +1423,6 @@ public class GeckoAppShell
     public static void setFullScreen(boolean fullscreen) {
         if (getGeckoInterface() != null)
             getGeckoInterface().setFullScreen(fullscreen);
-    }
-
-    @WrapElementForJNI(stubName = "ShowFilePickerForExtensionsWrapper")
-    public static String showFilePickerForExtensions(String aExtensions) {
-        if (getGeckoInterface() != null)
-            return sActivityHelper.showFilePicker(getGeckoInterface().getActivity(), getMimeTypeFromExtensions(aExtensions));
-        return "";
-    }
-
-    @WrapElementForJNI(stubName = "ShowFilePickerForMimeTypeWrapper")
-    public static String showFilePickerForMimeType(String aMimeType) {
-        if (getGeckoInterface() != null)
-            return sActivityHelper.showFilePicker(getGeckoInterface().getActivity(), aMimeType);
-        return "";
     }
 
     @WrapElementForJNI
@@ -2345,8 +2329,8 @@ public class GeckoAppShell
     }
 
     @WrapElementForJNI(stubName = "HandleGeckoMessageWrapper")
-    public static String handleGeckoMessage(String message) {
-        return sEventDispatcher.dispatchEvent(message);
+    public static void handleGeckoMessage(String message) {
+        sEventDispatcher.dispatchEvent(message);
     }
 
     @WrapElementForJNI
@@ -2628,17 +2612,6 @@ public class GeckoAppShell
             msg.getTarget().dispatchMessage(msg);
         msg.recycle();
         return true;
-    }
-
-    static native void notifyFilePickerResult(String filePath, long id);
-
-    @WrapElementForJNI(stubName = "ShowFilePickerAsyncWrapper")
-    public static void showFilePickerAsync(String aMimeType, final long id) {
-        sActivityHelper.showFilePickerAsync(getGeckoInterface().getActivity(), aMimeType, new ActivityHandlerHelper.FileResultHandler() {
-            public void gotFile(String filename) {
-                GeckoAppShell.notifyFilePickerResult(filename, id);
-            }
-        });
     }
 
     @WrapElementForJNI

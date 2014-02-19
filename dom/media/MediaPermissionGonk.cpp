@@ -20,13 +20,35 @@
 #include "mozilla/dom/MediaStreamTrackBinding.h"
 #include "nsISupportsPrimitives.h"
 #include "nsServiceManagerUtils.h"
+#include "nsArrayUtils.h"
+#include "nsContentPermissionHelper.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
 
 #define AUDIO_PERMISSION_NAME "audio-capture"
+#define VIDEO_PERMISSION_NAME "video-capture"
+
+using namespace mozilla::dom;
 
 namespace mozilla {
 
 static MediaPermissionManager *gMediaPermMgr = nullptr;
+
+static uint32_t
+ConvertArrayToPermissionRequest(nsIArray* aSrcArray,
+                                nsTArray<PermissionRequest>& aDesArray)
+{
+  uint32_t len = 0;
+  aSrcArray->GetLength(&len);
+  for (uint32_t i = 0; i < len; i++) {
+    nsCOMPtr<nsIContentPermissionType> cpt = do_QueryElementAt(aSrcArray, i);
+    nsAutoCString type;
+    nsAutoCString access;
+    cpt->GetType(type);
+    cpt->GetAccess(access);
+    aDesArray.AppendElement(PermissionRequest(type, access));
+  }
+  return len;
+}
 
 // Helper function for notifying permission granted
 static nsresult
@@ -93,6 +115,7 @@ public:
 
 private:
   bool mAudio; // Request for audio permission
+  bool mVideo; // Request for video permission
   nsRefPtr<dom::GetUserMediaRequest> mRequest;
   nsTArray<nsCOMPtr<nsIMediaDevice> > mDevices; // candiate device list
 };
@@ -108,6 +131,7 @@ MediaPermissionRequest::MediaPermissionRequest(nsRefPtr<dom::GetUserMediaRequest
   mRequest->GetConstraints(constraints);
 
   mAudio = constraints.mAudio;
+  mVideo = constraints.mVideo;
 
   for (uint32_t i = 0; i < aDevices.Length(); ++i) {
     nsCOMPtr<nsIMediaDevice> device(aDevices[i]);
@@ -116,16 +140,41 @@ MediaPermissionRequest::MediaPermissionRequest(nsRefPtr<dom::GetUserMediaRequest
     if (mAudio && deviceType.EqualsLiteral("audio")) {
       mDevices.AppendElement(device);
     }
+    if (mVideo && deviceType.EqualsLiteral("video")) {
+      mDevices.AppendElement(device);
+    }
   }
 }
 
 // nsIContentPermissionRequest methods
 NS_IMETHODIMP
+MediaPermissionRequest::GetTypes(nsIArray** aTypes)
+{
+  nsCOMPtr<nsIMutableArray> types = do_CreateInstance(NS_ARRAY_CONTRACTID);
+  if (mAudio) {
+    nsCOMPtr<ContentPermissionType> AudioType =
+      new ContentPermissionType(NS_LITERAL_CSTRING(AUDIO_PERMISSION_NAME),
+                                NS_LITERAL_CSTRING("unused"));
+    types->AppendElement(AudioType, false);
+  }
+  if (mVideo) {
+    nsCOMPtr<ContentPermissionType> VideoType =
+      new ContentPermissionType(NS_LITERAL_CSTRING(VIDEO_PERMISSION_NAME),
+                                NS_LITERAL_CSTRING("unused"));
+    types->AppendElement(VideoType, false);
+  }
+  NS_IF_ADDREF(*aTypes = types);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 MediaPermissionRequest::GetPrincipal(nsIPrincipal **aRequestingPrincipal)
 {
   NS_ENSURE_ARG_POINTER(aRequestingPrincipal);
 
-  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(mRequest->GetParentObject());
+  nsCOMPtr<nsPIDOMWindow> window = static_cast<nsPIDOMWindow*>
+      (nsGlobalWindow::GetInnerWindowWithId(mRequest->InnerWindowID()));
   NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
 
   nsCOMPtr<nsIDocument> doc = window->GetExtantDoc();
@@ -136,28 +185,11 @@ MediaPermissionRequest::GetPrincipal(nsIPrincipal **aRequestingPrincipal)
 }
 
 NS_IMETHODIMP
-MediaPermissionRequest::GetType(nsACString &aType)
-{
-  if (mAudio) {
-    aType = AUDIO_PERMISSION_NAME;
-    return NS_OK;
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MediaPermissionRequest::GetAccess(nsACString &aAccess)
-{
-  aAccess = "unused";
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 MediaPermissionRequest::GetWindow(nsIDOMWindow** aRequestingWindow)
 {
   NS_ENSURE_ARG_POINTER(aRequestingWindow);
-  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(mRequest->GetParentObject());
+  nsCOMPtr<nsPIDOMWindow> window = static_cast<nsPIDOMWindow*>
+      (nsGlobalWindow::GetInnerWindowWithId(mRequest->InnerWindowID()));
   window.forget(aRequestingWindow);
   return NS_OK;
 }
@@ -191,7 +223,8 @@ MediaPermissionRequest::Allow()
 already_AddRefed<nsPIDOMWindow>
 MediaPermissionRequest::GetOwner()
 {
-  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(mRequest->GetParentObject());
+  nsCOMPtr<nsPIDOMWindow> window = static_cast<nsPIDOMWindow*>
+      (nsGlobalWindow::GetInnerWindowWithId(mRequest->InnerWindowID()));
   return window.forget();
 }
 
@@ -278,13 +311,12 @@ MediaDeviceSuccessCallback::DoPrompt(nsRefPtr<MediaPermissionRequest> &req)
     dom::TabChild* child = dom::TabChild::GetFrom(window->GetDocShell());
     NS_ENSURE_TRUE(child, NS_ERROR_FAILURE);
 
-    nsAutoCString type;
-    rv = req->GetType(type);
+    nsCOMPtr<nsIArray> typeArray;
+    rv = req->GetTypes(getter_AddRefs(typeArray));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsAutoCString access;
-    rv = req->GetAccess(access);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsTArray<PermissionRequest> permArray;
+    ConvertArrayToPermissionRequest(typeArray, permArray);
 
     nsCOMPtr<nsIPrincipal> principal;
     rv = req->GetPrincipal(getter_AddRefs(principal));
@@ -292,8 +324,7 @@ MediaDeviceSuccessCallback::DoPrompt(nsRefPtr<MediaPermissionRequest> &req)
 
     req->AddRef();
     child->SendPContentPermissionRequestConstructor(req,
-                                                    type,
-                                                    access,
+                                                    permArray,
                                                     IPC::Principal(principal));
 
     req->Sendprompt();
@@ -406,7 +437,8 @@ MediaPermissionManager::HandleRequest(nsRefPtr<dom::GetUserMediaRequest> &req)
   nsString callID;
   req->GetCallID(callID);
 
-  nsCOMPtr<nsPIDOMWindow> innerWindow = do_QueryInterface(req->GetParentObject());
+  nsCOMPtr<nsPIDOMWindow> innerWindow = static_cast<nsPIDOMWindow*>
+      (nsGlobalWindow::GetInnerWindowWithId(req->InnerWindowID()));
   if (!innerWindow) {
     MOZ_ASSERT(false, "No inner window");
     return NS_ERROR_FAILURE;

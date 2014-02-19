@@ -9,7 +9,7 @@
 
 #include "jsobj.h"
 
-#include "builtin/TypeRepresentation.h"
+#include "builtin/TypedObject.h"
 #include "gc/Barrier.h"
 #include "js/Class.h"
 
@@ -66,7 +66,7 @@ class ArrayBufferObject : public JSObject
 
     static bool class_constructor(JSContext *cx, unsigned argc, Value *vp);
 
-    static JSObject *create(JSContext *cx, uint32_t nbytes, bool clear = true);
+    static ArrayBufferObject *create(JSContext *cx, uint32_t nbytes, bool clear = true);
 
     static JSObject *createSlice(JSContext *cx, Handle<ArrayBufferObject*> arrayBuffer,
                                  uint32_t begin, uint32_t end);
@@ -168,33 +168,17 @@ class ArrayBufferObject : public JSObject
 
     void addView(ArrayBufferViewObject *view);
 
-    bool allocateSlots(JSContext *cx, uint32_t size, bool clear);
-
     void changeContents(JSContext *cx, ObjectElements *newHeader);
-
-    /*
-     * Copy the data into freshly-allocated memory. Used when un-inlining or
-     * when converting an ArrayBuffer to an AsmJS (MMU-assisted) ArrayBuffer.
-     */
-    bool copyData(JSContext *maybecx);
 
     /*
      * Ensure data is not stored inline in the object. Used when handing back a
      * GC-safe pointer.
      */
-    bool ensureNonInline(JSContext *maybecx);
+    static bool ensureNonInline(JSContext *cx, Handle<ArrayBufferObject*> buffer);
 
     uint32_t byteLength() const {
         return getElementsHeader()->initializedLength;
     }
-
-    /*
-     * Return the contents of an ArrayBuffer without modifying the ArrayBuffer
-     * itself. Set *callerOwns to true if the caller has the only pointer to
-     * the returned contents (which is the case for inline or asm.js buffers),
-     * and false if the ArrayBuffer still owns the pointer.
-     */
-    ObjectElements *getTransferableContents(JSContext *maybecx, bool *callerOwns);
 
     /*
      * Neuter all views of an ArrayBuffer.
@@ -209,7 +193,7 @@ class ArrayBufferObject : public JSObject
      * Discard the ArrayBuffer contents. For asm.js buffers, at least, should
      * be called after neuterViews().
      */
-    void neuter(JSContext *maybecx);
+    void neuter(JSContext *cx);
 
     /*
      * Check if the arrayBuffer contains any data. This will return false for
@@ -303,8 +287,8 @@ class TypedArrayObject : public ArrayBufferViewObject
     static const size_t DATA_SLOT      = 7; // private slot, based on alloc kind
 
   public:
-    static const Class classes[ScalarTypeRepresentation::TYPE_MAX];
-    static const Class protoClasses[ScalarTypeRepresentation::TYPE_MAX];
+    static const Class classes[ScalarTypeDescr::TYPE_MAX];
+    static const Class protoClasses[ScalarTypeDescr::TYPE_MAX];
 
     static bool obj_lookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
                                   MutableHandleObject objp, MutableHandleShape propp);
@@ -327,11 +311,9 @@ class TypedArrayObject : public ArrayBufferViewObject
         return tarr->getFixedSlot(BYTEOFFSET_SLOT);
     }
     static Value byteLengthValue(TypedArrayObject *tarr) {
-        AutoThreadSafeAccess ts(tarr);
         return tarr->getFixedSlot(BYTELENGTH_SLOT);
     }
     static Value lengthValue(TypedArrayObject *tarr) {
-        AutoThreadSafeAccess ts(tarr);
         return tarr->getFixedSlot(LENGTH_SLOT);
     }
 
@@ -349,11 +331,9 @@ class TypedArrayObject : public ArrayBufferViewObject
     }
 
     uint32_t type() const {
-        AutoThreadSafeAccess ts(this);
         return getFixedSlot(TYPE_SLOT).toInt32();
     }
     void *viewData() const {
-        AutoThreadSafeAccess ts(this);
         return static_cast<void*>(getPrivate(DATA_SLOT));
     }
 
@@ -364,18 +344,18 @@ class TypedArrayObject : public ArrayBufferViewObject
 
     static uint32_t slotWidth(int atype) {
         switch (atype) {
-          case ScalarTypeRepresentation::TYPE_INT8:
-          case ScalarTypeRepresentation::TYPE_UINT8:
-          case ScalarTypeRepresentation::TYPE_UINT8_CLAMPED:
+          case ScalarTypeDescr::TYPE_INT8:
+          case ScalarTypeDescr::TYPE_UINT8:
+          case ScalarTypeDescr::TYPE_UINT8_CLAMPED:
             return 1;
-          case ScalarTypeRepresentation::TYPE_INT16:
-          case ScalarTypeRepresentation::TYPE_UINT16:
+          case ScalarTypeDescr::TYPE_INT16:
+          case ScalarTypeDescr::TYPE_UINT16:
             return 2;
-          case ScalarTypeRepresentation::TYPE_INT32:
-          case ScalarTypeRepresentation::TYPE_UINT32:
-          case ScalarTypeRepresentation::TYPE_FLOAT32:
+          case ScalarTypeDescr::TYPE_INT32:
+          case ScalarTypeDescr::TYPE_UINT32:
+          case ScalarTypeDescr::TYPE_FLOAT32:
             return 4;
-          case ScalarTypeRepresentation::TYPE_FLOAT64:
+          case ScalarTypeDescr::TYPE_FLOAT64:
             return 8;
           default:
             MOZ_ASSUME_UNREACHABLE("invalid typed array type");
@@ -400,14 +380,14 @@ inline bool
 IsTypedArrayClass(const Class *clasp)
 {
     return &TypedArrayObject::classes[0] <= clasp &&
-           clasp < &TypedArrayObject::classes[ScalarTypeRepresentation::TYPE_MAX];
+           clasp < &TypedArrayObject::classes[ScalarTypeDescr::TYPE_MAX];
 }
 
 inline bool
 IsTypedArrayProtoClass(const Class *clasp)
 {
     return &TypedArrayObject::protoClasses[0] <= clasp &&
-           clasp < &TypedArrayObject::protoClasses[ScalarTypeRepresentation::TYPE_MAX];
+           clasp < &TypedArrayObject::protoClasses[ScalarTypeDescr::TYPE_MAX];
 }
 
 bool

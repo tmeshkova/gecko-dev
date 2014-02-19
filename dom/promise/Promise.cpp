@@ -57,11 +57,11 @@ private:
   nsRefPtr<Promise> mPromise;
 };
 
-class WorkerPromiseTask MOZ_FINAL : public WorkerRunnable
+class WorkerPromiseTask MOZ_FINAL : public WorkerSameThreadRunnable
 {
 public:
   WorkerPromiseTask(WorkerPrivate* aWorkerPrivate, Promise* aPromise)
-    : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount)
+    : WorkerSameThreadRunnable(aWorkerPrivate)
     , mPromise(aPromise)
   {
     MOZ_ASSERT(aPromise);
@@ -161,7 +161,7 @@ public:
   }
 };
 
-class WorkerPromiseResolverTask MOZ_FINAL : public WorkerRunnable,
+class WorkerPromiseResolverTask MOZ_FINAL : public WorkerSameThreadRunnable,
                                             public PromiseResolverMixin
 {
 public:
@@ -169,7 +169,7 @@ public:
                             Promise* aPromise,
                             JS::Handle<JS::Value> aValue,
                             Promise::PromiseState aState)
-    : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+    : WorkerSameThreadRunnable(aWorkerPrivate),
       PromiseResolverMixin(aPromise, aValue, aState)
   {}
 
@@ -502,6 +502,20 @@ Promise::Constructor(const GlobalObject& aGlobal,
 Promise::Resolve(const GlobalObject& aGlobal, JSContext* aCx,
                  const Optional<JS::Handle<JS::Value>>& aValue, ErrorResult& aRv)
 {
+  // If a Promise was passed, just return it.
+  JS::Rooted<JS::Value> value(aCx, aValue.WasPassed() ? aValue.Value() :
+                                                        JS::UndefinedValue());
+  if (value.isObject()) {
+    JS::Rooted<JSObject*> valueObj(aCx, &value.toObject());
+    Promise* nextPromise;
+    nsresult rv = UNWRAP_OBJECT(Promise, valueObj, nextPromise);
+
+    if (NS_SUCCEEDED(rv)) {
+      nsRefPtr<Promise> addRefed = nextPromise;
+      return addRefed.forget();
+    }
+  }
+
   nsCOMPtr<nsPIDOMWindow> window;
   if (MOZ_LIKELY(NS_IsMainThread())) {
     window = do_QueryInterface(aGlobal.GetAsSupports());
@@ -511,14 +525,12 @@ Promise::Resolve(const GlobalObject& aGlobal, JSContext* aCx,
     }
   }
 
-  return Resolve(window, aCx,
-                 aValue.WasPassed() ? aValue.Value() : JS::UndefinedHandleValue,
-                 aRv);
+  return Resolve(window, aCx, value, aRv);
 }
 
 /* static */ already_AddRefed<Promise>
 Promise::Resolve(nsPIDOMWindow* aWindow, JSContext* aCx,
-                JS::Handle<JS::Value> aValue, ErrorResult& aRv)
+                 JS::Handle<JS::Value> aValue, ErrorResult& aRv)
 {
   // aWindow may be null.
   nsRefPtr<Promise> promise = new Promise(aWindow);
@@ -596,7 +608,7 @@ public:
     MOZ_ASSERT(aCountdown != 0);
     JSContext* cx = aGlobal.GetContext();
     JSAutoCompartment ac(cx, aGlobal.Get());
-    mValues = JS_NewArrayObject(cx, aCountdown, nullptr);
+    mValues = JS_NewArrayObject(cx, aCountdown);
     mozilla::HoldJSObjects(this);
   }
 
@@ -719,7 +731,7 @@ Promise::All(const GlobalObject& aGlobal, JSContext* aCx,
   }
 
   if (aIterable.Length() == 0) {
-    JS::Rooted<JSObject*> empty(aCx, JS_NewArrayObject(aCx, 0, nullptr));
+    JS::Rooted<JSObject*> empty(aCx, JS_NewArrayObject(aCx, 0));
     if (!empty) {
       aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
       return nullptr;
@@ -736,7 +748,7 @@ Promise::All(const GlobalObject& aGlobal, JSContext* aCx,
 
   for (uint32_t i = 0; i < aIterable.Length(); ++i) {
     Optional<JS::Handle<JS::Value>> optValue(aCx, aIterable.ElementAt(i));
-    nsRefPtr<Promise> nextPromise = Promise::Cast(aGlobal, aCx, optValue, aRv);
+    nsRefPtr<Promise> nextPromise = Promise::Resolve(aGlobal, aCx, optValue, aRv);
 
     MOZ_ASSERT(!aRv.Failed());
 
@@ -751,27 +763,6 @@ Promise::All(const GlobalObject& aGlobal, JSContext* aCx,
   }
 
   return promise.forget();
-}
-
-/* static */ already_AddRefed<Promise>
-Promise::Cast(const GlobalObject& aGlobal, JSContext* aCx,
-              const Optional<JS::Handle<JS::Value>>& aValue, ErrorResult& aRv)
-{
-  // If a Promise was passed, just return it.
-  JS::Rooted<JS::Value> value(aCx, aValue.WasPassed() ? aValue.Value() :
-                                                        JS::UndefinedValue());
-  if (value.isObject()) {
-    JS::Rooted<JSObject*> valueObj(aCx, &value.toObject());
-    Promise* nextPromise;
-    nsresult rv = UNWRAP_OBJECT(Promise, valueObj, nextPromise);
-
-    if (NS_SUCCEEDED(rv)) {
-      nsRefPtr<Promise> addRefed = nextPromise;
-      return addRefed.forget();
-    }
-  }
-
-  return Promise::Resolve(aGlobal, aCx, aValue, aRv);
 }
 
 /* static */ already_AddRefed<Promise>
@@ -793,9 +784,11 @@ Promise::Race(const GlobalObject& aGlobal, JSContext* aCx,
 
   for (uint32_t i = 0; i < aIterable.Length(); ++i) {
     Optional<JS::Handle<JS::Value>> optValue(aCx, aIterable.ElementAt(i));
-    nsRefPtr<Promise> nextPromise = Promise::Cast(aGlobal, aCx, optValue, aRv);
-    // According to spec, Cast can throw, but our implementation never does.
-    // Remove this when subclassing is supported.
+    nsRefPtr<Promise> nextPromise = Promise::Resolve(aGlobal, aCx, optValue, aRv);
+    // According to spec, Resolve can throw, but our implementation never does.
+    // Well it does when window isn't passed on the main thread, but that is an
+    // implementation detail which should never be reached since we are checking
+    // for window above. Remove this when subclassing is supported.
     MOZ_ASSERT(!aRv.Failed());
     nextPromise->AppendCallbacks(resolveCb, rejectCb);
   }
@@ -839,7 +832,7 @@ Promise::AppendCallbacks(PromiseCallback* aResolveCallback,
       WorkerPrivate* worker = GetCurrentThreadWorkerPrivate();
       MOZ_ASSERT(worker);
       nsRefPtr<WorkerPromiseTask> task = new WorkerPromiseTask(worker, this);
-      worker->Dispatch(task);
+      task->Dispatch(worker->GetJSContext());
     }
     mTaskPending = true;
   }
@@ -1052,7 +1045,7 @@ Promise::RunResolveTask(JS::Handle<JS::Value> aValue,
       MOZ_ASSERT(worker);
       nsRefPtr<WorkerPromiseResolverTask> task =
         new WorkerPromiseResolverTask(worker, this, aValue, aState);
-      worker->Dispatch(task);
+      task->Dispatch(worker->GetJSContext());
     }
     return;
   }

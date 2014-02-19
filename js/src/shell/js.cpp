@@ -17,7 +17,7 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
-#if defined(XP_OS2) || defined(XP_WIN)
+#if defined(XP_WIN)
 # include <io.h>     /* for isatty() */
 #endif
 #include <locale.h>
@@ -128,7 +128,7 @@ static bool printTiming = false;
 static const char *jsCacheDir = nullptr;
 static const char *jsCacheAsmJSPath = nullptr;
 static bool jsCachingEnabled = true;
-mozilla::Atomic<int32_t> jsCacheOpened(false);
+mozilla::Atomic<bool> jsCacheOpened(false);
 
 static bool
 SetTimeoutValue(JSContext *cx, double t);
@@ -322,11 +322,12 @@ ShellOperationCallback(JSContext *cx)
     bool result;
     if (!gTimeoutFunc.isNull()) {
         JSAutoCompartment ac(cx, &gTimeoutFunc.toObject());
-        RootedValue returnedValue(cx);
-        if (!JS_CallFunctionValue(cx, nullptr, gTimeoutFunc, 0, nullptr, returnedValue.address()))
+        RootedValue rval(cx);
+        HandleValue timeoutFunc = HandleValue::fromMarkedLocation(&gTimeoutFunc);
+        if (!JS_CallFunctionValue(cx, JS::NullPtr(), timeoutFunc, JS::EmptyValueArray, &rval))
             return false;
-        if (returnedValue.isBoolean())
-            result = returnedValue.toBoolean();
+        if (rval.isBoolean())
+            result = rval.toBoolean();
         else
             result = false;
     } else {
@@ -1364,7 +1365,7 @@ Quit(JSContext *cx, unsigned argc, jsval *vp)
 #endif
 
     CallArgs args = CallArgsFromVp(argc, vp);
-    JS_ConvertArguments(cx, args.length(), args.array(), "/ i", &gExitCode);
+    JS_ConvertArguments(cx, args, "/ i", &gExitCode);
 
     gQuitting = true;
     return false;
@@ -2227,7 +2228,7 @@ DumpObject(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     RootedObject arg0(cx);
-    if (!JS_ConvertArguments(cx, args.length(), args.array(), "o", arg0.address()))
+    if (!JS_ConvertArguments(cx, args, "o", arg0.address()))
         return false;
 
     js_DumpObject(arg0);
@@ -2336,7 +2337,7 @@ GetPDA(JSContext *cx, unsigned argc, jsval *vp)
         return true;
     }
 
-    RootedObject aobj(cx, JS_NewArrayObject(cx, 0, nullptr));
+    RootedObject aobj(cx, JS_NewArrayObject(cx, 0));
     if (!aobj)
         return false;
     args.rval().setObject(*aobj);
@@ -2480,9 +2481,11 @@ NewSandbox(JSContext *cx, bool lazy)
 static bool
 EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
 {
+    CallArgs args = CallArgsFromVp(argc, vp);
+
     RootedString str(cx);
     RootedObject sobj(cx);
-    if (!JS_ConvertArguments(cx, argc, JS_ARGV(cx, vp), "S / o", str.address(), sobj.address()))
+    if (!JS_ConvertArguments(cx, args, "S / o", str.address(), sobj.address()))
         return false;
 
     size_t srclen;
@@ -2507,7 +2510,7 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
     }
 
     if (srclen == 0) {
-        JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(sobj));
+        args.rval().setObject(*sobj);
         return true;
     }
 
@@ -2515,7 +2518,6 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
     unsigned lineno;
 
     JS_DescribeScriptedCaller(cx, &script, &lineno);
-    RootedValue rval(cx);
     {
         Maybe<JSAutoCompartment> ac;
         unsigned flags;
@@ -2535,15 +2537,14 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
         if (!JS_EvaluateUCScript(cx, sobj, src, srclen,
                                  script->filename(),
                                  lineno,
-                                 &rval)) {
+                                 args.rval())) {
             return false;
         }
     }
 
-    if (!cx->compartment()->wrap(cx, &rval))
+    if (!cx->compartment()->wrap(cx, args.rval()))
         return false;
 
-    JS_SET_RVAL(cx, vp, rval);
     return true;
 }
 
@@ -3911,41 +3912,20 @@ GetSelfHostedValue(JSContext *cx, unsigned argc, jsval *vp)
 }
 
 class ShellSourceHook: public SourceHook {
-    // The runtime to which we attached a source hook.
-    JSRuntime *rt;
-
     // The function we should call to lazily retrieve source code.
-    // The constructor and destructor take care of rooting this with the
-    // runtime.
-    JSObject *fun;
+    PersistentRootedFunction fun;
 
   public:
-    ShellSourceHook() : rt(nullptr), fun(nullptr) { }
-    bool init(JSContext *cx, JSFunction &fun) {
-        JS_ASSERT(!this->rt);
-        JS_ASSERT(!this->fun);
-        this->rt = cx->runtime();
-        this->fun = &fun;
-        return JS_AddNamedObjectRoot(cx, &this->fun,
-                                     "lazy source callback, set with withSourceHook");
-    }
-
-    ~ShellSourceHook() {
-        if (fun)
-            JS_RemoveObjectRootRT(rt, &fun);
-    }
+    ShellSourceHook(JSContext *cx, JSFunction &fun) : fun(cx, &fun) {}
 
     bool load(JSContext *cx, const char *filename, jschar **src, size_t *length) {
-        JS_ASSERT(fun);
-
         RootedString str(cx, JS_NewStringCopyZ(cx, filename));
         if (!str)
             return false;
         RootedValue filenameValue(cx, StringValue(str));
 
         RootedValue result(cx);
-        if (!Call(cx, UndefinedValue(), &fun->as<JSFunction>(),
-                  1, filenameValue.address(), &result))
+        if (!Call(cx, UndefinedHandleValue, fun, filenameValue, &result))
             return false;
 
         str = JS::ToString(cx, result);
@@ -3983,15 +3963,14 @@ WithSourceHook(JSContext *cx, unsigned argc, jsval *vp)
         return false;
     }
 
-    ShellSourceHook *hook = new ShellSourceHook();
-    if (!hook->init(cx, args[0].toObject().as<JSFunction>())) {
-        delete hook;
+    ShellSourceHook *hook = new ShellSourceHook(cx, args[0].toObject().as<JSFunction>());
+    if (!hook)
         return false;
-    }
 
     SourceHook *savedHook = js::ForgetSourceHook(cx->runtime());
     js::SetSourceHook(cx->runtime(), hook);
-    bool result = Call(cx, UndefinedValue(), &args[1].toObject(), 0, nullptr, args.rval());
+    RootedObject fun(cx, &args[1].toObject());
+    bool result = Call(cx, UndefinedHandleValue, fun, JS::EmptyValueArray, args.rval());
     js::SetSourceHook(cx->runtime(), savedHook);
     return result;
 }
@@ -4701,7 +4680,7 @@ static bool
 env_setProperty(JSContext *cx, HandleObject obj, HandleId id, bool strict, MutableHandleValue vp)
 {
 /* XXX porting may be easy, but these don't seem to supply setenv by default */
-#if !defined XP_OS2 && !defined SOLARIS
+#if !defined SOLARIS
     int rv;
 
     RootedValue idvalue(cx, IdToValue(id));
@@ -4744,7 +4723,7 @@ env_setProperty(JSContext *cx, HandleObject obj, HandleId id, bool strict, Mutab
         return false;
     }
     vp.set(StringValue(value));
-#endif /* !defined XP_OS2 && !defined SOLARIS */
+#endif /* !defined SOLARIS */
     return true;
 }
 
@@ -5398,7 +5377,7 @@ BindScriptArgs(JSContext *cx, JSObject *obj_, OptionParser *op)
 
     MultiStringRange msr = op->getMultiStringArg("scriptArgs");
     RootedObject scriptArgs(cx);
-    scriptArgs = JS_NewArrayObject(cx, 0, nullptr);
+    scriptArgs = JS_NewArrayObject(cx, 0);
     if (!scriptArgs)
         return false;
 
@@ -5531,9 +5510,6 @@ ProcessArgs(JSContext *cx, JSObject *obj_, OptionParser *op)
 
     if (op->getBoolOption("ion-check-range-analysis"))
         jit::js_JitOptions.checkRangeAnalysis = true;
-
-    if (op->getBoolOption("ion-check-thread-safety"))
-        jit::js_JitOptions.checkThreadSafety = true;
 
     if (const char *str = op->getStringOption("ion-inlining")) {
         if (strcmp(str, "on") == 0)
@@ -5745,13 +5721,6 @@ main(int argc, char **argv, char **envp)
     setlocale(LC_ALL, "");
 #endif
 
-#ifdef XP_OS2
-   /* these streams are normally line buffered on OS/2 and need a \n, *
-    * so we need to unbuffer then to get a reasonable prompt          */
-    setbuf(stdout,0);
-    setbuf(stderr,0);
-#endif
-
     MaybeOverrideOutFileFromEnv("JS_STDERR", stderr, &gErrFile);
     MaybeOverrideOutFileFromEnv("JS_STDOUT", stdout, &gOutFile);
 
@@ -5816,8 +5785,6 @@ main(int argc, char **argv, char **envp)
                                "Range analysis (default: on, off to disable)")
         || !op.addBoolOption('\0', "ion-check-range-analysis",
                                "Range analysis checking")
-        || !op.addBoolOption('\0', "ion-check-thread-safety",
-                             "IonBuilder thread safety checking")
         || !op.addStringOption('\0', "ion-inlining", "on/off",
                                "Inline methods where possible (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-osr", "on/off",
@@ -5926,15 +5893,8 @@ main(int argc, char **argv, char **envp)
     if (!JS_Init())
         return 1;
 
-    // When doing thread safety checks for VM accesses made during Ion compilation,
-    // we rely on protected memory and only the main thread should be active.
-    JSUseHelperThreads useHelperThreads =
-        op.getBoolOption("ion-check-thread-safety")
-        ? JS_NO_HELPER_THREADS
-        : JS_USE_HELPER_THREADS;
-
     /* Use the same parameters as the browser in xpcjsruntime.cpp. */
-    rt = JS_NewRuntime(32L * 1024L * 1024L, useHelperThreads);
+    rt = JS_NewRuntime(32L * 1024L * 1024L, JS_USE_HELPER_THREADS);
     if (!rt)
         return 1;
     gTimeoutFunc = NullValue();

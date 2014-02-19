@@ -494,7 +494,8 @@ public:
   nsresult GetUserMediaDevices(nsPIDOMWindow* aWindow,
     const dom::MediaStreamConstraintsInternal& aConstraints,
     nsIGetUserMediaDevicesSuccessCallback* onSuccess,
-    nsIDOMGetUserMediaErrorCallback* onError);
+    nsIDOMGetUserMediaErrorCallback* onError,
+    uint64_t aInnerWindowID = 0);
   void OnNavigation(uint64_t aWindowID);
 
   MediaEnginePrefs mPrefs;
@@ -514,9 +515,7 @@ private:
   // Make private because we want only one instance of this class
   MediaManager();
 
-  ~MediaManager() {
-    delete mBackend;
-  }
+  ~MediaManager() {}
 
   nsresult MediaCaptureWindowStateInternal(nsIDOMWindow* aWindow, bool* aVideo,
                                            bool* aAudio);
@@ -532,11 +531,11 @@ private:
 
   Mutex mMutex;
   // protected with mMutex:
-  MediaEngine* mBackend;
+  RefPtr<MediaEngine> mBackend;
 
   static StaticRefPtr<MediaManager> sSingleton;
 
-#ifdef MOZ_WIDGET_GONK
+#ifdef MOZ_B2G_CAMERA
   nsRefPtr<nsDOMCameraManager> mCameraManager;
 #endif
 };

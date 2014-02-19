@@ -136,58 +136,37 @@ class JS_PUBLIC_API(AutoGCRooter) {
     void operator=(AutoGCRooter &ida) MOZ_DELETE;
 };
 
-class AutoArrayRooter : private AutoGCRooter
+/* AutoValueArray roots an internal fixed-size array of Values. */
+template <size_t N>
+class AutoValueArray : public AutoGCRooter
 {
+    const size_t length_;
+    Value elements_[N];
+    js::SkipRoot skip_;
+
   public:
-    AutoArrayRooter(JSContext *cx, size_t len, Value *vec
-                    MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : AutoGCRooter(cx, len), array(vec), skip(cx, array, len)
+    AutoValueArray(JSContext *cx
+                   MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+      : AutoGCRooter(cx, VALARRAY), length_(N), skip_(cx, elements_, N)
     {
+        /* Always initialize in case we GC before assignment. */
+        mozilla::PodArrayZero(elements_);
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-        JS_ASSERT(tag_ >= 0);
     }
 
-    void changeLength(size_t newLength) {
-        tag_ = ptrdiff_t(newLength);
-        JS_ASSERT(tag_ >= 0);
+    unsigned length() const { return length_; }
+    const Value *begin() const { return elements_; }
+    Value *begin() { return elements_; }
+
+    HandleValue operator[](unsigned i) const {
+        JS_ASSERT(i < N);
+        return HandleValue::fromMarkedLocation(&elements_[i]);
+    }
+    MutableHandleValue operator[](unsigned i) {
+        JS_ASSERT(i < N);
+        return MutableHandleValue::fromMarkedLocation(&elements_[i]);
     }
 
-    void changeArray(Value *newArray, size_t newLength) {
-        changeLength(newLength);
-        array = newArray;
-    }
-
-    Value *start() {
-        return array;
-    }
-
-    size_t length() {
-        JS_ASSERT(tag_ >= 0);
-        return size_t(tag_);
-    }
-
-    MutableHandleValue handleAt(size_t i) {
-        JS_ASSERT(i < size_t(tag_));
-        return MutableHandleValue::fromMarkedLocation(&array[i]);
-    }
-    HandleValue handleAt(size_t i) const {
-        JS_ASSERT(i < size_t(tag_));
-        return HandleValue::fromMarkedLocation(&array[i]);
-    }
-    MutableHandleValue operator[](size_t i) {
-        JS_ASSERT(i < size_t(tag_));
-        return MutableHandleValue::fromMarkedLocation(&array[i]);
-    }
-    HandleValue operator[](size_t i) const {
-        JS_ASSERT(i < size_t(tag_));
-        return HandleValue::fromMarkedLocation(&array[i]);
-    }
-
-    friend void AutoGCRooter::trace(JSTracer *trc);
-
-  private:
-    Value *array;
-    js::SkipRoot skip;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
@@ -222,6 +201,7 @@ class AutoVectorRooter : protected AutoGCRooter
     bool empty() const { return vector.empty(); }
 
     bool append(const T &v) { return vector.append(v); }
+    bool append(const T *ptr, size_t len) { return vector.append(ptr, len); }
     bool appendAll(const AutoVectorRooter<T> &other) {
         return vector.appendAll(other.vector);
     }
@@ -620,6 +600,48 @@ class JS_PUBLIC_API(CustomAutoRooter) : private AutoGCRooter
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
+/* A handle to an array of rooted values. */
+class HandleValueArray
+{
+    const size_t length_;
+    const Value *elements_;
+
+    HandleValueArray(size_t len, const Value *elements) : length_(len), elements_(elements) {}
+
+  public:
+    HandleValueArray() : length_(0), elements_(nullptr) {}
+    HandleValueArray(const RootedValue& value) : length_(1), elements_(value.address()) {}
+
+    HandleValueArray(const AutoValueVector& values)
+      : length_(values.length()), elements_(values.begin()) {}
+
+    template <size_t N>
+    HandleValueArray(const AutoValueArray<N>& values) : length_(N), elements_(values.begin()) {}
+
+    /* CallArgs must already be rooted somewhere up the stack. */
+    HandleValueArray(const JS::CallArgs& args) : length_(args.length()), elements_(args.array()) {}
+
+    /* Use with care! Only call this if the data is guaranteed to be marked. */
+    static HandleValueArray fromMarkedLocation(size_t len, const Value *elements) {
+        return HandleValueArray(len, elements);
+    }
+
+    static HandleValueArray subarray(const HandleValueArray& values, size_t startIndex, size_t len) {
+        JS_ASSERT(startIndex + len <= values.length());
+        return HandleValueArray(len, values.begin() + startIndex);
+    }
+
+    size_t length() const { return length_; }
+    const Value *begin() const { return elements_; }
+
+    HandleValue operator[](size_t i) const {
+        JS_ASSERT(i < length_);
+        return HandleValue::fromMarkedLocation(&elements_[i]);
+    }
+};
+
+extern JS_PUBLIC_DATA(const HandleValueArray) EmptyValueArray;
+
 }  /* namespace JS */
 
 /************************************************************************/
@@ -996,13 +1018,12 @@ JS_GetEmptyString(JSRuntime *rt);
  * unconverted arguments.
  */
 extern JS_PUBLIC_API(bool)
-JS_ConvertArguments(JSContext *cx, unsigned argc, jsval *argv, const char *format,
-                    ...);
+JS_ConvertArguments(JSContext *cx, const JS::CallArgs &args, const char *format, ...);
 
 #ifdef va_start
 extern JS_PUBLIC_API(bool)
-JS_ConvertArgumentsVA(JSContext *cx, unsigned argc, jsval *argv,
-                      const char *format, va_list ap);
+JS_ConvertArgumentsVA(JSContext *cx, const JS::CallArgs &args, const char *format,
+                      va_list ap);
 #endif
 
 extern JS_PUBLIC_API(bool)
@@ -1793,18 +1814,6 @@ extern JS_PUBLIC_API(JSObject *)
 CurrentGlobalOrNull(JSContext *cx);
 
 }
-
-/*
- * This method returns the global corresponding to the most recent scripted
- * frame, which may not match the cx's current compartment. This is extremely
- * dangerous, because it can bypass compartment security invariants in subtle
- * ways. To use it safely, the caller must perform a subsequent security
- * check. There is currently only one consumer of this function in Gecko, and
- * it should probably stay that way. If you'd like to use it, please consult
- * the XPConnect module owner first.
- */
-extern JS_PUBLIC_API(JSObject *)
-JS_GetScriptedGlobal(JSContext *cx);
 
 /*
  * Initialize the 'Reflect' object on a global object.
@@ -3049,7 +3058,10 @@ JS_DeleteUCProperty2(JSContext *cx, JS::HandleObject obj, const jschar *name, si
                      bool *succeeded);
 
 extern JS_PUBLIC_API(JSObject *)
-JS_NewArrayObject(JSContext *cx, int length, jsval *vector);
+JS_NewArrayObject(JSContext *cx, const JS::HandleValueArray& contents);
+
+extern JS_PUBLIC_API(JSObject *)
+JS_NewArrayObject(JSContext *cx, size_t length);
 
 extern JS_PUBLIC_API(bool)
 JS_IsArrayObject(JSContext *cx, JS::HandleValue value);
@@ -3144,15 +3156,17 @@ JS_StealArrayBufferContents(JSContext *cx, JS::HandleObject obj, void **contents
 
 /*
  * Allocate memory that may be eventually passed to
- * JS_NewArrayBufferWithContents. |nbytes| is the number of payload bytes
- * required. The pointer to pass to JS_NewArrayBufferWithContents is returned
- * in |contents|. The pointer to the |nbytes| of usable memory is returned in
- * |data|. (*|contents| will contain a header before |data|.) The only legal
- * operations on *|contents| is to free it, or pass it to
- * JS_NewArrayBufferWithContents or JS_ReallocateArrayBufferContents.
+ * JS_NewArrayBufferWithContents. |maybecx| is optional; if a non-nullptr cx is
+ * given, it will be used for memory accounting and OOM reporting. |nbytes| is
+ * the number of payload bytes required. The pointer to pass to
+ * JS_NewArrayBufferWithContents is returned in |contents|. The pointer to the
+ * |nbytes| of usable memory is returned in |data|. (*|contents| will contain a
+ * header before |data|.) The only legal operations on *|contents| are to pass
+ * it to either JS_NewArrayBufferWithContents or
+ * JS_ReallocateArrayBufferContents, or free it with js_free or JS_free.
  */
 extern JS_PUBLIC_API(bool)
-JS_AllocateArrayBufferContents(JSContext *cx, uint32_t nbytes, void **contents, uint8_t **data);
+JS_AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, void **contents, uint8_t **data);
 
 /*
  * Reallocate memory allocated by JS_AllocateArrayBufferContents, growing or
@@ -3890,48 +3904,51 @@ Evaluate(JSContext *cx, JS::HandleObject obj, const ReadOnlyCompileOptions &opti
 } /* namespace JS */
 
 extern JS_PUBLIC_API(bool)
-JS_CallFunction(JSContext *cx, JSObject *obj, JSFunction *fun, unsigned argc,
-                jsval *argv, jsval *rval);
+JS_CallFunction(JSContext *cx, JS::HandleObject obj, JS::HandleFunction fun,
+                const JS::HandleValueArray& args, JS::MutableHandleValue rval);
 
 extern JS_PUBLIC_API(bool)
-JS_CallFunctionName(JSContext *cx, JSObject *obj, const char *name, unsigned argc,
-                    jsval *argv, jsval *rval);
+JS_CallFunctionName(JSContext *cx, JS::HandleObject obj, const char *name,
+                    const JS::HandleValueArray& args, JS::MutableHandleValue rval);
 
 extern JS_PUBLIC_API(bool)
-JS_CallFunctionValue(JSContext *cx, JSObject *obj, jsval fval, unsigned argc,
-                     jsval *argv, jsval *rval);
+JS_CallFunctionValue(JSContext *cx, JS::HandleObject obj, JS::HandleValue fval,
+                     const JS::HandleValueArray& args, JS::MutableHandleValue rval);
 
 namespace JS {
 
 static inline bool
-Call(JSContext *cx, JSObject *thisObj, JSFunction *fun, unsigned argc, jsval *argv,
-     MutableHandleValue rval)
+Call(JSContext *cx, JS::HandleObject thisObj, JS::HandleFunction fun,
+     const JS::HandleValueArray &args, MutableHandleValue rval)
 {
-    return !!JS_CallFunction(cx, thisObj, fun, argc, argv, rval.address());
+    return !!JS_CallFunction(cx, thisObj, fun, args, rval);
 }
 
 static inline bool
-Call(JSContext *cx, JSObject *thisObj, const char *name, unsigned argc, jsval *argv,
+Call(JSContext *cx, JS::HandleObject thisObj, const char *name, const JS::HandleValueArray& args,
      MutableHandleValue rval)
 {
-    return !!JS_CallFunctionName(cx, thisObj, name, argc, argv, rval.address());
+    return !!JS_CallFunctionName(cx, thisObj, name, args, rval);
 }
 
 static inline bool
-Call(JSContext *cx, JSObject *thisObj, jsval fun, unsigned argc, jsval *argv,
+Call(JSContext *cx, JS::HandleObject thisObj, JS::HandleValue fun, const JS::HandleValueArray& args,
      MutableHandleValue rval)
 {
-    return !!JS_CallFunctionValue(cx, thisObj, fun, argc, argv, rval.address());
+    return !!JS_CallFunctionValue(cx, thisObj, fun, args, rval);
 }
 
 extern JS_PUBLIC_API(bool)
-Call(JSContext *cx, jsval thisv, jsval fun, unsigned argc, jsval *argv, MutableHandleValue rval);
+Call(JSContext *cx, JS::HandleValue thisv, JS::HandleValue fun, const JS::HandleValueArray& args,
+     MutableHandleValue rval);
 
 static inline bool
-Call(JSContext *cx, jsval thisv, JSObject *funObj, unsigned argc, jsval *argv,
+Call(JSContext *cx, JS::HandleValue thisv, JS::HandleObject funObj, const JS::HandleValueArray& args,
      MutableHandleValue rval)
 {
-    return Call(cx, thisv, OBJECT_TO_JSVAL(funObj), argc, argv, rval);
+    JS_ASSERT(funObj);
+    JS::RootedValue fun(cx, JS::ObjectValue(*funObj));
+    return Call(cx, thisv, fun, args, rval);
 }
 
 } /* namespace JS */
@@ -4832,13 +4849,30 @@ SetAsmJSCacheOps(JSRuntime *rt, const AsmJSCacheOps *callbacks);
 class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
   protected:
     JSContext *cx_;
+    /*
+     * Use the ForOfPIC on the global object (see vm/GlobalObject.h) to try
+     * to optimize iteration across arrays.
+     *
+     *  Case 1: Regular Iteration
+     *      iterator - pointer to the iterator object.
+     *      index - fixed to NOT_ARRAY (== UINT32_MAX)
+     *
+     *  Case 2: Optimized Array Iteration
+     *      iterator - pointer to the array object.
+     *      index - current position in array.
+     *
+     * The cases are distinguished by whether or not |index| is equal to NOT_ARRAY.
+     */
     JS::RootedObject iterator;
+    uint32_t index;
+
+    static const uint32_t NOT_ARRAY = UINT32_MAX;
 
     ForOfIterator(const ForOfIterator &) MOZ_DELETE;
     ForOfIterator &operator=(const ForOfIterator &) MOZ_DELETE;
 
   public:
-    ForOfIterator(JSContext *cx) : cx_(cx), iterator(cx) { }
+    ForOfIterator(JSContext *cx) : cx_(cx), iterator(cx_), index(NOT_ARRAY) { }
 
     enum NonIterableBehavior {
         ThrowOnNonIterable,
@@ -4867,7 +4901,25 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
     bool valueIsIterable() const {
         return iterator;
     }
+
+  private:
+    inline bool nextFromOptimizedArray(MutableHandleValue val, bool *done);
+    bool materializeArrayIterator();
 };
+
+
+/*
+ * If a large allocation fails, the JS engine may call the large-allocation-
+ * failure callback, if set, to allow the embedding to flush caches, possibly
+ * perform shrinking GCs, etc. to make some room so that the allocation will
+ * succeed if retried.
+ */
+
+typedef void
+(* LargeAllocationFailureCallback)();
+
+extern JS_PUBLIC_API(void)
+SetLargeAllocationFailureCallback(JSRuntime *rt, LargeAllocationFailureCallback afc);
 
 } /* namespace JS */
 

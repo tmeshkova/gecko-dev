@@ -265,7 +265,6 @@ public:
         aLayer == mLayer ||
         aFlags & FORCE_DETACH) {
       SetLayer(nullptr);
-      SetCompositor(nullptr);
       mAttached = false;
       mKeepAttached = false;
       if (mBackendData) {
@@ -290,6 +289,8 @@ public:
   virtual void UseTextureHost(TextureHost* aTexture);
   virtual void UseComponentAlphaTextures(TextureHost* aTextureOnBlack,
                                          TextureHost* aTextureOnWhite);
+
+  virtual void RemoveTextureHost(TextureHost* aTexture);
 
 protected:
   TextureInfo mTextureInfo;

@@ -39,6 +39,9 @@ pref("metro.private_browsing.enabled", false);
 // Enable tab-modal prompts
 pref("prompts.tab_modal.enabled", true);
 
+// NewTabUtils pref related to top site thumbnail updating.
+pref("browser.newtabpage.enabled", true);
+
 // Enable off main thread compositing
 pref("layers.offmainthreadcomposition.enabled", true);
 pref("layers.async-pan-zoom.enabled", true);
@@ -133,6 +136,8 @@ pref("browser.display.startUI.maxresults", 16);
 
 // Number of times to display firstrun instructions on new tab page
 pref("browser.firstrun.count", 3);
+// Has the content first run been dismissed
+pref("browser.firstrun-content.dismissed", false);
 
 // Backspace and Shift+Backspace behavior
 // 0 goes Back/Forward
@@ -429,6 +434,7 @@ pref("breakpad.reportURL", "https://crash-stats.mozilla.com/report/index/");
 // TODO: This is not the correct article for metro!!!
 pref("app.sync.tutorialURL", "https://support.mozilla.org/kb/sync-firefox-between-desktop-and-mobile");
 pref("app.support.baseURL", "https://support.mozilla.org/1/touch/%VERSION%/%OS%/%LOCALE%/");
+pref("app.support.inputURL", "https://input.mozilla.org/feedback/metrofirefox");
 pref("app.privacyURL", "http://www.mozilla.org/%LOCALE%/legal/privacy/firefox.html");
 pref("app.creditsURL", "http://www.mozilla.org/credits/");
 pref("app.channelURL", "http://www.mozilla.org/%LOCALE%/firefox/channel/");

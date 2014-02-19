@@ -31,6 +31,7 @@ class nsIMEStateManager
 {
   friend class nsTextStateManager;
 protected:
+  typedef mozilla::widget::IMEMessage IMEMessage;
   typedef mozilla::widget::IMEState IMEState;
   typedef mozilla::widget::InputContext InputContext;
   typedef mozilla::widget::InputContextAction InputContextAction;
@@ -98,16 +99,24 @@ public:
   /**
    * Get TextComposition from widget.
    */
-  static mozilla::TextComposition* GetTextCompositionFor(nsIWidget* aWidget);
+  static already_AddRefed<mozilla::TextComposition>
+    GetTextCompositionFor(nsIWidget* aWidget);
+
+  /**
+   * Returns TextComposition instance for the event.
+   *
+   * @param aEvent      Should be a composition event or a text event which is
+   *                    being dispatched.
+   */
+  static already_AddRefed<mozilla::TextComposition>
+    GetTextCompositionFor(mozilla::WidgetGUIEvent* aEvent);
 
   /**
    * Send a notification to IME.  It depends on the IME or platform spec what
    * will occur (or not occur).
    */
-  static nsresult NotifyIME(mozilla::widget::NotificationToIME aNotification,
-                            nsIWidget* aWidget);
-  static nsresult NotifyIME(mozilla::widget::NotificationToIME aNotification,
-                            nsPresContext* aPresContext);
+  static nsresult NotifyIME(IMEMessage aMessage, nsIWidget* aWidget);
+  static nsresult NotifyIME(IMEMessage aMessage, nsPresContext* aPresContext);
 
 protected:
   static nsresult OnChangeFocusInternal(nsPresContext* aPresContext,

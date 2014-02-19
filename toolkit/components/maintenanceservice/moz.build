@@ -21,3 +21,12 @@ SOURCES += [
 DEFINES['UNICODE'] = True
 DEFINES['_UNICODE'] = True
 DEFINES['NS_NO_XPCOM'] = True
+
+# Pick up nsWindowsRestart.cpp
+LOCAL_INCLUDES += [
+    '/toolkit/mozapps/update/common',
+    '/toolkit/xre',
+]
+
+
+USE_STATIC_LIBS = True

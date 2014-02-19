@@ -571,7 +571,7 @@ void
 MLoadTypedArrayElement::printOpcode(FILE *fp) const
 {
     MDefinition::printOpcode(fp);
-    fprintf(fp, " %s", ScalarTypeRepresentation::typeName(arrayType()));
+    fprintf(fp, " %s", ScalarTypeDescr::typeName(arrayType()));
 }
 
 void
@@ -788,8 +788,6 @@ MStringLength::foldsTo(TempAllocator &alloc, bool useValueNumbers)
     if ((type() == MIRType_Int32) && (string()->isConstant())) {
         Value value = string()->toConstant()->value();
         JSAtom *atom = &value.toString()->asAtom();
-
-        AutoThreadSafeAccess ts(atom);
         return MConstant::New(alloc, Int32Value(atom->length()));
     }
 
@@ -2607,7 +2605,6 @@ MBeta::printOpcode(FILE *fp) const
 bool
 MNewObject::shouldUseVM() const
 {
-    AutoThreadSafeAccess ts(templateObject());
     return templateObject()->hasSingletonType() ||
            templateObject()->hasDynamicSlots();
 }
@@ -2926,7 +2923,7 @@ jit::ElementAccessIsDenseNative(MDefinition *obj, MDefinition *id)
 
 bool
 jit::ElementAccessIsTypedArray(MDefinition *obj, MDefinition *id,
-                               ScalarTypeRepresentation::Type *arrayType)
+                               ScalarTypeDescr::Type *arrayType)
 {
     if (obj->mightBeType(MIRType_String))
         return false;
@@ -2938,8 +2935,8 @@ jit::ElementAccessIsTypedArray(MDefinition *obj, MDefinition *id,
     if (!types)
         return false;
 
-    *arrayType = (ScalarTypeRepresentation::Type) types->getTypedArrayType();
-    return *arrayType != ScalarTypeRepresentation::TYPE_MAX;
+    *arrayType = (ScalarTypeDescr::Type) types->getTypedArrayType();
+    return *arrayType != ScalarTypeDescr::TYPE_MAX;
 }
 
 bool

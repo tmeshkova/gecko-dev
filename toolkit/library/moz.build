@@ -14,6 +14,13 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     SOURCES += [
         'nsDllMain.cpp',
     ]
+    if not CONFIG['GNU_CC']:
+        LOCAL_INCLUDES += [
+	    '/widget/windows',
+	    '/xpcom/base',
+	]
+
+DEFINES['MOZILLA_INTERNAL_API'] = True
 
 # component libraries
 additional_defines = (
@@ -34,15 +41,26 @@ for var in additional_defines:
 if CONFIG['MOZ_DEBUG'] and CONFIG['ENABLE_TESTS']:
     DEFINES['ENABLE_LAYOUTDEBUG'] = True
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] not in ('android', 'gonk', 'qt', 'os2',
+if CONFIG['MOZ_WIDGET_TOOLKIT'] not in ('android', 'gonk', 'qt',
                                         'cocoa', 'windows') and \
    CONFIG['MOZ_XUL']:
     DEFINES['MOZ_FILEVIEW'] = True
 
 # Platform-specific icon channel stuff - supported mostly-everywhere
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'os2', 'mac', 'cocoa',
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'mac', 'cocoa',
                                     'gtk2', 'gtk3', 'qt', 'android'):
     DEFINES['ICON_DECODER'] = True
+
+LOCAL_INCLUDES += [
+    '/config',
+    # need widget/windows for resource.h (included from widget.rc)
+    '/widget/windows',
+]
+
+if CONFIG['OS_ARCH'] == 'WINNT' and not CONFIG['GNU_CC']:
+    LOCAL_INCLUDES += [
+        '/xpcom/base',
+    ]
 
 FAIL_ON_WARNINGS = True
 
@@ -62,10 +80,6 @@ DELAYLOAD_DLLS += [
 ]
 
 if CONFIG['MOZ_METRO']:
-    if CONFIG['MOZ_DEBUG']:
-        DELAYLOAD_DLLS += ['VCCORLIB' + CONFIG['CRTDLLVERSION'] + 'D.DLL']
-    else:
-        DELAYLOAD_DLLS += ['VCCORLIB' + CONFIG['CRTDLLVERSION'] + '.DLL']
     DELAYLOAD_DLLS += [
         'API-MS-WIN-CORE-WINRT-L' + CONFIG['CRTEXPDLLVERSION'] + '.DLL',
         'API-MS-WIN-CORE-WINRT-STRING-L' + CONFIG['CRTEXPDLLVERSION'] + '.DLL',

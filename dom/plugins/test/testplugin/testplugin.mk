@@ -6,9 +6,6 @@
 # Don't use STL wrappers; nptest isn't Gecko code
 STL_FLAGS =
 
-# must link statically with the CRT; nptest isn't Gecko code
-USE_STATIC_LIBS = 1
-
 ifeq ($(MOZ_WIDGET_TOOLKIT),qt)
 include $(topsrcdir)/config/config.mk
 CXXFLAGS        += $(MOZ_QT_CFLAGS)
@@ -20,9 +17,6 @@ EXTRA_DSO_LDOPTS = \
 endif
 
 ifeq ($(MOZ_WIDGET_TOOLKIT),windows)
-RCFILE    = nptest.rc
-RESFILE   = nptest.res
-DEFFILE   = $(win_srcdir)/nptest.def
 OS_LIBS  += $(call EXPAND_LIBNAME,msimg32)
 
 # Windows opt builds without PGO break nptest.dll

@@ -53,7 +53,7 @@ CanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
 {
   if (mBuffer &&
       (mBuffer->IsImmutable() || mBuffer->GetSize() != aSize)) {
-    GetForwarder()->AddForceRemovingTexture(mBuffer);
+    GetForwarder()->RemoveTextureFromCompositable(this, mBuffer);
     mBuffer = nullptr;
   }
 
@@ -76,9 +76,10 @@ CanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
     return;
   }
 
-  nsRefPtr<gfxASurface> surface = mBuffer->AsTextureClientSurface()->GetAsSurface();
-  if (surface) {
-    aLayer->UpdateSurface(surface);
+  RefPtr<DrawTarget> drawTarget =
+    mBuffer->AsTextureClientDrawTarget()->GetAsDrawTarget();
+  if (drawTarget) {
+    aLayer->UpdateTarget(drawTarget);
   }
 
   mBuffer->Unlock();
@@ -88,7 +89,7 @@ CanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
     return;
   }
 
-  if (surface) {
+  if (drawTarget) {
     GetForwarder()->UpdatedTexture(this, mBuffer, nullptr);
     GetForwarder()->UseTexture(this, mBuffer);
   }
@@ -131,7 +132,7 @@ CanvasClientSurfaceStream::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
 
     SharedSurface_Gralloc* grallocSurf = SharedSurface_Gralloc::Cast(surf);
 
-    GrallocTextureClientOGL* grallocTextureClient =
+    RefPtr<GrallocTextureClientOGL> grallocTextureClient =
       static_cast<GrallocTextureClientOGL*>(grallocSurf->GetTextureClient());
 
     // If IPDLActor is null means this TextureClient didn't AddTextureClient yet
@@ -215,7 +216,7 @@ DeprecatedCanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
   }
 
   gfxASurface* surface = mDeprecatedTextureClient->LockSurface();
-  aLayer->UpdateSurface(surface);
+  aLayer->DeprecatedUpdateSurface(surface);
   mDeprecatedTextureClient->Unlock();
 }
 

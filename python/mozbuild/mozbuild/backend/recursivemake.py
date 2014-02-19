@@ -23,6 +23,7 @@ import mozpack.path as mozpath
 
 from .common import CommonBackend
 from ..frontend.data import (
+    AndroidEclipseProjectData,
     ConfigFileSubstitution,
     Defines,
     DirectoryTraversal,
@@ -37,6 +38,7 @@ from ..frontend.data import (
     LibraryDefinition,
     LocalInclude,
     Program,
+    Resources,
     SandboxDerived,
     SandboxWrapped,
     SimpleProgram,
@@ -330,7 +332,7 @@ class RecursiveMakeBackend(CommonBackend):
 
         if obj.objdir not in self._backend_files:
             self._backend_files[obj.objdir] = \
-                BackendMakeFile(obj.srcdir, obj.objdir, self.get_environment(obj))
+                BackendMakeFile(obj.srcdir, obj.objdir, obj.config)
         backend_file = self._backend_files[obj.objdir]
 
         CommonBackend.consume_object(self, obj)
@@ -413,6 +415,9 @@ class RecursiveMakeBackend(CommonBackend):
         elif isinstance(obj, Exports):
             self._process_exports(obj, obj.exports, backend_file)
 
+        elif isinstance(obj, Resources):
+            self._process_resources(obj, obj.resources, backend_file)
+
         elif isinstance(obj, JARManifest):
             backend_file.write('JAR_MANIFEST := %s\n' % obj.path)
 
@@ -448,6 +453,8 @@ class RecursiveMakeBackend(CommonBackend):
             # automated.
             if isinstance(obj.wrapped, JavaJarData):
                 self._process_java_jar_data(obj.wrapped, backend_file)
+            elif isinstance(obj.wrapped, AndroidEclipseProjectData):
+                self._process_android_eclipse_project_data(obj.wrapped, backend_file)
             else:
                 return
 
@@ -660,6 +667,11 @@ class RecursiveMakeBackend(CommonBackend):
                     '#error "%(cppfile)s forces NSPR logging, '
                     'so it cannot be built in unified mode."\n'
                     '#undef FORCE_PR_LOG\n'
+                    '#endif\n'
+                    '#ifdef INITGUID\n'
+                    '#error "%(cppfile)s defines INITGUID, '
+                    'so it cannot be built in unified mode."\n'
+                    '#undef INITGUID\n'
                     '#endif')
                 f.write('\n'.join(includeTemplate % { "cppfile": s } for
                                   s in source_filenames))
@@ -705,6 +717,7 @@ class RecursiveMakeBackend(CommonBackend):
                 obj.input_path = makefile_in
                 obj.topsrcdir = bf.environment.topsrcdir
                 obj.topobjdir = bf.environment.topobjdir
+                obj.config = bf.environment
                 self._create_makefile(obj, stub=stub)
 
         # Write out a master list of all IPDL source files.
@@ -872,28 +885,68 @@ class RecursiveMakeBackend(CommonBackend):
         for tier in set(self._may_skip.keys()) - affected_tiers:
             self._may_skip[tier].add(backend_file.relobjdir)
 
-    def _process_exports(self, obj, exports, backend_file, namespace=""):
-        # This may not be needed, but is present for backwards compatibility
-        # with the old make rules, just in case.
-        if not obj.dist_install:
-            return
+    def _process_hierarchy(self, obj, element, namespace, action):
+        """Walks the ``HierarchicalStringList`` ``element`` and performs
+        ``action`` on each string in the heirarcy.
 
-        strings = exports.get_strings()
+        ``action`` is a callback to be invoked with the following arguments:
+        - ``source`` - The path to the source file named by the current string
+        - ``dest``   - The relative path, including the namespace, of the
+                       destination file.
+        """
+        strings = element.get_strings()
         if namespace:
             namespace += '/'
 
         for s in strings:
             source = mozpath.normpath(mozpath.join(obj.srcdir, s))
             dest = '%s%s' % (namespace, mozpath.basename(s))
+            flags = None
+            if '__getitem__' in dir(element):
+                flags = element[s]
+            action(source, dest, flags)
+
+        children = element.get_children()
+        for subdir in sorted(children):
+            self._process_hierarchy(obj, children[subdir],
+                namespace=namespace + subdir,
+                action=action)
+
+    def _process_exports(self, obj, exports, backend_file):
+        # This may not be needed, but is present for backwards compatibility
+        # with the old make rules, just in case.
+        if not obj.dist_install:
+            return
+
+        def handle_export(source, dest, flags):
             self._install_manifests['dist_include'].add_symlink(source, dest)
 
             if not os.path.exists(source):
                 raise Exception('File listed in EXPORTS does not exist: %s' % source)
 
-        children = exports.get_children()
-        for subdir in sorted(children):
-            self._process_exports(obj, children[subdir], backend_file,
-                namespace=namespace + subdir)
+        self._process_hierarchy(obj, exports,
+                                namespace="",
+                                action=handle_export)
+
+    def _process_resources(self, obj, resources, backend_file):
+        dep_path = mozpath.join(self.environment.topobjdir, '_build_manifests', '.deps', 'install')
+        def handle_resource(source, dest, flags):
+            if flags.preprocess:
+                if dest.endswith('.in'):
+                    dest = dest[:-3]
+                dep_file = mozpath.join(dep_path, mozpath.basename(source) + '.pp')
+                self._install_manifests['dist_bin'].add_preprocess(source, dest, dep_file, marker='%', defines=obj.defines)
+            else:
+                self._install_manifests['dist_bin'].add_symlink(source, dest)
+
+            if not os.path.exists(source):
+                raise Exception('File listed in RESOURCE_FILES does not exist: %s' % source)
+
+        # Resources need to go in the 'res' subdirectory of $(DIST)/bin, so we
+        # specify a root namespace of 'res'.
+        self._process_hierarchy(obj, resources,
+                                namespace='res',
+                                action=handle_resource)
 
     def _process_installation_target(self, obj, backend_file):
         # A few makefiles need to be able to override the following rules via
@@ -966,6 +1019,7 @@ class RecursiveMakeBackend(CommonBackend):
             'makefiles', 'xpidl', 'Makefile.in')
         obj.topsrcdir = self.environment.topsrcdir
         obj.topobjdir = self.environment.topobjdir
+        obj.config = self.environment
         self._create_makefile(obj, extra=dict(
             xpidl_rules='\n'.join(rules),
             xpidl_modules=' '.join(xpt_modules),
@@ -988,12 +1042,14 @@ class RecursiveMakeBackend(CommonBackend):
         self.backend_input_files.add(mozpath.join(obj.topsrcdir,
             obj.manifest_relpath))
 
-        # Duplicate manifests may define the same file. That's OK.
-        for source, dest in obj.installs.items():
+        # Don't allow files to be defined multiple times unless it is allowed.
+        # We currently allow duplicates for non-test files or test files if
+        # the manifest is listed as a duplicate.
+        for source, (dest, is_test) in obj.installs.items():
             try:
                 self._install_manifests['tests'].add_symlink(source, dest)
             except ValueError:
-                if not obj.dupe_manifest:
+                if not obj.dupe_manifest and is_test:
                     raise
 
         for base, pattern, dest in obj.pattern_installs:
@@ -1046,6 +1102,28 @@ class RecursiveMakeBackend(CommonBackend):
             backend_file.write('%s_JAVAC_FLAGS := %s\n' %
                 (target, ' '.join(jar.javac_flags)))
 
+    def _process_android_eclipse_project_data(self, project, backend_file):
+        # We add a single target to the backend.mk corresponding to
+        # the moz.build defining the Android Eclipse project. This
+        # target depends on some targets to be fresh, and installs a
+        # manifest generated by the Android Eclipse build backend. The
+        # manifests for all projects live in $TOPOBJDIR/android_eclipse
+        # and are installed into subdirectories thereof.
+
+        project_directory = mozpath.join(self.environment.topobjdir, 'android_eclipse', project.name)
+        manifest_path = mozpath.join(self.environment.topobjdir, 'android_eclipse', '%s.manifest' % project.name)
+
+        fragment = Makefile()
+        rule = fragment.create_rule(targets=['ANDROID_ECLIPSE_PROJECT_%s' % project.name])
+        rule.add_dependencies(project.recursive_make_targets)
+        args = ['--no-remove',
+            '--no-remove-all-directory-symlinks',
+            '--no-remove-empty-directories',
+            project_directory,
+            manifest_path]
+        rule.add_commands(['$(call py_action,process_install_manifest,%s)' % ' '.join(args)])
+        fragment.dump(backend_file.fh, removal_guard=False)
+
     def _process_library_definition(self, libdef, backend_file):
         backend_file.write('LIBRARY_NAME = %s\n' % libdef.basename)
         thisobjdir = libdef.objdir
@@ -1091,6 +1169,7 @@ class RecursiveMakeBackend(CommonBackend):
             'output_path',
             'topsrcdir',
             'topobjdir',
+            'config',
         )
 
     def _create_makefile(self, obj, stub=False, extra=None):
@@ -1104,13 +1183,15 @@ class RecursiveMakeBackend(CommonBackend):
         with self._get_preprocessor(obj) as pp:
             if extra:
                 pp.context.update(extra)
+            if not pp.context.get('autoconfmk', ''):
+                pp.context['autoconfmk'] = 'autoconf.mk'
             pp.handleLine(b'# THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT MODIFY BY HAND.\n');
             pp.handleLine(b'DEPTH := @DEPTH@\n')
             pp.handleLine(b'topsrcdir := @top_srcdir@\n')
             pp.handleLine(b'srcdir := @srcdir@\n')
             pp.handleLine(b'VPATH := @srcdir@\n')
             pp.handleLine(b'relativesrcdir := @relativesrcdir@\n')
-            pp.handleLine(b'include $(DEPTH)/config/autoconf.mk\n')
+            pp.handleLine(b'include $(DEPTH)/config/@autoconfmk@\n')
             if not stub:
                 pp.do_include(obj.input_path)
             # Empty line to avoid failures when last line in Makefile.in ends

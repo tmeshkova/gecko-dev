@@ -48,10 +48,6 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
         'nsNativeAppSupportQt.cpp',
         'nsQAppInstance.cpp',
     ]
-elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'os2':
-    SOURCES += [
-        'nsNativeAppSupportOS2.cpp',
-    ]
 elif CONFIG['MOZ_ENABLE_GTK']:
     UNIFIED_SOURCES += [
         'nsNativeAppSupportUnix.cpp',
@@ -147,3 +143,19 @@ for var in ('APP_VERSION', 'APP_ID'):
 
 if CONFIG['MOZILLA_OFFICIAL']:
     DEFINES['MOZILLA_OFFICIAL'] = True
+
+LOCAL_INCLUDES += [
+    '../profile',
+    '/config',
+    '/dom/base',
+    '/dom/ipc',
+    '/testing/gtest/mozilla',
+    '/toolkit/crashreporter',
+    '/xpcom/build',
+]
+
+if CONFIG['MOZ_ENABLE_XREMOTE']:
+    LOCAL_INCLUDES += [
+        '/widget/xremoteclient',
+    ]
+

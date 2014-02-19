@@ -17,9 +17,10 @@ XPCOMUtils.defineLazyServiceGetter(this, "CrashReporter",
 
 XPCOMUtils.defineLazyModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "sendMessageToJava", "resource://gre/modules/Messaging.jsm");
 
 function dump(a) {
-  Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService).logStringMessage(a);
+  Services.console.logStringMessage(a);
 }
 
 // -----------------------------------------------------------------------
@@ -61,11 +62,6 @@ SessionStore.prototype = {
   _clearDisk: function ss_clearDisk() {
     OS.File.remove(this._sessionFile.path);
     OS.File.remove(this._sessionFileBackup.path);
-  },
-
-  _sendMessageToJava: function (aMsg) {
-    let data = Services.androidBridge.handleGeckoMessage(JSON.stringify(aMsg));
-    return JSON.parse(data);
   },
 
   observe: function ss_observe(aSubject, aTopic, aData) {
@@ -132,7 +128,7 @@ SessionStore.prototype = {
               }
 
               // Let Java know we're done restoring tabs so tabs added after this can be animated
-              this._sendMessageToJava({
+              sendMessageToJava({
                 type: "Session:RestoreEnd"
               });
             }.bind(this)
@@ -178,9 +174,12 @@ SessionStore.prototype = {
         break;
       }
       case "DOMTitleChanged": {
-        let browser = Services.wm.getMostRecentWindow("navigator:browser")
-                                 .BrowserApp
-                                 .getBrowserForDocument(aEvent.target);
+        let browser = aEvent.currentTarget;
+
+        // Handle only top-level DOMTitleChanged event
+        if (browser.contentDocument !== aEvent.originalTarget)
+          return;
+
         // Use DOMTitleChanged to detect page loads over alternatives.
         // onLocationChange happens too early, so we don't have the page title
         // yet; pageshow happens too late, so we could lose session data if the
@@ -220,7 +219,6 @@ SessionStore.prototype = {
     browsers.addEventListener("TabOpen", this, true);
     browsers.addEventListener("TabClose", this, true);
     browsers.addEventListener("TabSelect", this, true);
-    browsers.addEventListener("DOMTitleChanged", this, true);
   },
 
   onWindowClose: function ss_onWindowClose(aWindow) {
@@ -232,7 +230,6 @@ SessionStore.prototype = {
     browsers.removeEventListener("TabOpen", this, true);
     browsers.removeEventListener("TabClose", this, true);
     browsers.removeEventListener("TabSelect", this, true);
-    browsers.removeEventListener("DOMTitleChanged", this, true);
 
     if (this._loadState == STATE_RUNNING) {
       // Update all window data for a last time
@@ -253,12 +250,15 @@ SessionStore.prototype = {
   },
 
   onTabAdd: function ss_onTabAdd(aWindow, aBrowser, aNoNotification) {
+    aBrowser.addEventListener("DOMTitleChanged", this, true);
     if (!aNoNotification)
       this.saveStateDelayed();
     this._updateCrashReportURL(aWindow);
   },
 
   onTabRemove: function ss_onTabRemove(aWindow, aBrowser, aNoNotification) {
+    aBrowser.removeEventListener("DOMTitleChanged", this, true);
+
     // If this browser is being restored, skip any session save activity
     if (aBrowser.__SS_restore)
       return;
@@ -411,7 +411,7 @@ SessionStore.prototype = {
 
     // If we have private data, send it to Java; otherwise, send null to
     // indicate that there is no private data
-    this._sendMessageToJava({
+    sendMessageToJava({
       type: "PrivateBrowsing:Data",
       session: (privateData.windows[0].tabs.length > 0) ? JSON.stringify(privateData) : null
     });

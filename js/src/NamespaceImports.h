@@ -33,10 +33,11 @@ class AutoValueVector;
 class AutoIdArray;
 
 class AutoGCRooter;
-class AutoArrayRooter;
 template <typename T> class AutoVectorRooter;
 template<typename K, typename V> class AutoHashMapRooter;
 template<typename T> class AutoHashSetRooter;
+
+class HandleValueArray;
 
 }
 
@@ -74,7 +75,6 @@ using JS::AutoValueVector;
 using JS::AutoIdArray;
 
 using JS::AutoGCRooter;
-using JS::AutoArrayRooter;
 using JS::AutoHashMapRooter;
 using JS::AutoHashSetRooter;
 using JS::AutoVectorRooter;
@@ -119,6 +119,11 @@ using JS::MutableHandleObject;
 using JS::MutableHandleScript;
 using JS::MutableHandleString;
 using JS::MutableHandleValue;
+
+using JS::NullHandleValue;
+using JS::UndefinedHandleValue;
+
+using JS::HandleValueArray;
 
 using JS::Zone;
 

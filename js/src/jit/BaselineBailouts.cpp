@@ -475,7 +475,7 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
     if (excInfo)
         exprStackSlots = excInfo->numExprSlots;
     else
-        exprStackSlots = iter.slots() - (script->nfixed() + CountArgSlots(script, fun));
+        exprStackSlots = iter.allocations() - (script->nfixed() + CountArgSlots(script, fun));
 
     builder.resetFramePushed();
 
@@ -623,9 +623,9 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
         size_t thisvOffset = builder.framePushed() + IonJSFrameLayout::offsetOfThis();
         *builder.valuePointerAtStackOffset(thisvOffset) = thisv;
 
-        JS_ASSERT(iter.slots() >= CountArgSlots(script, fun));
+        JS_ASSERT(iter.allocations() >= CountArgSlots(script, fun));
         IonSpew(IonSpew_BaselineBailouts, "      frame slots %u, nargs %u, nfixed %u",
-                iter.slots(), fun->nargs(), script->nfixed());
+                iter.allocations(), fun->nargs(), script->nfixed());
 
         if (!callerPC) {
             // This is the first frame. Store the formals in a Vector until we
@@ -973,6 +973,16 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
             }
             builder.setResumeAddr(opReturnAddr);
             IonSpew(IonSpew_BaselineBailouts, "      Set resumeAddr=%p", opReturnAddr);
+        }
+
+        if (cx->runtime()->spsProfiler.enabled() && blFrame->hasPushedSPSFrame()) {
+            // Set PC index to 0 for the innermost frame to match what the
+            // interpreter and Baseline do: they update the SPS pc for
+            // JSOP_CALL ops but set it to 0 when running other ops. Ion code
+            // can set the pc to NullPCIndex and this will confuse SPS when
+            // Baseline calls into the VM at non-CALL ops and re-enters JS.
+            IonSpew(IonSpew_BaselineBailouts, "      Setting PCidx for last frame to 0");
+            cx->runtime()->spsProfiler.updatePC(script, script->code());
         }
 
         return true;

@@ -66,7 +66,7 @@
 #define APZC_LOG_FM(fm, prefix, ...) \
   APZC_LOG(prefix ":" \
            " i=(%ld %lld) cb=(%d %d %d %d) dp=(%.3f %.3f %.3f %.3f) v=(%.3f %.3f %.3f %.3f) " \
-           "s=(%.3f %.3f) sr=(%.3f %.3f %.3f %.3f) z=(%.3f %.3f %.3f %.3f) %d\n", \
+           "s=(%.3f %.3f) sr=(%.3f %.3f %.3f %.3f) z=(%.3f %.3f %.3f %.3f) u=(%d %llu)\n", \
            __VA_ARGS__, \
            fm.mPresShellId, fm.mScrollId, \
            fm.mCompositionBounds.x, fm.mCompositionBounds.y, fm.mCompositionBounds.width, fm.mCompositionBounds.height, \
@@ -75,7 +75,7 @@
            fm.mScrollOffset.x, fm.mScrollOffset.y, \
            fm.mScrollableRect.x, fm.mScrollableRect.y, fm.mScrollableRect.width, fm.mScrollableRect.height, \
            fm.mDevPixelsPerCSSPixel.scale, fm.mResolution.scale, fm.mCumulativeResolution.scale, fm.mZoom.scale, \
-           fm.GetScrollOffsetUpdated()); \
+           fm.GetScrollOffsetUpdated(), fm.GetScrollGeneration()); \
 
 // Static helper functions
 namespace {
@@ -963,7 +963,15 @@ nsEventStatus AsyncPanZoomController::OnSingleTapUp(const TapGestureInput& aEven
     int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
     CSSIntPoint geckoScreenPoint;
     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
-      controller->HandleSingleTap(geckoScreenPoint, modifiers, GetGuid());
+      // Because this may be being running as part of APZCTreeManager::ReceiveInputEvent,
+      // calling controller->HandleSingleTap directly might mean that content receives
+      // the single tap message before the corresponding touch-up. To avoid that we
+      // schedule the singletap message to run on the next spin of the event loop.
+      // See bug 965381 for the issue this was causing.
+      controller->PostDelayedTask(
+        NewRunnableMethod(controller.get(), &GeckoContentController::HandleSingleTap,
+                          geckoScreenPoint, modifiers, GetGuid()),
+        0);
       return nsEventStatus_eConsumeNoDefault;
     }
   }
@@ -977,7 +985,11 @@ nsEventStatus AsyncPanZoomController::OnSingleTapConfirmed(const TapGestureInput
     int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
     CSSIntPoint geckoScreenPoint;
     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
-      controller->HandleSingleTap(geckoScreenPoint, modifiers, GetGuid());
+      // See comment in OnSingleTapUp as to why we do this in PostDelayedTask.
+      controller->PostDelayedTask(
+        NewRunnableMethod(controller.get(), &GeckoContentController::HandleSingleTap,
+                          geckoScreenPoint, modifiers, GetGuid()),
+        0);
       return nsEventStatus_eConsumeNoDefault;
     }
   }
@@ -1669,11 +1681,20 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     // If we're not taking the aLayerMetrics wholesale we still need to pull
     // in some things into our local mFrameMetrics because these things are
     // determined by Gecko and our copy in mFrameMetrics may be stale.
+
+    if (mFrameMetrics.mCompositionBounds.width == aLayerMetrics.mCompositionBounds.width &&
+        mFrameMetrics.mDevPixelsPerCSSPixel == aLayerMetrics.mDevPixelsPerCSSPixel) {
+      float parentResolutionChange = aLayerMetrics.GetParentResolution().scale
+                                   / mFrameMetrics.GetParentResolution().scale;
+      mFrameMetrics.mZoom.scale *= parentResolutionChange;
+    } else {
+      // Take the new zoom as either device scale or composition width or both
+      // got changed (e.g. due to orientation change).
+      mFrameMetrics.mZoom.scale = aLayerMetrics.mZoom.scale;
+      mFrameMetrics.mDevPixelsPerCSSPixel.scale = aLayerMetrics.mDevPixelsPerCSSPixel.scale;
+    }
     mFrameMetrics.mScrollableRect = aLayerMetrics.mScrollableRect;
     mFrameMetrics.mCompositionBounds = aLayerMetrics.mCompositionBounds;
-    float parentResolutionChange = aLayerMetrics.GetParentResolution().scale
-                                 / mFrameMetrics.GetParentResolution().scale;
-    mFrameMetrics.mZoom.scale *= parentResolutionChange;
     mFrameMetrics.mResolution = aLayerMetrics.mResolution;
     mFrameMetrics.mCumulativeResolution = aLayerMetrics.mCumulativeResolution;
     mFrameMetrics.mHasScrollgrab = aLayerMetrics.mHasScrollgrab;
@@ -1689,15 +1710,24 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
 
       mFrameMetrics.mScrollOffset = aLayerMetrics.mScrollOffset;
 
-      // Once layout issues a scroll offset update, it becomes impervious to
-      // scroll offset updates from APZ until we acknowledge the update it sent.
-      // This prevents APZ updates from clobbering scroll updates from other
-      // more "legitimate" sources like content scripts.
-      nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
-      if (controller) {
-        controller->AcknowledgeScrollUpdate(aLayerMetrics.mScrollId,
-                                            aLayerMetrics.GetScrollGeneration());
-      }
+      // Because of the scroll offset update, any inflight paint requests are
+      // going to be ignored by layout, and so mLastDispatchedPaintMetrics
+      // becomes incorrect for the purposes of calculating the LD transform. To
+      // correct this we need to update mLastDispatchedPaintMetrics to be the
+      // last thing we know was painted by Gecko.
+      mLastDispatchedPaintMetrics = aLayerMetrics;
+    }
+  }
+
+  if (aLayerMetrics.GetScrollOffsetUpdated()) {
+    // Once layout issues a scroll offset update, it becomes impervious to
+    // scroll offset updates from APZ until we acknowledge the update it sent.
+    // This prevents APZ updates from clobbering scroll updates from other
+    // more "legitimate" sources like content scripts.
+    nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
+    if (controller) {
+      controller->AcknowledgeScrollUpdate(aLayerMetrics.mScrollId,
+                                          aLayerMetrics.GetScrollGeneration());
     }
   }
 

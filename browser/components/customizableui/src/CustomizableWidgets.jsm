@@ -330,7 +330,7 @@ const CustomizableWidgets = [{
     tooltiptext: "preferences-button.tooltiptext.withshortcut",
     shortcutId: "key_preferencesCmdMac",
 #else
-    tooltiptext: "preferences-button.tooltiptext",
+    tooltiptext: "preferences-button.tooltiptext2",
 #endif
 #endif
     onCommand: function(aEvent) {
@@ -662,6 +662,7 @@ const CustomizableWidgets = [{
       for (let item of list) {
         let elem = aDocument.createElementNS(kNSXUL, "toolbarbutton");
         elem.setAttribute("label", item.label);
+        elem.setAttribute("type", "checkbox");
         elem.section = aSection == "detectors" ? "detectors" : "charsets";
         elem.value = item.id;
         elem.setAttribute("class", "subviewbutton");
@@ -706,9 +707,9 @@ const CustomizableWidgets = [{
           elem.removeAttribute("disabled");
         }
         if (elem.value.toLowerCase() == aCurrentItem.toLowerCase()) {
-          elem.setAttribute("current", "true");
+          elem.setAttribute("checked", "true");
         } else {
-          elem.removeAttribute("current");
+          elem.removeAttribute("checked");
         }
       }
     },

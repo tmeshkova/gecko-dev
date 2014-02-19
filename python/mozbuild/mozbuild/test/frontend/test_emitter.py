@@ -20,6 +20,7 @@ from mozbuild.frontend.data import (
     LocalInclude,
     Program,
     ReaderSummary,
+    Resources,
     SimpleProgram,
     TestManifest,
     VariablePassthru,
@@ -171,6 +172,13 @@ class TestEmitterBasic(unittest.TestCase):
             VISIBILITY_FLAGS='',
             DELAYLOAD_LDFLAGS=['-DELAYLOAD:foo.dll', '-DELAYLOAD:bar.dll'],
             USE_DELAYIMP=True,
+            RCFILE='foo.rc',
+            RESFILE='bar.res',
+            DEFFILE='baz.def',
+            USE_STATIC_LIBS=True,
+            CFLAGS=['-fno-exceptions', '-w'],
+            CXXFLAGS=['-fcxx-exceptions', '-include foo.h'],
+            LDFLAGS=['-framework Foo', '-x'],
         )
 
         variables = objs[0].variables
@@ -215,6 +223,63 @@ class TestEmitterBasic(unittest.TestCase):
         overwrite = exports._children['overwrite']
         self.assertEqual(overwrite.get_strings(), ['new.h'])
 
+    def test_resources(self):
+        reader = self.reader('resources')
+        objs = self.read_topsrcdir(reader)
+
+        expected_defines = reader.config.defines
+        expected_defines.update({
+            'FOO': True,
+            'BAR': 'BAZ',
+        })
+
+        self.assertEqual(len(objs), 2)
+        self.assertIsInstance(objs[0], Defines)
+        self.assertIsInstance(objs[1], Resources)
+
+        self.assertEqual(objs[1].defines, expected_defines)
+
+        resources = objs[1].resources
+        self.assertEqual(resources.get_strings(), ['foo.res', 'bar.res', 'baz.res',
+                                                   'foo_p.res.in', 'bar_p.res.in', 'baz_p.res.in'])
+        self.assertFalse(resources['foo.res'].preprocess)
+        self.assertFalse(resources['bar.res'].preprocess)
+        self.assertFalse(resources['baz.res'].preprocess)
+        self.assertTrue(resources['foo_p.res.in'].preprocess)
+        self.assertTrue(resources['bar_p.res.in'].preprocess)
+        self.assertTrue(resources['baz_p.res.in'].preprocess)
+
+        self.assertIn('mozilla', resources._children)
+        mozilla = resources._children['mozilla']
+        self.assertEqual(mozilla.get_strings(), ['mozilla1.res', 'mozilla2.res',
+                                                 'mozilla1_p.res.in', 'mozilla2_p.res.in'])
+        self.assertFalse(mozilla['mozilla1.res'].preprocess)
+        self.assertFalse(mozilla['mozilla2.res'].preprocess)
+        self.assertTrue(mozilla['mozilla1_p.res.in'].preprocess)
+        self.assertTrue(mozilla['mozilla2_p.res.in'].preprocess)
+
+        self.assertIn('dom', mozilla._children)
+        dom = mozilla._children['dom']
+        self.assertEqual(dom.get_strings(), ['dom1.res', 'dom2.res', 'dom3.res'])
+
+        self.assertIn('gfx', mozilla._children)
+        gfx = mozilla._children['gfx']
+        self.assertEqual(gfx.get_strings(), ['gfx.res'])
+
+        self.assertIn('vpx', resources._children)
+        vpx = resources._children['vpx']
+        self.assertEqual(vpx.get_strings(), ['mem.res', 'mem2.res'])
+
+        self.assertIn('nspr', resources._children)
+        nspr = resources._children['nspr']
+        self.assertIn('private', nspr._children)
+        private = nspr._children['private']
+        self.assertEqual(private.get_strings(), ['pprio.res', 'pprthred.res'])
+
+        self.assertIn('overwrite', resources._children)
+        overwrite = resources._children['overwrite']
+        self.assertEqual(overwrite.get_strings(), ['new.res'])
+
     def test_program(self):
         reader = self.reader('program')
         objs = self.read_topsrcdir(reader)
@@ -254,6 +319,17 @@ class TestEmitterBasic(unittest.TestCase):
         paths = sorted([k[len(o.directory)+1:] for k in o.installs.keys()])
         self.assertEqual(paths, ["foo.txt", "just-support.ini"])
 
+    def test_test_manifest_support_files_disabled_test(self):
+        """A test manifest with just disabled tests and support-files is supported."""
+        reader = self.reader('test-manifest-support-disabled-tests')
+
+        objs = self.read_topsrcdir(reader)
+        self.assertEqual(len(objs), 1)
+        o = objs[0]
+        self.assertEqual(len(o.installs), 2)
+        paths = sorted([k[len(o.directory)+1:] for k in o.installs.keys()])
+        self.assertEqual(paths, ["foo.txt", "support-disabled-tests.ini"])
+
     def test_test_manifest_keys_extracted(self):
         """Ensure all metadata from test manifests is extracted."""
         reader = self.reader('test-manifest-keys-extracted')
@@ -267,32 +343,32 @@ class TestEmitterBasic(unittest.TestCase):
             'a11y.ini': {
                 'flavor': 'a11y',
                 'installs': {
-                    'a11y.ini',
-                    'test_a11y.js',
+                    'a11y.ini': False,
+                    'test_a11y.js': True,
                 },
                 'pattern-installs': 1,
             },
             'browser.ini': {
                 'flavor': 'browser-chrome',
                 'installs': {
-                    'browser.ini',
-                    'test_browser.js',
-                    'support1',
-                    'support2',
+                    'browser.ini': False,
+                    'test_browser.js': True,
+                    'support1': False,
+                    'support2': False,
                 },
             },
             'metro.ini': {
                 'flavor': 'metro-chrome',
                 'installs': {
-                    'metro.ini',
-                    'test_metro.js',
+                    'metro.ini': False,
+                    'test_metro.js': True,
                 },
             },
             'mochitest.ini': {
                 'flavor': 'mochitest',
                 'installs': {
-                    'mochitest.ini',
-                    'test_mochitest.js',
+                    'mochitest.ini': False,
+                    'test_mochitest.js': True,
                 },
                 'external': {
                     'external1',
@@ -302,20 +378,20 @@ class TestEmitterBasic(unittest.TestCase):
             'chrome.ini': {
                 'flavor': 'chrome',
                 'installs': {
-                    'chrome.ini',
-                    'test_chrome.js',
+                    'chrome.ini': False,
+                    'test_chrome.js': True,
                 },
             },
             'xpcshell.ini': {
                 'flavor': 'xpcshell',
                 'dupe': True,
                 'installs': {
-                    'xpcshell.ini',
-                    'test_xpcshell.js',
-                    'head1',
-                    'head2',
-                    'tail1',
-                    'tail2',
+                    'xpcshell.ini': False,
+                    'test_xpcshell.js': True,
+                    'head1': False,
+                    'head2': False,
+                    'tail1': False,
+                    'tail2': False,
                 },
             },
         }
@@ -334,9 +410,10 @@ class TestEmitterBasic(unittest.TestCase):
             self.assertEqual(len(o.installs), len(m['installs']))
             for path in o.installs.keys():
                 self.assertTrue(path.startswith(o.directory))
-                path = path[len(o.directory)+1:]
+                relpath = path[len(o.directory)+1:]
 
-                self.assertIn(path, m['installs'])
+                self.assertIn(relpath, m['installs'])
+                self.assertEqual(o.installs[path][1], m['installs'][relpath])
 
             if 'pattern-installs' in m:
                 self.assertEqual(len(o.pattern_installs), m['pattern-installs'])
@@ -364,6 +441,22 @@ class TestEmitterBasic(unittest.TestCase):
         self.assertEqual(o.flavor, 'mochitest')
         basenames = set(mozpath.basename(k) for k in o.installs.keys())
         self.assertEqual(basenames, {'mochitest.ini', 'test_active.html'})
+
+    def test_test_manifest_parent_support_files_dir(self):
+        """support-files referencing a file in a parent directory works."""
+        reader = self.reader('test-manifest-parent-support-files-dir')
+
+        objs = [o for o in self.read_topsrcdir(reader)
+                if isinstance(o, TestManifest)]
+
+        self.assertEqual(len(objs), 1)
+
+        o = objs[0]
+
+        expected = mozpath.join(o.srcdir, 'support-file.txt')
+        self.assertIn(expected, o.installs)
+        self.assertEqual(o.installs[expected],
+            ('testing/mochitest/tests/child/support-file.txt', False))
 
     def test_ipdl_sources(self):
         reader = self.reader('ipdl_sources')

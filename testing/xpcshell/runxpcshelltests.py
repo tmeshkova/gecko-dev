@@ -77,9 +77,9 @@ import mozinfo
 # TODO: perhaps this should be in a more generally shared location?
 # This regex matches all of the C0 and C1 control characters
 # (U+0000 through U+001F; U+007F; U+0080 through U+009F),
-# except TAB (U+0009) and LF (U+000A); also, backslash (U+005C).
+# except TAB (U+0009), CR (U+000D), LF (U+000A) and backslash (U+005C).
 # A raw string is deliberately not used.
-_cleanup_encoding_re = re.compile(u'[\x00-\x08\x0b-\x1f\x7f-\x9f\\\\]')
+_cleanup_encoding_re = re.compile(u'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\\\\]')
 def _cleanup_encoding_repl(m):
     c = m.group(0)
     return '\\\\' if c == '\\' else '\\x{:02X}'.format(ord(c))
@@ -264,11 +264,11 @@ class XPCShellTestThread(Thread):
                       - set("%s=%s" % i for i in os.environ.iteritems()))
         self.log.info("TEST-INFO | %s | environment: %s" % (name, list(changedEnv)))
 
-    def testTimeout(self, test_file, processPID):
+    def testTimeout(self, test_file, proc):
         if not self.retry:
             self.log.error("TEST-UNEXPECTED-FAIL | %s | Test timed out" % test_file)
         self.done = True
-        Automation().killAndGetStackNoScreenshot(processPID, self.appPath, self.debuggerInfo)
+        Automation().killAndGetStackNoScreenshot(proc.pid, self.appPath, self.debuggerInfo)
 
     def buildCmdTestFile(self, name):
         """
@@ -608,7 +608,7 @@ class XPCShellTestThread(Thread):
 
         testTimer = None
         if not self.interactive and not self.debuggerInfo:
-            testTimer = Timer(testTimeoutInterval, lambda: self.testTimeout(name, proc.pid))
+            testTimer = Timer(testTimeoutInterval, lambda: self.testTimeout(name, proc))
             testTimer.start()
 
         proc = None
@@ -1302,7 +1302,18 @@ class XPCShellTests(object):
             if not os.path.isfile(mozInfoFile):
                 self.log.error("Error: couldn't find mozinfo.json at '%s'. Perhaps you need to use --build-info-json?" % mozInfoFile)
                 return False
-            self.mozInfo = json.loads(open(mozInfoFile).read())
+            self.mozInfo = json.load(open(mozInfoFile))
+
+        # mozinfo.info is used as kwargs.  Some builds are done with
+        # an older Python that can't handle Unicode keys in kwargs.
+        # All of the keys in question should be ASCII.
+        fixedInfo = {}
+        for k, v in self.mozInfo.items():
+            if isinstance(k, unicode):
+                k = k.encode('ascii')
+            fixedInfo[k] = v
+        self.mozInfo = fixedInfo
+
         mozinfo.update(self.mozInfo)
 
         # buildEnvironment() needs mozInfo, so we call it after mozInfo is initialized.

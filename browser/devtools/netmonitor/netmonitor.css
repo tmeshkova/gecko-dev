@@ -39,13 +39,6 @@
   }
 }
 
-@media (min-width: 701px) and (max-width: 1280px) {
-  #body:not([pane-collapsed]) .requests-menu-filter-button,
-  #body:not([pane-collapsed]) .requests-menu-footer-spacer {
-    display: none;
-  }
-}
-
 @media (min-width: 701px) {
   #network-table[waterfall-overflows] .requests-menu-waterfall {
     display: none;
@@ -67,7 +60,7 @@
     -moz-box-flex: 1;
   }
 
-  #network-table[domain-overflows] .requests-menu-file {
+  #network-table[domain-overflows] .requests-menu-icon-and-file {
     -moz-box-flex: 1;
   }
 }

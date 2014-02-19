@@ -652,7 +652,8 @@ DisassembleInstruction(uint32_t pc)
     char llvmcmd[1024];
     sprintf(llvmcmd, "bash -c \"echo -n '%p'; echo '%s' | "
             "llvm-mc -disassemble -arch=arm -mcpu=cortex-a9 | "
-            "grep -v pure_instructions\"", reinterpret_cast<void*>(pc), hexbytes);
+            "grep -v pure_instructions | grep -v .text\"",
+            reinterpret_cast<void*>(pc), hexbytes);
     system(llvmcmd);
 }
 
@@ -990,6 +991,8 @@ AllOnOnePage(uintptr_t start, int size)
 static CachePage *
 GetCachePage(SimulatorRuntime::ICacheMap &i_cache, void *page)
 {
+    MOZ_ASSERT(Simulator::ICacheCheckingEnabled);
+
     SimulatorRuntime::ICacheMap::AddPtr p = i_cache.lookupForAdd(page);
     if (p)
         return p->value();
@@ -1084,6 +1087,8 @@ Simulator::setLastDebuggerInput(char *input)
 void
 Simulator::FlushICache(void *start_addr, size_t size)
 {
+    if (!Simulator::ICacheCheckingEnabled)
+        return;
     SimulatorRuntime *srt = Simulator::Current()->srt_;
     AutoLockSimulatorRuntime alsr(srt);
     js::jit::FlushICache(srt->icache(), start_addr, size);
@@ -1172,7 +1177,8 @@ class Redirection
         Simulator *sim = Simulator::Current();
         SimulatorRuntime *srt = sim->srt_;
         next_ = srt->redirection();
-        FlushICache(srt->icache(), addressOfSwiInstruction(), SimInstruction::kInstrSize);
+        if (Simulator::ICacheCheckingEnabled)
+            FlushICache(srt->icache(), addressOfSwiInstruction(), SimInstruction::kInstrSize);
         srt->setRedirection(this);
     }
 
@@ -1410,7 +1416,7 @@ ReturnType Simulator::getFromVFPRegister(int reg_index)
 void
 Simulator::getFpArgs(double *x, double *y, int32_t *z)
 {
-    if (use_eabi_hardfloat()) {
+    if (useHardFpABI()) {
         *x = get_double_from_d_register(0);
         *y = get_double_from_d_register(1);
         *z = get_register(0);
@@ -1425,7 +1431,7 @@ void
 Simulator::setCallResultDouble(double result)
 {
     // The return value is either in r0/r1 or d0.
-    if (use_eabi_hardfloat()) {
+    if (useHardFpABI()) {
         char buffer[2 * sizeof(vfp_registers_[0])];
         memcpy(buffer, &result, sizeof(buffer));
         // Copy result to d0.
@@ -1441,8 +1447,11 @@ Simulator::setCallResultDouble(double result)
 void
 Simulator::setCallResultFloat(float result)
 {
-    if (use_eabi_hardfloat()) {
-        MOZ_ASSUME_UNREACHABLE("NYI");
+    if (useHardFpABI()) {
+        char buffer[sizeof(registers_[0])];
+        memcpy(buffer, &result, sizeof(buffer));
+        // Copy result to s0.
+        memcpy(vfp_registers_, buffer, sizeof(buffer));
     } else {
         char buffer[sizeof(registers_[0])];
         memcpy(buffer, &result, sizeof(buffer));
@@ -2043,6 +2052,35 @@ typedef double (*Prototype_Double_IntDouble)(int32_t arg0, double arg1);
 typedef double (*Prototype_Double_DoubleDouble)(double arg0, double arg1);
 typedef int32_t (*Prototype_Int_IntDouble)(int32_t arg0, double arg1);
 
+
+// Fill the volatile registers with scratch values.
+//
+// Some of the ABI calls assume that the float registers are not scratched, even
+// though the ABI defines them as volatile - a performance optimization.  These are
+// all calls passing operands in integer registers, so for now the simulator does not
+// scratch any float registers for these calls.  Should try to narrow it further in
+// future.
+//
+void
+Simulator::scratchVolatileRegisters(bool scratchFloat)
+{
+    int32_t scratch_value = 0xa5a5a5a5 ^ uint32_t(icount_);
+    set_register(r0, scratch_value);
+    set_register(r1, scratch_value);
+    set_register(r2, scratch_value);
+    set_register(r3, scratch_value);
+    set_register(r12, scratch_value); // Intra-Procedure-call scratch register
+    set_register(r14, scratch_value); // Link register
+
+    if (scratchFloat) {
+        uint64_t scratch_value_d = 0x5a5a5a5a5a5a5a5aLU ^ uint64_t(icount_) ^ (uint64_t(icount_) << 30);
+        for (uint32_t i = d0; i < d8; i++)
+            set_d_register(i, &scratch_value_d);
+        for (uint32_t i = d16; i < FloatRegisters::Total; i++)
+            set_d_register(i, &scratch_value_d);
+    }
+}
+
 // Software interrupt instructions are used by the simulator to call into C++.
 void
 Simulator::softwareInterrupt(SimInstruction *instr)
@@ -2072,42 +2110,53 @@ Simulator::softwareInterrupt(SimInstruction *instr)
           case Args_General0: {
             Prototype_General0 target = reinterpret_cast<Prototype_General0>(external);
             int64_t result = target();
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_General1: {
             Prototype_General1 target = reinterpret_cast<Prototype_General1>(external);
             int64_t result = target(arg0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_General2: {
             Prototype_General2 target = reinterpret_cast<Prototype_General2>(external);
             int64_t result = target(arg0, arg1);
+            // The ARM backend makes calls to __aeabi_idivmod and __aeabi_uidivmod assuming
+            // that the float registers are non-volatile as a performance optimization, so the
+            // float registers must not be scratch when calling these.
+            bool scratchFloat = target != __aeabi_idivmod && target != __aeabi_uidivmod;
+            scratchVolatileRegisters(/* scratchFloat = */ scratchFloat);
             setCallResult(result);
             break;
           }
           case Args_General3: {
             Prototype_General3 target = reinterpret_cast<Prototype_General3>(external);
             int64_t result = target(arg0, arg1, arg2);
+            scratchVolatileRegisters(/* scratchFloat = true*/);
             setCallResult(result);
             break;
           }
           case Args_General4: {
             Prototype_General4 target = reinterpret_cast<Prototype_General4>(external);
             int64_t result = target(arg0, arg1, arg2, arg3);
+            scratchVolatileRegisters(/* scratchFloat = true*/);
             setCallResult(result);
             break;
           }
           case Args_General5: {
             Prototype_General5 target = reinterpret_cast<Prototype_General5>(external);
             int64_t result = target(arg0, arg1, arg2, arg3, arg4);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_General6: {
             Prototype_General6 target = reinterpret_cast<Prototype_General6>(external);
             int64_t result = target(arg0, arg1, arg2, arg3, arg4, arg5);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
@@ -2115,6 +2164,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             Prototype_General7 target = reinterpret_cast<Prototype_General7>(external);
             int32_t arg6 = stack_pointer[2];
             int64_t result = target(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
@@ -2123,12 +2173,14 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             int32_t arg6 = stack_pointer[2];
             int32_t arg7 = stack_pointer[3];
             int64_t result = target(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_Double_None: {
             Prototype_Double_None target = reinterpret_cast<Prototype_Double_None>(external);
             double dresult = target();
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2138,6 +2190,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_Int_Double target = reinterpret_cast<Prototype_Int_Double>(external);
             int32_t res = target(dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             set_register(r0, res);
             break;
           }
@@ -2147,19 +2200,26 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_Double_Double target = reinterpret_cast<Prototype_Double_Double>(external);
             double dresult = target(dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
           case Args_Float32_Float32: {
-            float fval0 = mozilla::BitwiseCast<float>(arg0);
+            float fval0;
+            if (useHardFpABI())
+                fval0 = get_float_from_s_register(0);
+            else
+                fval0 = mozilla::BitwiseCast<float>(arg0);
             Prototype_Float32_Float32 target = reinterpret_cast<Prototype_Float32_Float32>(external);
             float fresult = target(fval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultFloat(fresult);
             break;
           }
           case Args_Double_Int: {
             Prototype_Double_Int target = reinterpret_cast<Prototype_Double_Int>(external);
             double dresult = target(arg0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2169,6 +2229,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_DoubleInt target = reinterpret_cast<Prototype_DoubleInt>(external);
             double dresult = target(dval0, ival);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2178,24 +2239,33 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_Double_DoubleDouble target = reinterpret_cast<Prototype_Double_DoubleDouble>(external);
             double dresult = target(dval0, dval1);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
           case Args_Double_IntDouble: {
-            MOZ_ASSERT(!use_eabi_hardfloat()); // NYI
             int32_t ival = get_register(0);
-            double dval0 = get_double_from_register_pair(2);
+            double dval0;
+            if (useHardFpABI())
+                dval0 = get_double_from_d_register(0);
+            else
+                dval0 = get_double_from_register_pair(2);
             Prototype_Double_IntDouble target = reinterpret_cast<Prototype_Double_IntDouble>(external);
             double dresult = target(ival, dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
           case Args_Int_IntDouble: {
-            MOZ_ASSERT(!use_eabi_hardfloat()); // NYI
             int32_t ival = get_register(0);
-            double dval0 = get_double_from_register_pair(2);
+            double dval0;
+            if (useHardFpABI())
+                dval0 = get_double_from_d_register(0);
+            else
+                dval0 = get_double_from_register_pair(2);
             Prototype_Int_IntDouble target = reinterpret_cast<Prototype_Int_IntDouble>(external);
             int32_t result = target(ival, dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             set_register(r0, result);
             break;
           }

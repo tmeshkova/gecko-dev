@@ -240,13 +240,16 @@ AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, void *oldptr = 
     if (oldptr) {
         ObjectElements *oldheader = static_cast<ObjectElements *>(oldptr);
         uint32_t oldnbytes = ArrayBufferObject::headerInitializedLength(oldheader);
-        newheader = static_cast<ObjectElements *>(maybecx ? maybecx->realloc_(oldptr, size) : js_realloc(oldptr, size));
+
+        void *p = maybecx ? maybecx->runtime()->reallocCanGC(oldptr, size) : js_realloc(oldptr, size);
+        newheader = static_cast<ObjectElements *>(p);
 
         // if we grew the array, we need to set the new bytes to 0
         if (newheader && nbytes > oldnbytes)
             memset(reinterpret_cast<uint8_t*>(newheader->elements()) + oldnbytes, 0, nbytes - oldnbytes);
     } else {
-        newheader = static_cast<ObjectElements *>(maybecx ? maybecx->calloc_(size) : js_calloc(size));
+        void *p = maybecx ? maybecx->runtime()->callocCanGC(size) : js_calloc(size);
+        newheader = static_cast<ObjectElements *>(p);
     }
     if (!newheader) {
         if (maybecx)
@@ -254,43 +257,9 @@ AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, void *oldptr = 
         return nullptr;
     }
 
-    // we rely on this being correct
     ArrayBufferObject::updateElementsHeader(newheader, nbytes);
 
     return newheader;
-}
-
-bool
-ArrayBufferObject::allocateSlots(JSContext *maybecx, uint32_t bytes, bool clear)
-{
-    /*
-     * ArrayBufferObjects delegate added properties to another JSObject, so
-     * their internal layout can use the object's fixed slots for storage.
-     * Set up the object to look like an array with an elements header.
-     */
-    JS_ASSERT(!hasDynamicSlots() && !hasDynamicElements());
-
-    size_t usableSlots = ARRAYBUFFER_RESERVED_SLOTS - ObjectElements::VALUES_PER_HEADER;
-
-    if (bytes > sizeof(Value) * usableSlots) {
-        ObjectElements *header = AllocateArrayBufferContents(maybecx, bytes);
-        if (!header)
-            return false;
-        elements = header->elements();
-
-#ifdef JSGC_GENERATIONAL
-        JSRuntime *rt = runtimeFromMainThread();
-        rt->gcNursery.notifyNewElements(this, header);
-#endif
-    } else {
-        setFixedElements();
-        if (clear)
-            memset(dataPointer(), 0, bytes);
-    }
-
-    initElementsHeader(getElementsHeader(), bytes);
-
-    return true;
 }
 
 static inline void
@@ -386,7 +355,7 @@ ArrayBufferObject::neuterViews(JSContext *cx, Handle<ArrayBufferObject*> buffer)
 }
 
 void
-ArrayBufferObject::changeContents(JSContext *maybecx, ObjectElements *newHeader)
+ArrayBufferObject::changeContents(JSContext *cx, ObjectElements *newHeader)
 {
     JS_ASSERT(!isAsmJSArrayBuffer());
 
@@ -402,8 +371,7 @@ ArrayBufferObject::changeContents(JSContext *maybecx, ObjectElements *newHeader)
         view->setPrivate(reinterpret_cast<uint8_t*>(newDataPtr));
 
         // Notify compiled jit code that the base pointer has moved.
-        if (maybecx)
-            MarkObjectStateChange(maybecx, view);
+        MarkObjectStateChange(cx, view);
     }
 
     // The list of views in the old header is reachable if the contents are
@@ -447,47 +415,21 @@ ArrayBufferObject::neuter(JSContext *cx)
     getElementsHeader()->setIsNeuteredBuffer();
 }
 
-bool
-ArrayBufferObject::copyData(JSContext *maybecx)
+/* static */ bool
+ArrayBufferObject::ensureNonInline(JSContext *cx, Handle<ArrayBufferObject*> buffer)
 {
-    ObjectElements *newHeader = AllocateArrayBufferContents(maybecx, byteLength());
+    if (buffer->hasDynamicElements())
+        return true;
+
+    ObjectElements *newHeader = AllocateArrayBufferContents(cx, buffer->byteLength());
     if (!newHeader)
         return false;
 
-    memcpy(reinterpret_cast<void*>(newHeader->elements()), dataPointer(), byteLength());
-    changeContents(maybecx, newHeader);
+    void *newHeaderDataPointer = reinterpret_cast<void*>(newHeader->elements());
+    memcpy(newHeaderDataPointer, buffer->dataPointer(), buffer->byteLength());
+
+    buffer->changeContents(cx, newHeader);
     return true;
-}
-
-bool
-ArrayBufferObject::ensureNonInline(JSContext *maybecx)
-{
-    if (hasDynamicElements())
-        return true;
-    return copyData(maybecx);
-}
-
-// If the ArrayBuffer already contains dynamic contents, hand them back.
-// Otherwise, allocate some new contents and copy the data over, but in no case
-// modify the original ArrayBuffer. (Also, any allocated contents will have no
-// views linked to in its header.)
-ObjectElements *
-ArrayBufferObject::getTransferableContents(JSContext *maybecx, bool *callerOwns)
-{
-    if (hasDynamicElements() && !isAsmJSArrayBuffer()) {
-        *callerOwns = false;
-        return getElementsHeader();
-    }
-
-    uint32_t byteLen = byteLength();
-    ObjectElements *newheader = AllocateArrayBufferContents(maybecx, byteLen);
-    if (!newheader)
-        return nullptr;
-
-    initElementsHeader(newheader, byteLen);
-    memcpy(reinterpret_cast<void*>(newheader->elements()), dataPointer(), byteLen);
-    *callerOwns = true;
-    return newheader;
 }
 
 #if defined(JS_ION) && defined(JS_CPU_X64)
@@ -586,10 +528,10 @@ ArrayBufferObject::prepareForAsmJS(JSContext *cx, Handle<ArrayBufferObject*> buf
     if (buffer->isAsmJSArrayBuffer())
         return true;
 
-    if (!buffer->ensureNonInline(cx))
+    if (!ensureNonInline(cx, buffer))
         return false;
-    JS_ASSERT(buffer->hasDynamicElements());
 
+    JS_ASSERT(buffer->hasDynamicElements());
     buffer->getElementsHeader()->setIsAsmJSArrayBuffer();
     return true;
 }
@@ -643,7 +585,7 @@ ArrayBufferObject::addView(ArrayBufferViewObject *view)
     SetViewList(this, view);
 }
 
-JSObject *
+ArrayBufferObject *
 ArrayBufferObject::create(JSContext *cx, uint32_t nbytes, bool clear /* = true */)
 {
     RootedObject obj(cx, NewBuiltinClassInstance(cx, &class_));
@@ -659,14 +601,37 @@ ArrayBufferObject::create(JSContext *cx, uint32_t nbytes, bool clear /* = true *
         return nullptr;
     obj->setLastPropertyInfallible(empty);
 
-    /*
-     * The beginning stores an ObjectElements header structure holding the
-     * length. The rest of it is a flat data store for the array buffer.
-     */
-    if (!obj->as<ArrayBufferObject>().allocateSlots(cx, nbytes, clear))
-        return nullptr;
+    // ArrayBufferObjects delegate added properties to another JSObject, so
+    // their internal layout can use the object's fixed slots for storage.
+    // Set up the object to look like an array with an elements header.
+    JS_ASSERT(!obj->hasDynamicSlots());
+    JS_ASSERT(!obj->hasDynamicElements());
 
-    return obj;
+    // The beginning stores an ObjectElements header structure holding the
+    // length. The rest of it is a flat data store for the array buffer.
+    size_t usableSlots = ARRAYBUFFER_RESERVED_SLOTS - ObjectElements::VALUES_PER_HEADER;
+
+    Handle<ArrayBufferObject*> buffer = obj.as<ArrayBufferObject>();
+
+    if (nbytes > sizeof(Value) * usableSlots) {
+        ObjectElements *header = AllocateArrayBufferContents(cx, nbytes);
+        if (!header)
+            return nullptr;
+        buffer->elements = header->elements();
+
+#ifdef JSGC_GENERATIONAL
+        JSRuntime *rt = buffer->runtimeFromMainThread();
+        rt->gcNursery.notifyNewElements(buffer, header);
+#endif
+    } else {
+        buffer->setFixedElements();
+        if (clear)
+            memset(buffer->dataPointer(), 0, nbytes);
+    }
+
+    buffer->initElementsHeader(buffer->getElementsHeader(), nbytes);
+
+    return buffer;
 }
 
 JSObject *
@@ -719,31 +684,48 @@ ArrayBufferObject::createDataViewForThis(JSContext *cx, unsigned argc, Value *vp
     return CallNonGenericMethod<IsArrayBuffer, createDataViewForThisImpl>(cx, args);
 }
 
-bool
+/* static */ bool
 ArrayBufferObject::stealContents(JSContext *cx, Handle<ArrayBufferObject*> buffer, void **contents,
                                  uint8_t **data)
 {
-    // Make the data stealable
-    bool own;
-    ObjectElements *header = reinterpret_cast<ObjectElements*>(buffer->getTransferableContents(cx, &own));
-    if (!header)
-        return false;
-    JS_ASSERT(!IsInsideNursery(cx->runtime(), header));
-    *contents = header;
-    *data = reinterpret_cast<uint8_t *>(header + 1);
+    // If the ArrayBuffer's elements are dynamically allocated and nothing else
+    // prevents us from stealing them, transfer ownership directly.  Otherwise,
+    // the elements are small and allocated inside the ArrayBuffer object's GC
+    // header so we must make a copy.
+    ObjectElements *transferableHeader;
+    bool stolen;
+    if (buffer->hasDynamicElements() && !buffer->isAsmJSArrayBuffer()) {
+        stolen = true;
+        transferableHeader = buffer->getElementsHeader();
+    } else {
+        stolen = false;
+
+        uint32_t byteLen = buffer->byteLength();
+        transferableHeader = AllocateArrayBufferContents(cx, byteLen);
+        if (!transferableHeader)
+            return false;
+
+        initElementsHeader(transferableHeader, byteLen);
+        void *headerDataPointer = reinterpret_cast<void*>(transferableHeader->elements());
+        memcpy(headerDataPointer, buffer->dataPointer(), byteLen);
+    }
+
+    JS_ASSERT(!IsInsideNursery(cx->runtime(), transferableHeader));
+    *contents = transferableHeader;
+    *data = reinterpret_cast<uint8_t *>(transferableHeader + 1);
 
     // Neuter the views, which may also mprotect(PROT_NONE) the buffer. So do
     // it after copying out the data.
     if (!ArrayBufferObject::neuterViews(cx, buffer))
         return false;
 
-    if (!own) {
-        // If header has dynamically allocated elements, revert it back to
-        // fixed-element storage before neutering it.
+    // If the elements were taken from the neutered buffer, revert it back to
+    // using inline storage so it doesn't attempt to free the stolen elements
+    // when finalized.
+    if (stolen)
         buffer->changeContents(cx, ObjectElements::fromElements(buffer->fixedElements()));
-    }
-    buffer->neuter(cx);
 
+    buffer->neuter(cx);
     return true;
 }
 
@@ -1213,8 +1195,6 @@ TypedArrayObject::isArrayIndex(jsid id, uint32_t *ip)
 void
 TypedArrayObject::neuter(JSContext *cx)
 {
-    AutoLockForCompilation lock(cx);
-
     setSlot(LENGTH_SLOT, Int32Value(0));
     setSlot(BYTELENGTH_SLOT, Int32Value(0));
     setSlot(BYTEOFFSET_SLOT, Int32Value(0));
@@ -1397,15 +1377,15 @@ ArrayBufferViewObject::trace(JSTracer *trc, JSObject *obj)
 }
 
 template<typename NativeType> static inline const int TypeIDOfType();
-template<> inline const int TypeIDOfType<int8_t>() { return ScalarTypeRepresentation::TYPE_INT8; }
-template<> inline const int TypeIDOfType<uint8_t>() { return ScalarTypeRepresentation::TYPE_UINT8; }
-template<> inline const int TypeIDOfType<int16_t>() { return ScalarTypeRepresentation::TYPE_INT16; }
-template<> inline const int TypeIDOfType<uint16_t>() { return ScalarTypeRepresentation::TYPE_UINT16; }
-template<> inline const int TypeIDOfType<int32_t>() { return ScalarTypeRepresentation::TYPE_INT32; }
-template<> inline const int TypeIDOfType<uint32_t>() { return ScalarTypeRepresentation::TYPE_UINT32; }
-template<> inline const int TypeIDOfType<float>() { return ScalarTypeRepresentation::TYPE_FLOAT32; }
-template<> inline const int TypeIDOfType<double>() { return ScalarTypeRepresentation::TYPE_FLOAT64; }
-template<> inline const int TypeIDOfType<uint8_clamped>() { return ScalarTypeRepresentation::TYPE_UINT8_CLAMPED; }
+template<> inline const int TypeIDOfType<int8_t>() { return ScalarTypeDescr::TYPE_INT8; }
+template<> inline const int TypeIDOfType<uint8_t>() { return ScalarTypeDescr::TYPE_UINT8; }
+template<> inline const int TypeIDOfType<int16_t>() { return ScalarTypeDescr::TYPE_INT16; }
+template<> inline const int TypeIDOfType<uint16_t>() { return ScalarTypeDescr::TYPE_UINT16; }
+template<> inline const int TypeIDOfType<int32_t>() { return ScalarTypeDescr::TYPE_INT32; }
+template<> inline const int TypeIDOfType<uint32_t>() { return ScalarTypeDescr::TYPE_UINT32; }
+template<> inline const int TypeIDOfType<float>() { return ScalarTypeDescr::TYPE_FLOAT32; }
+template<> inline const int TypeIDOfType<double>() { return ScalarTypeDescr::TYPE_FLOAT64; }
+template<> inline const int TypeIDOfType<uint8_clamped>() { return ScalarTypeDescr::TYPE_UINT8_CLAMPED; }
 
 template<typename ElementType>
 static inline JSObject *
@@ -1542,7 +1522,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
             JS_ASSERT(sizeof(NativeType) <= 4);
             uint32_t n = ToUint32(d);
             setIndex(tarray, index, NativeType(n));
-        } else if (ArrayTypeID() == ScalarTypeRepresentation::TYPE_UINT8_CLAMPED) {
+        } else if (ArrayTypeID() == ScalarTypeDescr::TYPE_UINT8_CLAMPED) {
             // The uint8_clamped type has a special rounding converter
             // for doubles.
             setIndex(tarray, index, NativeType(d));
@@ -1919,8 +1899,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
         if (!getter)
             return false;
 
-        RootedValue value(cx, UndefinedValue());
-        return DefineNativeProperty(cx, proto, id, value,
+        return DefineNativeProperty(cx, proto, id, UndefinedHandleValue,
                                     JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr,
                                     flags, 0, 0);
     }
@@ -2404,50 +2383,50 @@ class TypedArrayObjectTemplate : public TypedArrayObject
 
         unsigned srclen = tarray->length();
         switch (tarray->type()) {
-          case ScalarTypeRepresentation::TYPE_INT8: {
+          case ScalarTypeDescr::TYPE_INT8: {
             int8_t *src = static_cast<int8_t*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_UINT8:
-          case ScalarTypeRepresentation::TYPE_UINT8_CLAMPED: {
+          case ScalarTypeDescr::TYPE_UINT8:
+          case ScalarTypeDescr::TYPE_UINT8_CLAMPED: {
             uint8_t *src = static_cast<uint8_t*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_INT16: {
+          case ScalarTypeDescr::TYPE_INT16: {
             int16_t *src = static_cast<int16_t*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_UINT16: {
+          case ScalarTypeDescr::TYPE_UINT16: {
             uint16_t *src = static_cast<uint16_t*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_INT32: {
+          case ScalarTypeDescr::TYPE_INT32: {
             int32_t *src = static_cast<int32_t*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_UINT32: {
+          case ScalarTypeDescr::TYPE_UINT32: {
             uint32_t *src = static_cast<uint32_t*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_FLOAT32: {
+          case ScalarTypeDescr::TYPE_FLOAT32: {
             float *src = static_cast<float*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_FLOAT64: {
+          case ScalarTypeDescr::TYPE_FLOAT64: {
             double *src = static_cast<double*>(tarray->viewData());
             for (unsigned i = 0; i < srclen; ++i)
                 *dest++ = NativeType(*src++);
@@ -2484,50 +2463,50 @@ class TypedArrayObjectTemplate : public TypedArrayObject
         js_memcpy(srcbuf, tarray->viewData(), byteLength);
 
         switch (tarray->type()) {
-          case ScalarTypeRepresentation::TYPE_INT8: {
+          case ScalarTypeDescr::TYPE_INT8: {
             int8_t *src = (int8_t*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_UINT8:
-          case ScalarTypeRepresentation::TYPE_UINT8_CLAMPED: {
+          case ScalarTypeDescr::TYPE_UINT8:
+          case ScalarTypeDescr::TYPE_UINT8_CLAMPED: {
             uint8_t *src = (uint8_t*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_INT16: {
+          case ScalarTypeDescr::TYPE_INT16: {
             int16_t *src = (int16_t*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_UINT16: {
+          case ScalarTypeDescr::TYPE_UINT16: {
             uint16_t *src = (uint16_t*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_INT32: {
+          case ScalarTypeDescr::TYPE_INT32: {
             int32_t *src = (int32_t*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_UINT32: {
+          case ScalarTypeDescr::TYPE_UINT32: {
             uint32_t *src = (uint32_t*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_FLOAT32: {
+          case ScalarTypeDescr::TYPE_FLOAT32: {
             float *src = (float*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
             break;
           }
-          case ScalarTypeRepresentation::TYPE_FLOAT64: {
+          case ScalarTypeDescr::TYPE_FLOAT64: {
             double *src = (double*) srcbuf;
             for (unsigned i = 0; i < tarray->length(); ++i)
                 *dest++ = NativeType(*src++);
@@ -2558,55 +2537,55 @@ class TypedArrayObjectTemplate : public TypedArrayObject
 
 class Int8ArrayObject : public TypedArrayObjectTemplate<int8_t> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_INT8 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_INT8 };
     static const JSProtoKey key = JSProto_Int8Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Uint8ArrayObject : public TypedArrayObjectTemplate<uint8_t> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_UINT8 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_UINT8 };
     static const JSProtoKey key = JSProto_Uint8Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Int16ArrayObject : public TypedArrayObjectTemplate<int16_t> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_INT16 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_INT16 };
     static const JSProtoKey key = JSProto_Int16Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Uint16ArrayObject : public TypedArrayObjectTemplate<uint16_t> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_UINT16 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_UINT16 };
     static const JSProtoKey key = JSProto_Uint16Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Int32ArrayObject : public TypedArrayObjectTemplate<int32_t> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_INT32 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_INT32 };
     static const JSProtoKey key = JSProto_Int32Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Uint32ArrayObject : public TypedArrayObjectTemplate<uint32_t> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_UINT32 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_UINT32 };
     static const JSProtoKey key = JSProto_Uint32Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Float32ArrayObject : public TypedArrayObjectTemplate<float> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_FLOAT32 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_FLOAT32 };
     static const JSProtoKey key = JSProto_Float32Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Float64ArrayObject : public TypedArrayObjectTemplate<double> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_FLOAT64 };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_FLOAT64 };
     static const JSProtoKey key = JSProto_Float64Array;
     static const JSFunctionSpec jsfuncs[];
 };
 class Uint8ClampedArrayObject : public TypedArrayObjectTemplate<uint8_clamped> {
   public:
-    enum { ACTUAL_TYPE = ScalarTypeRepresentation::TYPE_UINT8_CLAMPED };
+    enum { ACTUAL_TYPE = ScalarTypeDescr::TYPE_UINT8_CLAMPED };
     static const JSProtoKey key = JSProto_Uint8ClampedArray;
     static const JSFunctionSpec jsfuncs[];
 };
@@ -3392,31 +3371,31 @@ TypedArrayObject::copyTypedArrayElement(uint32_t index, MutableHandleValue vp)
     JS_ASSERT(index < length());
 
     switch (type()) {
-      case ScalarTypeRepresentation::TYPE_INT8:
+      case ScalarTypeDescr::TYPE_INT8:
         TypedArrayObjectTemplate<int8_t>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_UINT8:
+      case ScalarTypeDescr::TYPE_UINT8:
         TypedArrayObjectTemplate<uint8_t>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_UINT8_CLAMPED:
+      case ScalarTypeDescr::TYPE_UINT8_CLAMPED:
         TypedArrayObjectTemplate<uint8_clamped>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_INT16:
+      case ScalarTypeDescr::TYPE_INT16:
         TypedArrayObjectTemplate<int16_t>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_UINT16:
+      case ScalarTypeDescr::TYPE_UINT16:
         TypedArrayObjectTemplate<uint16_t>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_INT32:
+      case ScalarTypeDescr::TYPE_INT32:
         TypedArrayObjectTemplate<int32_t>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_UINT32:
+      case ScalarTypeDescr::TYPE_UINT32:
         TypedArrayObjectTemplate<uint32_t>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_FLOAT32:
+      case ScalarTypeDescr::TYPE_FLOAT32:
         TypedArrayObjectTemplate<float>::copyIndexToValue(this, index, vp);
         break;
-      case ScalarTypeRepresentation::TYPE_FLOAT64:
+      case ScalarTypeDescr::TYPE_FLOAT64:
         TypedArrayObjectTemplate<double>::copyIndexToValue(this, index, vp);
         break;
       default:
@@ -3721,7 +3700,7 @@ IMPL_TYPED_ARRAY_STATICS(Float32Array);
 IMPL_TYPED_ARRAY_STATICS(Float64Array);
 IMPL_TYPED_ARRAY_STATICS(Uint8ClampedArray);
 
-const Class TypedArrayObject::classes[ScalarTypeRepresentation::TYPE_MAX] = {
+const Class TypedArrayObject::classes[ScalarTypeDescr::TYPE_MAX] = {
     IMPL_TYPED_ARRAY_FAST_CLASS(Int8Array),
     IMPL_TYPED_ARRAY_FAST_CLASS(Uint8Array),
     IMPL_TYPED_ARRAY_FAST_CLASS(Int16Array),
@@ -3733,7 +3712,7 @@ const Class TypedArrayObject::classes[ScalarTypeRepresentation::TYPE_MAX] = {
     IMPL_TYPED_ARRAY_FAST_CLASS(Uint8ClampedArray)
 };
 
-const Class TypedArrayObject::protoClasses[ScalarTypeRepresentation::TYPE_MAX] = {
+const Class TypedArrayObject::protoClasses[ScalarTypeDescr::TYPE_MAX] = {
     IMPL_TYPED_ARRAY_PROTO_CLASS(Int8Array),
     IMPL_TYPED_ARRAY_PROTO_CLASS(Uint8Array),
     IMPL_TYPED_ARRAY_PROTO_CLASS(Int16Array),
@@ -3785,8 +3764,7 @@ InitArrayBufferClass(JSContext *cx)
     if (!getter)
         return nullptr;
 
-    RootedValue value(cx, UndefinedValue());
-    if (!DefineNativeProperty(cx, arrayBufferProto, byteLengthId, value,
+    if (!DefineNativeProperty(cx, arrayBufferProto, byteLengthId, UndefinedHandleValue,
                               JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr, flags, 0, 0))
         return nullptr;
 
@@ -3886,8 +3864,7 @@ DataViewObject::defineGetter(JSContext *cx, PropertyName *name, HandleObject pro
     if (!getter)
         return false;
 
-    RootedValue value(cx, UndefinedValue());
-    return DefineNativeProperty(cx, proto, id, value,
+    return DefineNativeProperty(cx, proto, id, UndefinedHandleValue,
                                 JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr,
                                 flags, 0, 0);
 }
@@ -3981,23 +3958,23 @@ bool
 js::IsTypedArrayConstructor(HandleValue v, uint32_t type)
 {
     switch (type) {
-      case ScalarTypeRepresentation::TYPE_INT8:
+      case ScalarTypeDescr::TYPE_INT8:
         return IsNativeFunction(v, Int8ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_UINT8:
+      case ScalarTypeDescr::TYPE_UINT8:
         return IsNativeFunction(v, Uint8ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_INT16:
+      case ScalarTypeDescr::TYPE_INT16:
         return IsNativeFunction(v, Int16ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_UINT16:
+      case ScalarTypeDescr::TYPE_UINT16:
         return IsNativeFunction(v, Uint16ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_INT32:
+      case ScalarTypeDescr::TYPE_INT32:
         return IsNativeFunction(v, Int32ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_UINT32:
+      case ScalarTypeDescr::TYPE_UINT32:
         return IsNativeFunction(v, Uint32ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_FLOAT32:
+      case ScalarTypeDescr::TYPE_FLOAT32:
         return IsNativeFunction(v, Float32ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_FLOAT64:
+      case ScalarTypeDescr::TYPE_FLOAT64:
         return IsNativeFunction(v, Float64ArrayObject::class_constructor);
-      case ScalarTypeRepresentation::TYPE_UINT8_CLAMPED:
+      case ScalarTypeDescr::TYPE_UINT8_CLAMPED:
         return IsNativeFunction(v, Uint8ClampedArrayObject::class_constructor);
     }
     MOZ_ASSUME_UNREACHABLE("unexpected typed array type");
@@ -4045,10 +4022,21 @@ JS_GetArrayBufferData(JSObject *obj)
     obj = CheckedUnwrap(obj);
     if (!obj)
         return nullptr;
-    ArrayBufferObject &buffer = obj->as<ArrayBufferObject>();
-    if (!buffer.ensureNonInline(nullptr))
+    return obj->as<ArrayBufferObject>().dataPointer();
+}
+
+JS_FRIEND_API(uint8_t *)
+JS_GetStableArrayBufferData(JSContext *cx, JSObject *obj)
+{
+    obj = CheckedUnwrap(obj);
+    if (!obj)
         return nullptr;
-    return buffer.dataPointer();
+
+    Rooted<ArrayBufferObject*> buffer(cx, &obj->as<ArrayBufferObject>());
+    if (!ArrayBufferObject::ensureNonInline(cx, buffer))
+        return nullptr;
+
+    return buffer->dataPointer();
 }
 
 JS_FRIEND_API(bool)
@@ -4091,9 +4079,10 @@ JS_NewArrayBufferWithContents(JSContext *cx, void *contents)
 }
 
 JS_PUBLIC_API(bool)
-JS_AllocateArrayBufferContents(JSContext *cx, uint32_t nbytes, void **contents, uint8_t **data)
+JS_AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes,
+                               void **contents, uint8_t **data)
 {
-    js::ObjectElements *header = AllocateArrayBufferContents(cx, nbytes);
+    js::ObjectElements *header = AllocateArrayBufferContents(maybecx, nbytes);
     if (!header)
         return false;
 
@@ -4105,9 +4094,9 @@ JS_AllocateArrayBufferContents(JSContext *cx, uint32_t nbytes, void **contents, 
 }
 
 JS_PUBLIC_API(bool)
-JS_ReallocateArrayBufferContents(JSContext *cx, uint32_t nbytes, void **contents, uint8_t **data)
+JS_ReallocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, void **contents, uint8_t **data)
 {
-    js::ObjectElements *header = AllocateArrayBufferContents(cx, nbytes, *contents);
+    js::ObjectElements *header = AllocateArrayBufferContents(maybecx, nbytes, *contents);
     if (!header)
         return false;
 

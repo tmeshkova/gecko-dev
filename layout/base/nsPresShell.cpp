@@ -5902,6 +5902,7 @@ PresShell::Paint(nsView*        aViewToPaint,
   }
   if (mNextPaintCompressed) {
     flags |= nsLayoutUtils::PAINT_COMPRESSED;
+    mNextPaintCompressed = false;
   }
 
   if (frame) {
@@ -7207,7 +7208,9 @@ PresShell::DispatchTouchEvent(WidgetEvent* aEvent,
       content = capturingContent;
     }
     // copy the event
-    WidgetTouchEvent newEvent(touchEvent->mFlags.mIsTrusted, touchEvent);
+    WidgetTouchEvent newEvent(touchEvent->mFlags.mIsTrusted,
+                              touchEvent->message, touchEvent->widget);
+    newEvent.AssignTouchEventData(*touchEvent, false);
     newEvent.target = targetPtr;
 
     nsRefPtr<PresShell> contentPresShell;

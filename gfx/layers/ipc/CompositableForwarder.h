@@ -48,7 +48,8 @@ class CompositableForwarder : public ISurfaceAllocator
 public:
 
   CompositableForwarder()
-    : mMultiProcess(false)
+    : mSerial(++sSerialCounter)
+    , mMultiProcess(false)
   {}
 
   /**
@@ -156,19 +157,27 @@ public:
   virtual void DestroyedThebesBuffer(const SurfaceDescriptor& aBackBufferToDestroy) = 0;
 
   /**
+   * Tell the CompositableHost on the compositor side to remove the texture.
+   * This function does not delete the TextureHost corresponding to the
+   * TextureClient passed in parameter.
+   */
+  virtual void RemoveTextureFromCompositable(CompositableClient* aCompositable,
+                                             TextureClient* aTexture) = 0;
+
+  /**
    * Tell the compositor side to delete the TextureHost corresponding to the
    * TextureClient passed in parameter.
    */
   virtual void RemoveTexture(TextureClient* aTexture) = 0;
 
   /**
-   * Forcibly remove texture data from TextureClient
-   * after a tansaction with Compositor.
+   * Holds a reference to a TextureClient until after the next
+   * compositor transaction, and then drops it.
    */
-  virtual void AddForceRemovingTexture(TextureClient* aClient)
+  virtual void HoldUntilTransaction(TextureClient* aClient)
   {
     if (aClient) {
-      mForceRemovingTextures.AppendElement(aClient);
+      mTexturesToRemove.AppendElement(aClient);
     }
   }
 
@@ -176,12 +185,9 @@ public:
    * Forcibly remove texture data from TextureClient
    * This function needs to be called after a tansaction with Compositor.
    */
-  virtual void ForceRemoveTexturesIfNecessary()
+  virtual void RemoveTexturesIfNecessary()
   {
-    for (uint32_t i = 0; i < mForceRemovingTextures.Length(); i++) {
-       mForceRemovingTextures[i]->ForceRemove();
-    }
-    mForceRemovingTextures.Clear();
+    mTexturesToRemove.Clear();
   }
 
   /**
@@ -241,10 +247,14 @@ public:
     return mTextureFactoryIdentifier;
   }
 
+  int32_t GetSerial() { return mSerial; }
+
 protected:
   TextureFactoryIdentifier mTextureFactoryIdentifier;
+  nsTArray<RefPtr<TextureClient> > mTexturesToRemove;
+  const int32_t mSerial;
+  static mozilla::Atomic<int32_t> sSerialCounter;
   bool mMultiProcess;
-  nsTArray<RefPtr<TextureClient> > mForceRemovingTextures;
 };
 
 } // namespace

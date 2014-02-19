@@ -8,6 +8,7 @@
 #define vm_Runtime_h
 
 #include "mozilla/Atomics.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/PodOperations.h"
@@ -482,7 +483,6 @@ AtomStateOffsetToName(const JSAtomState &atomState, size_t offset)
 enum RuntimeLock {
     ExclusiveAccessLock,
     WorkerThreadStateLock,
-    CompilationLock,
     OperationCallbackLock,
     GCLock
 };
@@ -552,7 +552,6 @@ class PerThreadData : public PerThreadDataFriendFields
     friend class js::jit::JitActivation;
     friend class js::AsmJSActivation;
 #ifdef DEBUG
-    friend bool js::CurrentThreadCanReadCompilationData();
     friend void js::AssertCurrentThreadCanLock(RuntimeLock which);
 #endif
 
@@ -602,11 +601,6 @@ class PerThreadData : public PerThreadDataFriendFields
      */
     int32_t suppressGC;
 
-#ifdef DEBUG
-    // Whether this thread is actively Ion compiling.
-    bool ionCompiling;
-#endif
-
     // Number of active bytecode compilation on this thread.
     unsigned activeCompilations;
 
@@ -625,7 +619,7 @@ class PerThreadData : public PerThreadDataFriendFields
 
     // For threads which may be associated with different runtimes, depending
     // on the work they are doing.
-    class AutoEnterRuntime
+    class MOZ_STACK_CLASS AutoEnterRuntime
     {
         PerThreadData *pt;
 
@@ -657,8 +651,6 @@ class MarkingValidator;
 typedef Vector<JS::Zone *, 4, SystemAllocPolicy> ZoneVector;
 
 class AutoLockForExclusiveAccess;
-class AutoLockForCompilation;
-class AutoProtectHeapForIonCompilation;
 
 void RecomputeStackLimit(JSRuntime *rt, StackKind kind);
 
@@ -680,14 +672,10 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::PerThreadData mainThread;
 
     /*
-     * If non-zero, we were been asked to call the operation callback as soon
-     * as possible.
+     * If true, we've been asked to call the operation callback as soon as
+     * possible.
      */
-#ifdef JS_THREADSAFE
-    mozilla::Atomic<int32_t, mozilla::Relaxed> interrupt;
-#else
-    int32_t interrupt;
-#endif
+    mozilla::Atomic<bool, mozilla::Relaxed> interrupt;
 
 #if defined(JS_THREADSAFE) && defined(JS_ION)
     /*
@@ -777,28 +765,6 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     friend class js::AutoLockForExclusiveAccess;
 
-    /*
-     * Lock taken when using data that can be modified by the main thread but
-     * read by Ion compilation threads. Any time either the main thread writes
-     * such data or the compilation thread reads it, this lock must be taken.
-     * Note that no externally visible data is modified by the compilation
-     * thread, so the main thread never needs to take this lock when reading.
-     */
-    PRLock *compilationLock;
-#ifdef DEBUG
-    PRThread *compilationLockOwner;
-    bool mainThreadHasCompilationLock;
-#endif
-
-    /* Number of in flight Ion compilations. */
-    size_t numCompilationThreads;
-
-    friend class js::AutoLockForCompilation;
-#ifdef DEBUG
-    friend bool js::CurrentThreadCanWriteCompilationData();
-    friend bool js::CurrentThreadCanReadCompilationData();
-#endif
-
   public:
     void setUsedByExclusiveThread(JS::Zone *zone);
     void clearUsedByExclusiveThread(JS::Zone *zone);
@@ -823,41 +789,6 @@ struct JSRuntime : public JS::shadow::Runtime,
         return false;
 #endif
     }
-
-    void addCompilationThread() {
-#ifdef JS_THREADSAFE
-        numCompilationThreads++;
-#else
-        MOZ_ASSUME_UNREACHABLE("No threads");
-#endif
-    }
-    void removeCompilationThread() {
-#ifdef JS_THREADSAFE
-        JS_ASSERT(numCompilationThreads);
-        numCompilationThreads--;
-#else
-        MOZ_ASSUME_UNREACHABLE("No threads");
-#endif
-    }
-
-    bool compilationThreadsPresent() const {
-#ifdef JS_THREADSAFE
-        return numCompilationThreads > 0;
-#else
-        return false;
-#endif
-    }
-
-#ifdef DEBUG
-    bool currentThreadHasCompilationLock() {
-#ifdef JS_THREADSAFE
-        return (!numCompilationThreads && mainThreadHasCompilationLock) ||
-               compilationLockOwner == PR_GetCurrentThread();
-#else
-        return true;
-#endif
-    }
-#endif // DEBUG
 
     /* Embedders can use this zone however they wish. */
     JS::Zone            *systemZone;
@@ -1298,11 +1229,8 @@ struct JSRuntime : public JS::shadow::Runtime,
     /*
      * Whether a GC has been triggered as a result of gcMallocBytes falling
      * below zero.
-     *
-     * This should be a bool, but Atomic only supports 32-bit and pointer-sized
-     * types.
      */
-    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> gcMallocGCTriggered;
+    mozilla::Atomic<bool, mozilla::ReleaseAcquire> gcMallocGCTriggered;
 
 #ifdef JS_ARM_SIMULATOR
     js::jit::SimulatorRuntime *simulatorRuntime_;
@@ -1478,18 +1406,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     const char          *thousandsSeparator;
     const char          *decimalSeparator;
     const char          *numGrouping;
-#endif
-
-    friend class js::AutoProtectHeapForIonCompilation;
-    friend class js::AutoThreadSafeAccess;
-    mozilla::DebugOnly<bool> heapProtected_;
-#ifdef DEBUG
-    js::Vector<js::gc::ArenaHeader *, 0, js::SystemAllocPolicy> unprotectedArenas;
-
-  public:
-    bool heapProtected() {
-        return heapProtected_;
-    }
 #endif
 
   private:
@@ -1794,6 +1710,34 @@ struct JSRuntime : public JS::shadow::Runtime,
   public:
     js::AutoEnterPolicy *enteredPolicy;
 #endif
+
+    /*
+     * These variations of malloc/calloc/realloc will call the
+     * large-allocation-failure callback on OOM and retry the allocation.
+     */
+    JS::LargeAllocationFailureCallback largeAllocationFailureCallback;
+
+    static const unsigned LARGE_ALLOCATION = 25 * 1024 * 1024;
+
+    void *callocCanGC(size_t bytes) {
+        void *p = calloc_(bytes);
+        if (MOZ_LIKELY(!!p))
+            return p;
+        if (!largeAllocationFailureCallback || bytes < LARGE_ALLOCATION)
+            return nullptr;
+        largeAllocationFailureCallback();
+        return onOutOfMemory(reinterpret_cast<void *>(1), bytes);
+    }
+
+    void *reallocCanGC(void *p, size_t bytes) {
+        void *p2 = realloc_(p, bytes);
+        if (MOZ_LIKELY(!!p2))
+            return p2;
+        if (!largeAllocationFailureCallback || bytes < LARGE_ALLOCATION)
+            return nullptr;
+        largeAllocationFailureCallback();
+        return onOutOfMemory(p, bytes);
+    }
 };
 
 namespace js {
@@ -2060,43 +2004,6 @@ class RuntimeAllocPolicy
 };
 
 extern const JSSecurityCallbacks NullSecurityCallbacks;
-
-// Debugging RAII class which marks the current thread as performing an Ion
-// compilation, for use by CurrentThreadCan{Read,Write}CompilationData
-class AutoEnterIonCompilation
-{
-  public:
-#ifdef DEBUG
-    AutoEnterIonCompilation(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM);
-    ~AutoEnterIonCompilation();
-#else
-    AutoEnterIonCompilation(MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-#endif
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
-// Debugging RAII class which protects the entire GC heap for the duration of an
-// Ion compilation. When used only the main thread will be active and all
-// accesses to GC things must be wrapped by an AutoThreadSafeAccess instance.
-class AutoProtectHeapForIonCompilation
-{
-  public:
-#ifdef JS_CAN_CHECK_THREADSAFE_ACCESSES
-    JSRuntime *runtime;
-
-    AutoProtectHeapForIonCompilation(JSRuntime *rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
-    ~AutoProtectHeapForIonCompilation();
-#else
-    AutoProtectHeapForIonCompilation(JSRuntime *rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-#endif
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
 
 } /* namespace js */
 

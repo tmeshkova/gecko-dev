@@ -239,7 +239,7 @@ this.OnRefTestLoad = function OnRefTestLoad(win)
     var prefs = Components.classes["@mozilla.org/preferences-service;1"].
                 getService(Components.interfaces.nsIPrefBranch);
     try {
-        gBrowserIsRemote = prefs.getBoolPref("browser.tabs.remote");
+        gBrowserIsRemote = prefs.getBoolPref("browser.tabs.remote.autostart");
     } catch (e) {
         gBrowserIsRemote = false;
     }
@@ -1655,7 +1655,7 @@ function RecordResult(testRunTime, errorMsg, scriptResults)
                         result += "REFTEST   IMAGE 2 (REFERENCE): " + gCanvas2.toDataURL() + "\n";
                     } else {
                         result += "\n";
-                        gDumpLog("REFTEST   IMAGE: " + gCanvas1.toDataURL() + "\n");
+                        result += "REFTEST   IMAGE: " + gCanvas1.toDataURL() + "\n";
                     }
                 } else {
                     result += "\n";

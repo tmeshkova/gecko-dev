@@ -400,9 +400,6 @@ JSObject::clearType(JSContext *cx, js::HandleObject obj)
 inline void
 JSObject::setType(js::types::TypeObject *newType)
 {
-    // Note: This is usually called for newly created objects that haven't
-    // escaped to script yet, so don't require that the compilation lock be
-    // held here.
     JS_ASSERT(newType);
     JS_ASSERT(!hasSingletonType());
     type_ = newType;
@@ -497,20 +494,29 @@ JSObject::create(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::Initi
     JS_ASSERT(js::gc::GetGCKindSlots(kind, type->clasp()) == shape->numFixedSlots());
     JS_ASSERT_IF(type->clasp()->flags & JSCLASS_BACKGROUND_FINALIZE, IsBackgroundFinalized(kind));
     JS_ASSERT_IF(type->clasp()->finalize, heap == js::gc::TenuredHeap);
-    JS_ASSERT_IF(extantSlots, dynamicSlotsCount(shape->numFixedSlots(), shape->slotSpan()));
+    JS_ASSERT_IF(extantSlots, dynamicSlotsCount(shape->numFixedSlots(), shape->slotSpan(),
+                                                type->clasp()));
 
-    size_t nDynamicSlots = extantSlots ? 0 : dynamicSlotsCount(shape->numFixedSlots(), shape->slotSpan());
+    const js::Class *clasp = type->clasp();
+    size_t nDynamicSlots = 0;
+    if (!extantSlots)
+        nDynamicSlots = dynamicSlotsCount(shape->numFixedSlots(), shape->slotSpan(), clasp);
+
     JSObject *obj = js::NewGCObject<js::CanGC>(cx, kind, nDynamicSlots, heap);
     if (!obj)
         return nullptr;
 
     obj->shape_.init(shape);
     obj->type_.init(type);
-    if (extantSlots)
+    if (extantSlots) {
+#ifdef JSGC_GENERATIONAL
+        if (cx->isJSContext())
+            cx->asJSContext()->runtime()->gcNursery.notifyInitialSlots(obj, extantSlots);
+#endif
         obj->slots = extantSlots;
+    }
     obj->elements = js::emptyObjectElements;
 
-    const js::Class *clasp = type->clasp();
     if (clasp->hasPrivate())
         obj->privateRef(shape->numFixedSlots()) = nullptr;
 
@@ -537,7 +543,7 @@ JSObject::createArray(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::
      * named properties stored in those fixed slots.
      */
     JS_ASSERT(shape->numFixedSlots() == 0);
-    size_t nDynamicSlots = dynamicSlotsCount(0, shape->slotSpan());
+    size_t nDynamicSlots = dynamicSlotsCount(0, shape->slotSpan(), type->clasp());
     JSObject *obj = js::NewGCObject<js::CanGC>(cx, kind, nDynamicSlots, heap);
     if (!obj)
         return nullptr;
@@ -990,11 +996,8 @@ DefineConstructorAndPrototype(JSContext *cx, Handle<GlobalObject*> global,
     JS_ASSERT(!global->nativeLookup(cx, id));
 
     /* Set these first in case AddTypePropertyId looks for this class. */
-    {
-        AutoLockForCompilation lock(cx);
-        global->setConstructor(key, ObjectValue(*ctor));
-        global->setPrototype(key, ObjectValue(*proto));
-    }
+    global->setConstructor(key, ObjectValue(*ctor));
+    global->setPrototype(key, ObjectValue(*proto));
     global->setConstructorPropertySlot(key, ObjectValue(*ctor));
 
     if (!global->addDataProperty(cx, id, GlobalObject::constructorPropertySlot(key), 0)) {

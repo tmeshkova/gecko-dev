@@ -95,14 +95,14 @@ ThrowInvalidThis(JSContext* aCx, const JS::CallArgs& aArgs,
                  prototypes::ID aProtoId)
 {
   return ThrowInvalidThis(aCx, aArgs, aErrorNumber,
-                          NamesOfInterfacesWithProtos[aProtoId]);
+                          NamesOfInterfacesWithProtos(aProtoId));
 }
 
 bool
 ThrowNoSetterArg(JSContext* aCx, prototypes::ID aProtoId)
 {
   nsPrintfCString errorMessage("%s attribute setter",
-                               NamesOfInterfacesWithProtos[aProtoId]);
+                               NamesOfInterfacesWithProtos(aProtoId));
   return ThrowErrorMessage(aCx, MSG_MISSING_ARGUMENTS, errorMessage.get());
 }
 
@@ -1608,8 +1608,7 @@ NativeToString(JSContext* cx, JS::Handle<JSObject*> wrapper,
       }
       MOZ_ASSERT(JS_ObjectIsCallable(cx, &toString.toObject()));
       JS::Rooted<JS::Value> toStringResult(cx);
-      if (JS_CallFunctionValue(cx, obj, toString, 0, nullptr,
-                               toStringResult.address())) {
+      if (JS_CallFunctionValue(cx, obj, toString, JS::EmptyValueArray, &toStringResult)) {
         str = toStringResult.toString();
       } else {
         str = nullptr;
@@ -2085,11 +2084,6 @@ bool
 NonVoidByteStringToJsval(JSContext *cx, const nsACString &str,
                          JS::MutableHandle<JS::Value> rval)
 {
-    if (str.IsEmpty()) {
-        rval.set(JS_GetEmptyStringValue(cx));
-        return true;
-    }
-
     // ByteStrings are not UTF-8 encoded.
     JSString* jsStr = JS_NewStringCopyN(cx, str.Data(), str.Length());
 

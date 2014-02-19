@@ -389,6 +389,7 @@ public:
   virtual const char* Name() const = 0;
 #endif // MOZ_DUMP_PAINTING
 
+  virtual LayersBackend GetBackendType() const = 0;
 
   /**
    * Each Compositor has a unique ID.
@@ -406,13 +407,6 @@ public:
     MOZ_ASSERT(mCompositorID == 0, "The compositor ID must be set only once.");
     mCompositorID = aID;
   }
-
-  /**
-   * Notify the compositor that a layers transaction has occured. This is only
-   * used for FPS information at the moment.
-   * XXX: surely there is a better way to do this?
-   */
-  virtual void NotifyLayersTransaction() = 0;
 
   /**
    * Notify the compositor that composition is being paused. This allows the
@@ -453,6 +447,17 @@ public:
    */
   static LayersBackend GetBackend();
 
+  size_t GetFillRatio() {
+    float fillRatio = 0;
+    if (mPixelsFilled > 0 && mPixelsPerFrame > 0) {
+      fillRatio = 100.0f * float(mPixelsFilled) / float(mPixelsPerFrame);
+      if (fillRatio > 999.0f) {
+        fillRatio = 999.0f;
+      }
+    }
+    return fillRatio;
+  }
+
 protected:
   void DrawDiagnosticsInternal(DiagnosticFlags aFlags,
                                const gfx::Rect& aVisibleRect,
@@ -461,8 +466,12 @@ protected:
 
   bool ShouldDrawDiagnostics(DiagnosticFlags);
 
+  /**
+   * Set the global Compositor backend, checking that one isn't already set.
+   */
+  static void SetBackend(LayersBackend backend);
+
   uint32_t mCompositorID;
-  static LayersBackend sBackend;
   DiagnosticTypes mDiagnosticTypes;
   PCompositorParent* mParent;
 
@@ -473,6 +482,10 @@ protected:
    */
   size_t mPixelsPerFrame;
   size_t mPixelsFilled;
+
+private:
+  static LayersBackend sBackend;
+
 };
 
 } // namespace layers

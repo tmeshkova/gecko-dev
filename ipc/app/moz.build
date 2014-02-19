@@ -17,3 +17,15 @@ else:
     ]
 include('/ipc/chromium/chromium-config.mozbuild')
 
+LOCAL_INCLUDES += [
+    '/toolkit/xre',
+    '/xpcom/base',
+]
+
+if CONFIG['MOZ_CONTENT_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
+    # For sandbox includes and the include dependencies those have
+    LOCAL_INCLUDES += [
+        '/security',
+        '/security/sandbox',
+        '/security/sandbox/chromium',
+    ]

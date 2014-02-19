@@ -1214,11 +1214,10 @@ void
 DataTextureSourceD3D9::SetCompositor(Compositor* aCompositor)
 {
   CompositorD3D9* d3dCompositor = static_cast<CompositorD3D9*>(aCompositor);
-
-  if (d3dCompositor != mCompositor) {
+  if (mCompositor && mCompositor != d3dCompositor) {
     Reset();
-    mCompositor = d3dCompositor;
   }
+  mCompositor = d3dCompositor;
 }
 
 void
@@ -1275,11 +1274,30 @@ CairoTextureClientD3D9::Lock(OpenMode)
   if (!IsValid() || !IsAllocated()) {
     return false;
   }
+
+  if (!gfxWindowsPlatform::GetPlatform()->GetD3D9Device()) {
+    // If the device has failed then we should not lock the surface,
+    // even if we could.
+    mD3D9Surface = nullptr;
+    return false;
+  }
+
+  if (!mD3D9Surface) {
+    HRESULT hr = mTexture->GetSurfaceLevel(0, getter_AddRefs(mD3D9Surface));
+    if (FAILED(hr)) {
+      NS_WARNING("Failed to get texture surface level.");
+      return false;
+    }
+  }
+
+  mIsLocked = true;
+
   if (mNeedsClear) {
     mDrawTarget = GetAsDrawTarget();
     mDrawTarget->ClearRect(Rect(0, 0, GetSize().width, GetSize().height));
+    mNeedsClear = false;
   }
-  mIsLocked = true;
+
   return true;
 }
 
@@ -1318,40 +1336,27 @@ CairoTextureClientD3D9::ToSurfaceDescriptor(SurfaceDescriptor& aOutDescriptor)
 TemporaryRef<gfx::DrawTarget>
 CairoTextureClientD3D9::GetAsDrawTarget()
 {
-  MOZ_ASSERT(mIsLocked && mTexture);
+  MOZ_ASSERT(mIsLocked && mD3D9Surface);
   if (mDrawTarget) {
     return mDrawTarget;
   }
 
-  if (!gfxWindowsPlatform::GetPlatform()->GetD3D9Device()) {
-    // If the device has failed then we should not lock the surface,
-    // even if we could.
-    mD3D9Surface = nullptr;
-    mTexture = nullptr;
-    return nullptr;
-  }
-
-  if (!mD3D9Surface) {
-    HRESULT hr = mTexture->GetSurfaceLevel(0, getter_AddRefs(mD3D9Surface));
-    if (FAILED(hr)) {
-      NS_WARNING("Failed to get texture surface level.");
-      return nullptr;
-    }
-  }
-
-  if (ContentForFormat(mFormat) == gfxContentType::COLOR_ALPHA) {
-    D3DLOCKED_RECT rect;
-    mD3D9Surface->LockRect(&rect, nullptr, 0);
-    mSurface = new gfxImageSurface((uint8_t*)rect.pBits, ThebesIntSize(mSize),
-                                   rect.Pitch, gfxImageFormat::ARGB32);
-    mLockRect = true;
-  } else {
+  if (ContentForFormat(mFormat) == gfxContentType::COLOR) {
     mSurface = new gfxWindowsSurface(mD3D9Surface);
     if (!mSurface || mSurface->CairoStatus()) {
       NS_WARNING("Could not create surface for d3d9 surface");
       mSurface = nullptr;
       return nullptr;
     }
+  } else {
+    // gfxWindowsSurface don't support transparency so we can't use the d3d9
+    // windows surface optimization.
+    // Instead we have to use a gfxImageSurface and fallback for font drawing.
+    D3DLOCKED_RECT rect;
+    mD3D9Surface->LockRect(&rect, nullptr, 0);
+    mSurface = new gfxImageSurface((uint8_t*)rect.pBits, ThebesIntSize(mSize),
+                                   rect.Pitch, SurfaceFormatToImageFormat(mFormat));
+    mLockRect = true;
   }
 
   mDrawTarget =
@@ -1557,10 +1562,15 @@ DataTextureSourceD3D9::UpdateFromTexture(IDirect3DTexture9* aTexture,
 
   D3DSURFACE_DESC desc;
   HRESULT hr = aTexture->GetLevelDesc(0, &desc);
-  if (!FAILED(hr)) {
+  if (FAILED(hr)) {
+    return false;
+  } else {
+    // If we changed the compositor, the size might have been reset to zero
+    // Otherwise the texture size must not change.
     MOZ_ASSERT(mFormat == D3D9FormatToSurfaceFormat(desc.Format));
-    MOZ_ASSERT(mSize.width == desc.Width);
-    MOZ_ASSERT(mSize.height == desc.Height);
+    MOZ_ASSERT(!mSize.width || mSize.width == desc.Width);
+    MOZ_ASSERT(!mSize.height || mSize.height == desc.Height);
+    mSize = IntSize(desc.Width, desc.Height);
   }
 
   DeviceManagerD3D9* dm = gfxWindowsPlatform::GetPlatform()->GetD3D9DeviceManager();
@@ -1598,10 +1608,18 @@ DataTextureSourceD3D9::UpdateFromTexture(IDirect3DTexture9* aTexture,
       POINT point;
       point.x = iterRect->x;
       point.y = iterRect->y;
-      dm->device()->UpdateSurface(srcSurface, &rect, dstSurface, &point);
+      hr = dm->device()->UpdateSurface(srcSurface, &rect, dstSurface, &point);
+      if (FAILED(hr)) {
+        NS_WARNING("Failed Update the surface");
+        return false;
+      }
     }
   } else {
-    dm->device()->UpdateSurface(srcSurface, nullptr, dstSurface, nullptr);
+    hr = dm->device()->UpdateSurface(srcSurface, nullptr, dstSurface, nullptr);
+    if (FAILED(hr)) {
+      NS_WARNING("Failed Update the surface");
+      return false;
+    }
   }
   mIsTiled = false;
   return true;

@@ -757,7 +757,11 @@ var gBrowserInit = {
   delayedStartupFinished: false,
 
   onLoad: function() {
-    gMultiProcessBrowser = Services.appinfo.browserTabsRemote;
+    gMultiProcessBrowser =
+      window.QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsIWebNavigation)
+      .QueryInterface(Ci.nsILoadContext)
+      .useRemoteTabs;
 
     var mustLoadSidebar = false;
 
@@ -1001,8 +1005,13 @@ var gBrowserInit = {
       }
       // Note: loadOneOrMoreURIs *must not* be called if window.arguments.length >= 3.
       // Such callers expect that window.arguments[0] is handled as a single URI.
-      else
+      else {
+        if (uriToLoad == "about:newtab" &&
+            Services.prefs.getBoolPref("browser.newtabpage.enabled")) {
+          Services.telemetry.getHistogramById("NEWTAB_PAGE_SHOWN").add(true);
+        }
         loadOneOrMoreURIs(uriToLoad);
+      }
     }
 
 #ifdef MOZ_SAFE_BROWSING
@@ -1023,6 +1032,7 @@ var gBrowserInit = {
     IndexedDBPromptHelper.init();
     gFormSubmitObserver.init();
     SocialUI.init();
+    gRemoteTabsUI.init();
 
     // Initialize the full zoom setting.
     // We do this before the session restore service gets initialized so we can
@@ -2342,7 +2352,7 @@ let BrowserOnClick = {
    */
   onE10sAboutNewTab: function(aEvent, aOwnerDoc) {
     let isTopFrame = (aOwnerDoc.defaultView.parent === aOwnerDoc.defaultView);
-    if (!isTopFrame) {
+    if (!isTopFrame || aEvent.button != 0) {
       return;
     }
 
@@ -3186,6 +3196,12 @@ function OpenBrowserWindow(options)
     extraFeatures = ",non-private";
   }
 
+  if (options && options.remote) {
+    extraFeatures += ",remote";
+  } else if (options && options.remote === false) {
+    extraFeatures += ",non-remote";
+  }
+
   // if and only if the current window is a browser window and it has a document with a character
   // set, then extract the current charset menu setting from the current document and use it to
   // initialize the new browser window...
@@ -3594,8 +3610,7 @@ var XULBrowserWindow = {
       if (gURLBar) {
         URLBarSetURI(aLocationURI);
 
-        // Update starring UI
-        BookmarkingUI.updateStarState();
+        BookmarkingUI.onLocationChange();
         SocialUI.updateState();
       }
 
@@ -4227,6 +4242,7 @@ function onViewToolbarsPopupShowing(aEvent, aInsertPoint) {
     while (toolbarItem && toolbarItem.parentNode) {
       let parent = toolbarItem.parentNode;
       if ((parent.classList && parent.classList.contains("customization-target")) ||
+          parent.getAttribute("overflowfortoolbar") || // Needs to work in the overflow list as well.
           parent.localName == "toolbarpaletteitem" ||
           parent.localName == "toolbar")
         break;
@@ -6866,6 +6882,28 @@ let gPrivateBrowsingUI = {
   }
 };
 
+let gRemoteTabsUI = {
+  init: function() {
+    if (window.location.href != getBrowserURL()) {
+      return;
+    }
+
+    let remoteTabs = gPrefService.getBoolPref("browser.tabs.remote");
+    let autostart = gPrefService.getBoolPref("browser.tabs.remote.autostart");
+
+    let newRemoteWindow = document.getElementById("menu_newRemoteWindow");
+    let newNonRemoteWindow = document.getElementById("menu_newNonRemoteWindow");
+
+    if (!remoteTabs) {
+      newRemoteWindow.hidden = true;
+      newNonRemoteWindow.hidden = true;
+      return;
+    }
+
+    newRemoteWindow.hidden = autostart;
+    newNonRemoteWindow.hidden = !autostart;
+  }
+};
 
 /**
  * Switch to a tab that has a given URI, and focusses its browser window.
@@ -7203,3 +7241,11 @@ let BrowserChromeTest = {
       this._cb = cb;
   }
 };
+
+function BrowserOpenNewTabOrWindow(event) {
+  if (event.shiftKey) {
+    OpenBrowserWindow();
+  } else {
+    BrowserOpenTab();
+  }
+}

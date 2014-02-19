@@ -169,7 +169,7 @@ Layer::Layer(LayerManager* aManager, void* aImplData) :
   mPostXScale(1.0f),
   mPostYScale(1.0f),
   mOpacity(1.0),
-  mMixBlendMode(gfxContext::OPERATOR_OVER),
+  mMixBlendMode(CompositionOp::OP_OVER),
   mForceIsolatedGroup(false),
   mContentFlags(0),
   mUseClipRect(false),
@@ -670,18 +670,24 @@ Layer::GetEffectiveOpacity()
   return opacity;
 }
   
-gfxContext::GraphicsOperator
+CompositionOp
 Layer::GetEffectiveMixBlendMode()
 {
-  if(mMixBlendMode != gfxContext::OPERATOR_OVER)
+  if(mMixBlendMode != CompositionOp::OP_OVER)
     return mMixBlendMode;
   for (ContainerLayer* c = GetParent(); c && !c->UseIntermediateSurface();
     c = c->GetParent()) {
-    if(c->mMixBlendMode != gfxContext::OPERATOR_OVER)
+    if(c->mMixBlendMode != CompositionOp::OP_OVER)
       return c->mMixBlendMode;
   }
 
   return mMixBlendMode;
+}
+
+gfxContext::GraphicsOperator
+Layer::DeprecatedGetEffectiveMixBlendMode()
+{
+  return ThebesOp(GetEffectiveMixBlendMode());
 }
 
 void
@@ -807,9 +813,13 @@ ContainerLayer::RepositionChild(Layer* aChild, Layer* aAfter)
   }
   if (prev) {
     prev->SetNextSibling(next);
+  } else {
+    mFirstChild = next;
   }
   if (next) {
     next->SetPrevSibling(prev);
+  } else {
+    mLastChild = prev;
   }
   if (!aAfter) {
     aChild->SetPrevSibling(nullptr);
@@ -1020,10 +1030,7 @@ LayerManager::StartFrameTimeRecording(int32_t aBufferSize)
     mRecording.mIsPaused = false;
 
     if (!mRecording.mIntervals.Length()) { // Initialize recording buffers
-      if (!mRecording.mIntervals.SetLength(aBufferSize)) {
-        mRecording.mIsPaused = true; // OOM
-        mRecording.mIntervals.Clear();
-      }
+      mRecording.mIntervals.SetLength(aBufferSize);
     }
 
     // After being paused, recent values got invalid. Update them to now.
@@ -1079,11 +1086,12 @@ LayerManager::StopFrameTimeRecording(uint32_t         aStartIndex,
     length = 0;
   }
 
-  // Set length in advance to avoid possibly repeated reallocations (and OOM checks).
-  if (!length || !aFrameIntervals.SetLength(length)) {
+  if (!length) {
     aFrameIntervals.Clear();
-    return; // empty recording or OOM, return empty arrays.
+    return; // empty recording, return empty arrays.
   }
+  // Set length in advance to avoid possibly repeated reallocations
+  aFrameIntervals.SetLength(length);
 
   uint32_t cyclicPos = aStartIndex % bufferSize;
   for (uint32_t i = 0; i < length; i++, cyclicPos++) {

@@ -984,14 +984,12 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
 
   public:
     TaggedProto getTaggedProto() const {
-        AutoThreadSafeAccess ts(this);
         return type_->proto();
     }
 
     bool hasTenuredProto() const;
 
     const Class *getClass() const {
-        AutoThreadSafeAccess ts(this);
         return type_->clasp();
     }
 
@@ -1149,7 +1147,11 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
     bool slotInRange(uint32_t slot, SentinelAllowed sentinel = SENTINEL_NOT_ALLOWED) const;
 #endif
 
-    /* Minimum size for dynamically allocated slots. */
+    /*
+     * Minimum size for dynamically allocated slots in normal Objects.
+     * ArrayObjects don't use this limit and can have a lower slot capacity,
+     * since they normally don't have a lot of slots.
+     */
     static const uint32_t SLOT_CAPACITY_MIN = 8;
 
     HeapSlot *fixedSlots() const {
@@ -1202,8 +1204,6 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
     }
 
     types::TypeObject *typeRaw() const {
-        AutoThreadSafeAccess ts0(this);
-        AutoThreadSafeAccess ts1(type_);
         return type_;
     }
 
@@ -1211,14 +1211,11 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
         return reinterpret_cast<const shadow::Object *>(this)->numFixedSlots();
     }
 
-    uint32_t numFixedSlotsForCompilation() const;
-
     /*
      * Whether this is the only object which has its specified type. This
      * object will have its type constructed lazily as needed by analysis.
      */
     bool hasSingletonType() const {
-        AutoThreadSafeAccess ts(this);
         return !!type_->singleton();
     }
 
@@ -1227,7 +1224,6 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
      * might have a lazy type, use getType() below, otherwise type().
      */
     bool hasLazyType() const {
-        AutoThreadSafeAccess ts(this);
         return type_->lazy();
     }
 
@@ -1239,8 +1235,9 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
 
     /* Compute dynamicSlotsCount() for this object. */
     uint32_t numDynamicSlots() const {
-        return dynamicSlotsCount(numFixedSlots(), slotSpan());
+        return dynamicSlotsCount(numFixedSlots(), slotSpan(), getClass());
     }
+
 
     Shape *nativeLookup(ExclusiveContext *cx, jsid id);
     Shape *nativeLookup(ExclusiveContext *cx, PropertyId pid) {
@@ -1386,7 +1383,7 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
     }
 
     const Value &getFixedSlot(uint32_t slot) const {
-        MOZ_ASSERT(slot < numFixedSlotsForCompilation());
+        MOZ_ASSERT(slot < numFixedSlots());
         return fixedSlots()[slot];
     }
 
@@ -1406,17 +1403,7 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
      * capacity is not stored explicitly, and the allocated size of the slot
      * array is kept in sync with this count.
      */
-    static uint32_t dynamicSlotsCount(uint32_t nfixed, uint32_t span) {
-        if (span <= nfixed)
-            return 0;
-        span -= nfixed;
-        if (span <= SLOT_CAPACITY_MIN)
-            return SLOT_CAPACITY_MIN;
-
-        uint32_t slots = mozilla::RoundUpPow2(span);
-        MOZ_ASSERT(slots >= span);
-        return slots;
-    }
+    static uint32_t dynamicSlotsCount(uint32_t nfixed, uint32_t span, const Class *clasp);
 
     /* Memory usage functions. */
     size_t tenuredSizeOfThis() const {
@@ -1483,7 +1470,7 @@ class ObjectImpl : public gc::BarrieredCell<ObjectImpl>
          * Private pointers are stored immediately after the last fixed slot of
          * the object.
          */
-        MOZ_ASSERT(nfixed == numFixedSlotsForCompilation());
+        MOZ_ASSERT(nfixed == numFixedSlots());
         MOZ_ASSERT(hasPrivate());
         HeapSlot *end = &fixedSlots()[nfixed];
         return *reinterpret_cast<void**>(end);
@@ -1560,10 +1547,6 @@ MOZ_ALWAYS_INLINE Zone *
 BarrieredCell<ObjectImpl>::zoneFromAnyThread() const
 {
     const ObjectImpl* obj = static_cast<const ObjectImpl*>(this);
-
-    // Note: This read of obj->shape_ may race, though the zone fetched will be the same.
-    AutoThreadSafeAccess ts(obj->shape_);
-
     return obj->shape_->zoneFromAnyThread();
 }
 

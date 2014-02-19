@@ -5,12 +5,14 @@
 
 const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
-Cu.import("resource://gre/modules/CrashManager.jsm", this);
+let bsp = Cu.import("resource://gre/modules/CrashManager.jsm", this);
 Cu.import("resource://gre/modules/Promise.jsm", this);
 Cu.import("resource://gre/modules/Task.jsm", this);
 Cu.import("resource://gre/modules/osfile.jsm", this);
 
 Cu.import("resource://testing-common/CrashManagerTest.jsm", this);
+
+const DUMMY_DATE = new Date(1391043519000);
 
 function run_test() {
   do_get_profile();
@@ -39,8 +41,6 @@ add_task(function* test_get_manager() {
 
   yield m.createDummyDump(true);
   yield m.createDummyDump(false);
-
-  run_next_test();
 });
 
 // Unsubmitted dump files on disk are detected properly.
@@ -111,9 +111,9 @@ add_task(function* test_store_expires() {
 // Ensure discovery of unprocessed events files works.
 add_task(function* test_unprocessed_events_files() {
   let m = yield getManager();
-  yield m.createEventsFile("1", "test.1", "foo", 0);
-  yield m.createEventsFile("2", "test.1", "bar", 0);
-  yield m.createEventsFile("1", "test.1", "baz", 1);
+  yield m.createEventsFile("1", "test.1", new Date(), "foo", 0);
+  yield m.createEventsFile("2", "test.1", new Date(), "bar", 0);
+  yield m.createEventsFile("1", "test.1", new Date(), "baz", 1);
 
   let paths = yield m._getUnprocessedEventsFiles();
   Assert.equal(paths.length, 3);
@@ -133,7 +133,7 @@ add_task(function* test_aggregate_events_locking() {
 add_task(function* test_malformed_files_deleted() {
   let m = yield getManager();
 
-  yield m.createEventsFile("1", "test.1", "malformed");
+  yield m.createEventsFile("1", "crash.main.1", new Date(), "foo\nbar");
 
   let count = yield m.aggregateEventsFiles();
   Assert.equal(count, 1);
@@ -148,8 +148,8 @@ add_task(function* test_malformed_files_deleted() {
 add_task(function* test_aggregate_ignore_unknown_events() {
   let m = yield getManager();
 
-  yield m.createEventsFile("1", "test.1", "success");
-  yield m.createEventsFile("2", "foobar.1", "dummy");
+  yield m.createEventsFile("1", "crash.main.1", DUMMY_DATE, "id1");
+  yield m.createEventsFile("2", "foobar.1", new Date(), "dummy");
 
   let count = yield m.aggregateEventsFiles();
   Assert.equal(count, 2);
@@ -165,8 +165,8 @@ add_task(function* test_prune_old() {
   let m = yield getManager();
   let oldDate = new Date(Date.now() - 86400000);
   let newDate = new Date(Date.now() - 10000);
-  yield m.createEventsFile("1", "test.1", "id1", 0, oldDate);
-  yield m.createEventsFile("2", "test.1", "id2", 0, newDate);
+  yield m.createEventsFile("1", "crash.main.1", oldDate, "id1");
+  yield m.createEventsFile("2", "crash.plugin.1", newDate, "id2");
 
   yield m.aggregateEventsFiles();
 
@@ -190,13 +190,90 @@ add_task(function* test_prune_old() {
 
 add_task(function* test_schedule_maintenance() {
   let m = yield getManager();
-  yield m.createEventsFile("1", "test.1", "id1");
+  yield m.createEventsFile("1", "crash.main.1", DUMMY_DATE, "id1");
 
   let oldDate = new Date(Date.now() - m.PURGE_OLDER_THAN_DAYS * 2 * 24 * 60 * 60 * 1000);
-  yield m.createEventsFile("2", "test.1", "id2", 0, oldDate);
+  yield m.createEventsFile("2", "crash.main.1", oldDate, "id2");
 
   yield m.scheduleMaintenance(25);
   let crashes = yield m.getCrashes();
   Assert.equal(crashes.length, 1);
   Assert.equal(crashes[0].id, "id1");
+});
+
+add_task(function* test_main_crash_event_file() {
+  let m = yield getManager();
+  yield m.createEventsFile("1", "crash.main.1", DUMMY_DATE, "id1");
+  let count = yield m.aggregateEventsFiles();
+  Assert.equal(count, 1);
+
+  let crashes = yield m.getCrashes();
+  Assert.equal(crashes.length, 1);
+  Assert.equal(crashes[0].id, "id1");
+  Assert.equal(crashes[0].type, "main-crash");
+  Assert.deepEqual(crashes[0].crashDate, DUMMY_DATE);
+
+  count = yield m.aggregateEventsFiles();
+  Assert.equal(count, 0);
+});
+
+add_task(function* test_multiline_crash_id_rejected() {
+  let m = yield getManager();
+  yield m.createEventsFile("1", "crash.main.1", DUMMY_DATE, "id1\nid2");
+  yield m.aggregateEventsFiles();
+  let crashes = yield m.getCrashes();
+  Assert.equal(crashes.length, 0);
+});
+
+add_task(function* test_plugin_crash_event_file() {
+  let m = yield getManager();
+  yield m.createEventsFile("1", "crash.plugin.1", DUMMY_DATE, "id1");
+  let count = yield m.aggregateEventsFiles();
+  Assert.equal(count, 1);
+
+  let crashes = yield m.getCrashes();
+  Assert.equal(crashes.length, 1);
+  Assert.equal(crashes[0].id, "id1");
+  Assert.equal(crashes[0].type, "plugin-crash");
+  Assert.deepEqual(crashes[0].crashDate, DUMMY_DATE);
+
+  count = yield m.aggregateEventsFiles();
+  Assert.equal(count, 0);
+});
+
+add_task(function* test_plugin_hang_event_file() {
+  let m = yield getManager();
+  yield m.createEventsFile("1", "hang.plugin.1", DUMMY_DATE, "id1");
+  let count = yield m.aggregateEventsFiles();
+  Assert.equal(count, 1);
+
+  let crashes = yield m.getCrashes();
+  Assert.equal(crashes.length, 1);
+  Assert.equal(crashes[0].id, "id1");
+  Assert.equal(crashes[0].type, "plugin-hang");
+  Assert.deepEqual(crashes[0].crashDate, DUMMY_DATE);
+
+  count = yield m.aggregateEventsFiles();
+  Assert.equal(count, 0);
+});
+
+// Excessive amounts of files should be processed properly.
+add_task(function* test_high_water_mark() {
+  let m = yield getManager();
+
+  let store = yield m._getStore();
+
+  for (let i = 0; i < store.HIGH_WATER_DAILY_THRESHOLD + 1; i++) {
+    yield m.createEventsFile("m" + i, "crash.main.1", DUMMY_DATE, "m" + i);
+    yield m.createEventsFile("pc" + i, "crash.plugin.1", DUMMY_DATE, "pc" + i);
+    yield m.createEventsFile("ph" + i, "hang.plugin.1", DUMMY_DATE, "ph" + i);
+  }
+
+  let count = yield m.aggregateEventsFiles();
+  Assert.equal(count, 3 * bsp.CrashStore.prototype.HIGH_WATER_DAILY_THRESHOLD + 3);
+
+  // Need to fetch again in case the first one was garbage collected.
+  store = yield m._getStore();
+  // +1 is for preserved main process crash.
+  Assert.equal(store.crashesCount, 3 * store.HIGH_WATER_DAILY_THRESHOLD + 1);
 });

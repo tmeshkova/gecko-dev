@@ -19,10 +19,9 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'exthandler'
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'os2':
-    osdir = 'os2'
-elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     osdir = 'win'
+    LOCAL_INCLUDES += ['win']
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     osdir = 'win'
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
@@ -106,11 +105,6 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     SOURCES += [
         'win/nsMIMEInfoWin.cpp',
     ]
-elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'os2':
-    # These files can't be built in unified mode because they force NSPR logging.
-    SOURCES += [
-        'os2/nsMIMEInfoOS2.cpp',
-    ]
 
 if CONFIG['MOZ_ENABLE_DBUS']:
     UNIFIED_SOURCES += [
@@ -143,3 +137,13 @@ FAIL_ON_WARNINGS = True
 include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
+
+LOCAL_INCLUDES += [
+    '/content/base/src',
+    '/dom/base',
+    '/dom/events',
+    '/dom/ipc',
+    '/netwerk/base/src',
+    '/netwerk/protocol/http',
+]
+

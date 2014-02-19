@@ -85,7 +85,7 @@ this.WebappManager = {
     }
 
     sendMessageToJava({
-      type: "WebApps:InstallApk",
+      type: "Webapps:InstallApk",
       filePath: filePath,
       data: JSON.stringify(aMessage),
     });
@@ -157,7 +157,7 @@ this.WebappManager = {
 
         // aData.app.origin may now point to the app: url that hosts this app.
         sendMessageToJava({
-          type: "WebApps:PostInstall",
+          type: "Webapps:Postinstall",
           apkPackageName: aData.app.apkPackageName,
           origin: aData.app.origin,
         });
@@ -171,7 +171,7 @@ this.WebappManager = {
     log("launchWebapp: " + manifestURL);
 
     sendMessageToJava({
-      type: "WebApps:Open",
+      type: "Webapps:Open",
       manifestURL: manifestURL,
       origin: origin
     });
@@ -284,10 +284,9 @@ this.WebappManager = {
       }
 
       // Map APK names to APK versions.
-      let apkNameToVersion = JSON.parse(sendMessageToJava({
-        type: "WebApps:GetApkVersions",
-        packageNames: installedApps.map(app => app.packageName).filter(packageName => !!packageName)
-      }));
+      let apkNameToVersion = yield this._getAPKVersions(installedApps.map(app =>
+        app.packageName).filter(packageName => !!packageName)
+      );
 
       // Map manifest URLs to APK versions, which is what the service needs
       // in order to tell us which apps are outdated; and also map them to app
@@ -335,6 +334,17 @@ this.WebappManager = {
       this._checkingForUpdates = false;
     }
   }).bind(this)); },
+
+  _getAPKVersions: function(packageNames) {
+    let deferred = Promise.defer();
+
+    sendMessageToJava({
+      type: "Webapps:GetApkVersions",
+      packageNames: packageNames 
+    }, data => deferred.resolve(JSON.parse(data).versions));
+
+    return deferred.promise;
+  },
 
   _getInstalledApps: function() {
     let deferred = Promise.defer();
@@ -450,11 +460,11 @@ this.WebappManager = {
       for (let apk of downloadedApks) {
         let msg = {
           app: apk.app,
-          // TODO: figure out why WebApps:InstallApk needs the "from" property.
+          // TODO: figure out why Webapps:InstallApk needs the "from" property.
           from: apk.app.installOrigin,
         };
         sendMessageToJava({
-          type: "WebApps:InstallApk",
+          type: "Webapps:InstallApk",
           filePath: apk.filePath,
           data: JSON.stringify(msg),
         });
@@ -530,7 +540,11 @@ this.WebappManager = {
       // build any app specific default prefs
       let prefs = [];
       if (aManifest.orientation) {
-        prefs.push({name:"app.orientation.default", value: aManifest.orientation.join(",") });
+        let orientation = aManifest.orientation;
+        if (Array.isArray(orientation)) {
+          orientation = orientation.join(",");
+        }
+        prefs.push({ name: "app.orientation.default", value: orientation });
       }
 
       // write them into the app profile

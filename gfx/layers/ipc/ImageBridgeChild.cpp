@@ -453,15 +453,15 @@ ImageBridgeChild::BeginTransaction()
   mTxn->Begin();
 }
 
-class MOZ_STACK_CLASS AutoForceRemoveTextures
+class MOZ_STACK_CLASS AutoRemoveTextures
 {
 public:
-  AutoForceRemoveTextures(ImageBridgeChild* aImageBridge)
+  AutoRemoveTextures(ImageBridgeChild* aImageBridge)
     : mImageBridge(aImageBridge) {}
 
-  ~AutoForceRemoveTextures()
+  ~AutoRemoveTextures()
   {
-    mImageBridge->ForceRemoveTexturesIfNecessary();
+    mImageBridge->RemoveTexturesIfNecessary();
   }
 private:
   ImageBridgeChild* mImageBridge;
@@ -473,7 +473,7 @@ ImageBridgeChild::EndTransaction()
   MOZ_ASSERT(!mTxn->Finished(), "forgot BeginTransaction?");
 
   AutoEndTransaction _(mTxn);
-  AutoForceRemoveTextures autoForceRemoveTextures(this);
+  AutoRemoveTextures autoRemoveTextures(this);
 
   if (mTxn->IsEmpty()) {
     return;
@@ -939,6 +939,21 @@ ImageBridgeChild::CreateTexture(const SurfaceDescriptor& aSharedData,
                                 TextureFlags aFlags)
 {
   return SendPTextureConstructor(aSharedData, aFlags);
+}
+
+void
+ImageBridgeChild::RemoveTextureFromCompositable(CompositableClient* aCompositable,
+                                                TextureClient* aTexture)
+{
+  if (aTexture->GetFlags() & TEXTURE_DEALLOCATE_CLIENT) {
+    mTxn->AddEdit(OpRemoveTexture(nullptr, aCompositable->GetIPDLActor(),
+                                  nullptr, aTexture->GetIPDLActor()));
+  } else {
+    mTxn->AddNoSwapEdit(OpRemoveTexture(nullptr, aCompositable->GetIPDLActor(),
+                                        nullptr, aTexture->GetIPDLActor()));
+  }
+  // Hold texture until transaction complete.
+  HoldUntilTransaction(aTexture);
 }
 
 static void RemoveTextureSync(TextureClient* aTexture, ReentrantMonitor* aBarrier, bool* aDone)

@@ -295,17 +295,20 @@ public:
 #ifdef DEBUG
     virtual PContentPermissionRequestChild*
     SendPContentPermissionRequestConstructor(PContentPermissionRequestChild* aActor,
-                                             const nsCString& aType,
-                                             const nsCString& aAccess,
+                                             const InfallibleTArray<PermissionRequest>& aRequests,
                                              const IPC::Principal& aPrincipal);
 #endif /* DEBUG */
 
     virtual PContentPermissionRequestChild*
-    AllocPContentPermissionRequestChild(const nsCString& aType,
-                                        const nsCString& aAccess,
+    AllocPContentPermissionRequestChild(const InfallibleTArray<PermissionRequest>& aRequests,
                                         const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
     virtual bool
     DeallocPContentPermissionRequestChild(PContentPermissionRequestChild* actor) MOZ_OVERRIDE;
+
+    virtual PFilePickerChild*
+    AllocPFilePickerChild(const nsString& aTitle, const int16_t& aMode) MOZ_OVERRIDE;
+    virtual bool
+    DeallocPFilePickerChild(PFilePickerChild* actor) MOZ_OVERRIDE;
 
     virtual POfflineCacheUpdateChild* AllocPOfflineCacheUpdateChild(
             const URIParams& manifestURI,
@@ -513,6 +516,7 @@ private:
     bool mUpdateHitRegion;
     bool mContextMenuHandled;
     bool mWaitingTouchListeners;
+    void FireSingleTapEvent(LayoutDevicePoint aPoint);
 
     DISALLOW_EVIL_CONSTRUCTORS(TabChild);
 };

@@ -160,7 +160,6 @@
 #include "FMRadio.h"
 #endif
 
-#include "nsIDOMCameraManager.h"
 #include "nsIDOMGlobalObjectConstructor.h"
 #include "nsIDOMLockedFile.h"
 #include "nsDebug.h"
@@ -469,9 +468,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
   NS_DEFINE_CLASSINFO_DATA(MozIccManager, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 #endif
-
-  NS_DEFINE_CLASSINFO_DATA(CameraCapabilities, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
   NS_DEFINE_CLASSINFO_DATA(LockedFile, nsEventTargetSH,
                            EVENTTARGET_SCRIPTABLE_FLAGS)
@@ -1175,10 +1171,6 @@ nsDOMClassInfo::Init()
   DOM_CLASSINFO_MAP_END
 
 #endif
-
-  DOM_CLASSINFO_MAP_BEGIN(CameraCapabilities, nsICameraCapabilities)
-    DOM_CLASSINFO_MAP_ENTRY(nsICameraCapabilities)
-  DOM_CLASSINFO_MAP_END
 
   DOM_CLASSINFO_MAP_BEGIN(LockedFile, nsIDOMLockedFile)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMLockedFile)
@@ -2043,7 +2035,9 @@ BaseStubConstructor(nsIWeakReference* aWeakOwner,
         // we also pass in the calling window as the first argument
         unsigned argc = args.length() + 1;
         JS::AutoValueVector argv(cx);
-        argv.resize(argc);
+        if (!argv.resize(argc)) {
+          return NS_ERROR_OUT_OF_MEMORY;
+        }
 
         nsCOMPtr<nsIDOMWindow> currentWin(do_GetInterface(currentInner));
         rv = WrapNative(cx, obj, currentWin, &NS_GET_IID(nsIDOMWindow),
@@ -2058,9 +2052,7 @@ BaseStubConstructor(nsIWeakReference* aWeakOwner,
         }
 
         JS::Rooted<JS::Value> frval(cx);
-        bool ret = JS_CallFunctionValue(cx, thisObject, funval,
-                                        argc, argv.begin(),
-                                        frval.address());
+        bool ret = JS_CallFunctionValue(cx, thisObject, funval, argv, &frval);
 
         if (!ret) {
           return NS_ERROR_FAILURE;

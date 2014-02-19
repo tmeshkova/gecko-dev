@@ -161,8 +161,11 @@ TextureClient::DestroyIPDLActor(PTextureChild* actor)
 bool
 TextureClient::InitIPDLActor(CompositableForwarder* aForwarder)
 {
-  MOZ_ASSERT(!mActor);
   MOZ_ASSERT(aForwarder);
+  if (mActor && mActor->GetForwarder() == aForwarder) {
+    return true;
+  }
+  MOZ_ASSERT(!mActor, "Cannot use a texture on several IPC channels.");
 
   SurfaceDescriptor desc;
   if (!ToSurfaceDescriptor(desc)) {
@@ -219,7 +222,7 @@ public:
   ~MemoryTextureClientData()
   {
     MOZ_ASSERT(!mBuffer, "Forgot to deallocate the shared texture data?");
-    MOZ_COUNT_CTOR(MemoryTextureClientData);
+    MOZ_COUNT_DTOR(MemoryTextureClientData);
   }
 
   virtual void DeallocateSharedData(ISurfaceAllocator*)
@@ -563,8 +566,8 @@ BufferTextureClient::Lock(OpenMode aMode)
   // XXX - Turn this into a fatal assertion as soon as Bug 952507 is fixed
   NS_WARN_IF_FALSE(!mLocked, "The TextureClient is already Locked!");
   mOpenMode = aMode;
-  mLocked = true;
-  return IsValid() && IsAllocated();
+  mLocked = IsValid() && IsAllocated();;
+  return mLocked;
 }
 
 void

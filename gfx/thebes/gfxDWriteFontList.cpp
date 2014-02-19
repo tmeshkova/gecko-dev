@@ -310,7 +310,7 @@ gfxDWriteFontFamily::LocalizedName(nsAString &aLocalizedName)
             idx = 0;
         }
     }
-    nsAutoTArray<WCHAR, 32> famName;
+    AutoFallibleTArray<WCHAR, 32> famName;
     UINT32 length;
     
     hr = names->GetStringLength(idx, &length);
@@ -543,6 +543,14 @@ gfxDWriteFontEntry::ReadCMAP(FontInfoData *aFontInfoData)
 
     mHasCmapTable = NS_SUCCEEDED(rv);
     if (mHasCmapTable) {
+        // Bug 969504: exclude U+25B6 from Segoe UI family, because it's used
+        // by sites to represent a "Play" icon, but the glyph in Segoe UI Light
+        // and Semibold on Windows 7 is too thin. (Ditto for leftward U+25C0.)
+        // Fallback to Segoe UI Symbol is preferred.
+        if (FamilyName().EqualsLiteral("Segoe UI")) {
+            charmap->clear(0x25b6);
+            charmap->clear(0x25c0);
+        }
         gfxPlatformFontList *pfl = gfxPlatformFontList::PlatformFontList();
         mCharacterMap = pfl->FindCharMap(charmap);
     } else {
@@ -991,7 +999,7 @@ gfxDWriteFontList::DelayedInitFontList()
             englishIdx = 0;
         }
 
-        nsAutoTArray<WCHAR, 32> enName;
+        AutoFallibleTArray<WCHAR, 32> enName;
         UINT32 length;
         
         hr = names->GetStringLength(englishIdx, &length);
@@ -1036,7 +1044,7 @@ gfxDWriteFontList::DelayedInitFontList()
 
         for (nameIndex = 0; nameIndex < nameCount; nameIndex++) {
             UINT32 nameLen;
-            nsAutoTArray<WCHAR, 32> localizedName;
+            AutoFallibleTArray<WCHAR, 32> localizedName;
 
             // only add other names
             if (nameIndex == englishIdx) {
@@ -1402,7 +1410,7 @@ static HRESULT GetFamilyName(IDWriteFont *aFont, nsString& aFamilyName)
         index = 0;
     }
 
-    nsAutoTArray<WCHAR, 32> name;
+    AutoFallibleTArray<WCHAR, 32> name;
     UINT32 length;
 
     hr = familyNames->GetStringLength(index, &length);
@@ -1575,7 +1583,7 @@ void
 DirectWriteFontInfo::LoadFontFamilyData(const nsAString& aFamilyName)
 {
     // lookup the family
-    nsAutoTArray<char16_t, 32> famName;
+    nsAutoTArray<wchar_t, 32> famName;
 
     uint32_t len = aFamilyName.Length();
     famName.SetLength(len + 1);

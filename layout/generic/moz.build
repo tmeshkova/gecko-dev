@@ -79,7 +79,7 @@ UNIFIED_SOURCES += [
     'nsPageFrame.cpp',
     'nsPlaceholderFrame.cpp',
     'nsSelection.cpp',
-    'nsSimplePageSequence.cpp',
+    'nsSimplePageSequenceFrame.cpp',
     'nsSplittableFrame.cpp',
     'nsSubDocumentFrame.cpp',
     'nsTextFrame.cpp',
@@ -127,3 +127,7 @@ LOCAL_INCLUDES += [
 ]
 
 JAR_MANIFESTS += ['jar.mn']
+
+RESOURCE_FILES.html = [
+    'folder.png',
+]
