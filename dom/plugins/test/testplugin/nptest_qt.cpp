@@ -1,6 +1,6 @@
 /* ***** BEGIN LICENSE BLOCK *****
  * 
- * Copyright (c) 2010, Mozilla Corporation
+ * Copyright (c) 2008, Mozilla Corporation
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -27,7 +27,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * Contributor(s):
- *   Brad Lassey <blassey@mozilla.com>
+ *   Josh Aas <josh@mozilla.com>
  * 
  * ***** END LICENSE BLOCK ***** */
 #include "nptest_platform.h"

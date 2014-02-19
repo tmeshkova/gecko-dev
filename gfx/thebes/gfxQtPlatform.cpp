@@ -34,6 +34,7 @@
 #include "nsTArray.h"
 #ifdef MOZ_X11
 #include "gfxXlibSurface.h"
+#include "prenv.h"
 #endif
 
 #include "qcms.h"

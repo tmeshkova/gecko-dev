@@ -402,7 +402,6 @@ private:
 NS_IMPL_ISUPPORTS1(ICUReporter, nsIMemoryReporter)
 
 /* static */ Atomic<size_t> ICUReporter::sAmount;
-static bool sICUReporterInititialized = false;
 
 EXPORT_XPCOM_API(nsresult)
 NS_InitXPCOM2(nsIServiceManager* *result,
@@ -659,12 +658,14 @@ namespace mozilla {
 void
 SetICUMemoryFunctions()
 {
-    if (!sICUReporterInititialized &&
-        !JS_SetICUMemoryFunctions(ICUReporter::Alloc, ICUReporter::Realloc,
-                                  ICUReporter::Free)) {
-        NS_RUNTIMEABORT("JS_SetICUMemoryFunctions failed.");
+    static bool sICUReporterInitialized = false;
+    if (!sICUReporterInitialized) {
+        if (!JS_SetICUMemoryFunctions(ICUReporter::Alloc, ICUReporter::Realloc,
+                                      ICUReporter::Free)) {
+            NS_RUNTIMEABORT("JS_SetICUMemoryFunctions failed.");
+        }
+        sICUReporterInitialized = true;
     }
-    sICUReporterInititialized = true;
 }
 
 nsresult
