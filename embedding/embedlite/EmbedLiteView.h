@@ -63,6 +63,7 @@ public:
   virtual bool HandleDoubleTap(const nsIntPoint& aPoint) { return false; }
   virtual bool HandleSingleTap(const nsIntPoint& aPoint) { return false; }
   virtual bool HandleLongTap(const nsIntPoint& aPoint) { return false; }
+  virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
   virtual bool SendAsyncScrollDOMEvent(const gfxRect& aContentRect,
                                        const gfxSize& aScrollableSize) { return false; }
   virtual bool ScrollUpdate(const gfxPoint& aPosition, const float aResolution) { return false; }

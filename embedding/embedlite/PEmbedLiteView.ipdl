@@ -48,6 +48,7 @@ child:
     HandleDoubleTap(nsIntPoint point);
     HandleSingleTap(nsIntPoint point);
     HandleLongTap(nsIntPoint point);
+    AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
     HandleTextEvent(nsString commit, nsString preEdit);
     HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
     HandleKeyReleaseEvent(int domKeyCode, int gmodifiers, int charCode);

@@ -81,6 +81,7 @@ protected:
   virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint);
   virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint);
   virtual bool RecvHandleLongTap(const nsIntPoint& aPoint);
+  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration);
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
                               const float&    aY,
