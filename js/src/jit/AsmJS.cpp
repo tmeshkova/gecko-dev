@@ -12,6 +12,7 @@
 # include "vtune/VTuneWrapper.h"
 #endif
 
+#include "jsmath.h"
 #include "jsprf.h"
 #include "jsworkers.h"
 #include "prmjtime.h"
@@ -936,7 +937,7 @@ class MOZ_STACK_CLASS ModuleCompiler
             FuncPtrTable,
             FFI,
             ArrayView,
-            MathBuiltin
+            MathBuiltinFunction
         };
 
       private:
@@ -951,7 +952,7 @@ class MOZ_STACK_CLASS ModuleCompiler
             uint32_t funcPtrTableIndex_;
             uint32_t ffiIndex_;
             ArrayBufferView::ViewType viewType_;
-            AsmJSMathBuiltin mathBuiltin_;
+            AsmJSMathBuiltinFunction mathBuiltinFunc_;
         } u;
 
         friend class ModuleCompiler;
@@ -994,9 +995,9 @@ class MOZ_STACK_CLASS ModuleCompiler
             JS_ASSERT(which_ == ArrayView);
             return u.viewType_;
         }
-        AsmJSMathBuiltin mathBuiltin() const {
-            JS_ASSERT(which_ == MathBuiltin);
-            return u.mathBuiltin_;
+        AsmJSMathBuiltinFunction mathBuiltinFunction() const {
+            JS_ASSERT(which_ == MathBuiltinFunction);
+            return u.mathBuiltinFunc_;
         }
     };
 
@@ -1063,6 +1064,25 @@ class MOZ_STACK_CLASS ModuleCompiler
 
     typedef HashMap<ExitDescriptor, unsigned, ExitDescriptor> ExitMap;
 
+    struct MathBuiltin
+    {
+        enum Kind { Function, Constant };
+        Kind kind;
+
+        union {
+            double cst;
+            AsmJSMathBuiltinFunction func;
+        } u;
+
+        MathBuiltin() : kind(Kind(-1)) {}
+        MathBuiltin(double cst) : kind(Constant) {
+            u.cst = cst;
+        }
+        MathBuiltin(AsmJSMathBuiltinFunction func) : kind(Function) {
+            u.func = func;
+        }
+    };
+
   private:
     struct SlowFunction
     {
@@ -1072,7 +1092,7 @@ class MOZ_STACK_CLASS ModuleCompiler
         unsigned column;
     };
 
-    typedef HashMap<PropertyName*, AsmJSMathBuiltin> MathNameMap;
+    typedef HashMap<PropertyName*, MathBuiltin> MathNameMap;
     typedef HashMap<PropertyName*, Global*> GlobalMap;
     typedef js::Vector<Func*> FuncVector;
     typedef js::Vector<AsmJSGlobalAccess> GlobalAccessVector;
@@ -1106,10 +1126,18 @@ class MOZ_STACK_CLASS ModuleCompiler
 
     DebugOnly<bool>                finishedFunctionBodies_;
 
-    bool addStandardLibraryMathName(const char *name, AsmJSMathBuiltin builtin) {
+    bool addStandardLibraryMathName(const char *name, AsmJSMathBuiltinFunction func) {
         JSAtom *atom = Atomize(cx_, name, strlen(name));
         if (!atom)
             return false;
+        MathBuiltin builtin(func);
+        return standardLibraryMathNames_.putNew(atom->asPropertyName(), builtin);
+    }
+    bool addStandardLibraryMathName(const char *name, double cst) {
+        JSAtom *atom = Atomize(cx_, name, strlen(name));
+        if (!atom)
+            return false;
+        MathBuiltin builtin(cst);
         return standardLibraryMathNames_.putNew(atom->asPropertyName(), builtin);
     }
 
@@ -1175,7 +1203,15 @@ class MOZ_STACK_CLASS ModuleCompiler
             !addStandardLibraryMathName("abs", AsmJSMathBuiltin_abs) ||
             !addStandardLibraryMathName("atan2", AsmJSMathBuiltin_atan2) ||
             !addStandardLibraryMathName("imul", AsmJSMathBuiltin_imul) ||
-            !addStandardLibraryMathName("fround", AsmJSMathBuiltin_fround))
+            !addStandardLibraryMathName("fround", AsmJSMathBuiltin_fround) ||
+            !addStandardLibraryMathName("E", M_E) ||
+            !addStandardLibraryMathName("LN10", M_LN10) ||
+            !addStandardLibraryMathName("LN2", M_LN2) ||
+            !addStandardLibraryMathName("LOG2E", M_LOG2E) ||
+            !addStandardLibraryMathName("LOG10E", M_LOG10E) ||
+            !addStandardLibraryMathName("PI", M_PI) ||
+            !addStandardLibraryMathName("SQRT1_2", M_SQRT1_2) ||
+            !addStandardLibraryMathName("SQRT2", M_SQRT2))
         {
             return false;
         }
@@ -1289,7 +1325,7 @@ class MOZ_STACK_CLASS ModuleCompiler
     FuncPtrTable &funcPtrTable(unsigned i) {
         return funcPtrTables_[i];
     }
-    bool lookupStandardLibraryMathName(PropertyName *name, AsmJSMathBuiltin *mathBuiltin) const {
+    bool lookupStandardLibraryMathName(PropertyName *name, MathBuiltin *mathBuiltin) const {
         if (MathNameMap::Ptr p = standardLibraryMathNames_.lookup(name)) {
             *mathBuiltin = p->value();
             return true;
@@ -1390,24 +1426,34 @@ class MOZ_STACK_CLASS ModuleCompiler
         global->u.viewType_ = vt;
         return globals_.putNew(varName, global);
     }
-    bool addMathBuiltin(PropertyName *varName, AsmJSMathBuiltin mathBuiltin, PropertyName *fieldName) {
-        if (!module_->addMathBuiltin(mathBuiltin, fieldName))
+    bool addMathBuiltinFunction(PropertyName *varName, AsmJSMathBuiltinFunction func, PropertyName *fieldName) {
+        if (!module_->addMathBuiltinFunction(func, fieldName))
             return false;
-        Global *global = moduleLifo_.new_<Global>(Global::MathBuiltin);
+        Global *global = moduleLifo_.new_<Global>(Global::MathBuiltinFunction);
         if (!global)
             return false;
-        global->u.mathBuiltin_ = mathBuiltin;
+        global->u.mathBuiltinFunc_ = func;
         return globals_.putNew(varName, global);
     }
-    bool addGlobalConstant(PropertyName *varName, double constant, PropertyName *fieldName) {
-        if (!module_->addGlobalConstant(constant, fieldName))
-            return false;
+  private:
+    bool addGlobalDoubleConstant(PropertyName *varName, double constant) {
         Global *global = moduleLifo_.new_<Global>(Global::ConstantLiteral);
         if (!global)
             return false;
         global->u.varOrConst.literalValue_ = DoubleValue(constant);
         global->u.varOrConst.type_ = VarType::Double;
         return globals_.putNew(varName, global);
+    }
+  public:
+    bool addMathBuiltinConstant(PropertyName *varName, double constant, PropertyName *fieldName) {
+        if (!module_->addMathBuiltinConstant(constant, fieldName))
+            return false;
+        return addGlobalDoubleConstant(varName, constant);
+    }
+    bool addGlobalConstant(PropertyName *varName, double constant, PropertyName *fieldName) {
+        if (!module_->addGlobalConstant(constant, fieldName))
+            return false;
+        return addGlobalDoubleConstant(varName, constant);
     }
     bool addExportedFunction(const Func *func, PropertyName *maybeFieldName) {
         AsmJSModule::ArgCoercionVector argCoercions;
@@ -1774,8 +1820,8 @@ IsFloatCoercion(ModuleCompiler &m, ParseNode *pn, ParseNode **coercedExpr)
 
     const ModuleCompiler::Global *global = m.lookupGlobal(callee->name());
     if (!global ||
-        global->which() != ModuleCompiler::Global::MathBuiltin ||
-        global->mathBuiltin() != AsmJSMathBuiltin_fround)
+        global->which() != ModuleCompiler::Global::MathBuiltinFunction ||
+        global->mathBuiltinFunction() != AsmJSMathBuiltin_fround)
     {
         return false;
     }
@@ -3104,11 +3150,19 @@ CheckGlobalDotImport(ModuleCompiler &m, PropertyName *varName, ParseNode *initNo
         if (!IsUseOfName(global, m.module().globalArgumentName()) || math != m.cx()->names().Math)
             return m.fail(base, "expecting global.Math");
 
-        AsmJSMathBuiltin mathBuiltin;
+        ModuleCompiler::MathBuiltin mathBuiltin;
         if (!m.lookupStandardLibraryMathName(field, &mathBuiltin))
             return m.failName(initNode, "'%s' is not a standard Math builtin", field);
 
-        return m.addMathBuiltin(varName, mathBuiltin, field);
+        switch (mathBuiltin.kind) {
+          case ModuleCompiler::MathBuiltin::Function:
+            return m.addMathBuiltinFunction(varName, mathBuiltin.u.func, field);
+          case ModuleCompiler::MathBuiltin::Constant:
+            return m.addMathBuiltinConstant(varName, mathBuiltin.u.cst, field);
+          default:
+            break;
+        }
+        MOZ_ASSUME_UNREACHABLE("unexpected or uninitialized math builtin type");
     }
 
     if (IsUseOfName(base, m.module().globalArgumentName())) {
@@ -3366,7 +3420,7 @@ CheckVarRef(FunctionCompiler &f, ParseNode *varRef, MDefinition **def, Type *typ
             break;
           case ModuleCompiler::Global::Function:
           case ModuleCompiler::Global::FFI:
-          case ModuleCompiler::Global::MathBuiltin:
+          case ModuleCompiler::Global::MathBuiltinFunction:
           case ModuleCompiler::Global::FuncPtrTable:
           case ModuleCompiler::Global::ArrayView:
             return f.failName(varRef, "'%s' may not be accessed by ordinary expressions", name);
@@ -4021,12 +4075,12 @@ CheckIsMaybeFloat(FunctionCompiler &f, ParseNode *argNode, Type type)
 }
 
 static bool
-CheckMathBuiltinCall(FunctionCompiler &f, ParseNode *callNode, AsmJSMathBuiltin mathBuiltin,
+CheckMathBuiltinCall(FunctionCompiler &f, ParseNode *callNode, AsmJSMathBuiltinFunction func,
                      RetType retType, MDefinition **def, Type *type)
 {
     unsigned arity = 0;
     AsmJSImmKind doubleCallee, floatCallee;
-    switch (mathBuiltin) {
+    switch (func) {
       case AsmJSMathBuiltin_imul:   return CheckMathIMul(f, callNode, retType, def, type);
       case AsmJSMathBuiltin_abs:    return CheckMathAbs(f, callNode, retType, def, type);
       case AsmJSMathBuiltin_sqrt:   return CheckMathSqrt(f, callNode, retType, def, type);
@@ -4043,7 +4097,7 @@ CheckMathBuiltinCall(FunctionCompiler &f, ParseNode *callNode, AsmJSMathBuiltin 
       case AsmJSMathBuiltin_log:    arity = 1; doubleCallee = AsmJSImm_LogD; floatCallee = AsmJSImm_LogF;      break;
       case AsmJSMathBuiltin_pow:    arity = 2; doubleCallee = AsmJSImm_PowD; floatCallee = AsmJSImm_Invalid;   break;
       case AsmJSMathBuiltin_atan2:  arity = 2; doubleCallee = AsmJSImm_ATan2D; floatCallee = AsmJSImm_Invalid; break;
-      default: MOZ_ASSUME_UNREACHABLE("unexpected mathBuiltin");
+      default: MOZ_ASSUME_UNREACHABLE("unexpected mathBuiltin function");
     }
 
     if (retType == RetType::Float && floatCallee == AsmJSImm_Invalid)
@@ -4088,8 +4142,8 @@ CheckCall(FunctionCompiler &f, ParseNode *call, RetType retType, MDefinition **d
         switch (global->which()) {
           case ModuleCompiler::Global::FFI:
             return CheckFFICall(f, call, global->ffiIndex(), retType, def, type);
-          case ModuleCompiler::Global::MathBuiltin:
-            return CheckMathBuiltinCall(f, call, global->mathBuiltin(), retType, def, type);
+          case ModuleCompiler::Global::MathBuiltinFunction:
+            return CheckMathBuiltinCall(f, call, global->mathBuiltinFunction(), retType, def, type);
           case ModuleCompiler::Global::ConstantLiteral:
           case ModuleCompiler::Global::ConstantImport:
           case ModuleCompiler::Global::Variable:
@@ -5364,20 +5418,20 @@ CheckFunctionsSequential(ModuleCompiler &m)
 // on rt->workerThreadState->asmJSCompilationInProgress.
 class ParallelCompilationGuard
 {
-    WorkerThreadState *parallelState_;
+    bool parallelState_;
   public:
-    ParallelCompilationGuard() : parallelState_(nullptr) {}
+    ParallelCompilationGuard() : parallelState_(false) {}
     ~ParallelCompilationGuard() {
         if (parallelState_) {
-            JS_ASSERT(parallelState_->asmJSCompilationInProgress == true);
-            parallelState_->asmJSCompilationInProgress = false;
+            JS_ASSERT(WorkerThreadState().asmJSCompilationInProgress == true);
+            WorkerThreadState().asmJSCompilationInProgress = false;
         }
     }
-    bool claim(WorkerThreadState *state) {
+    bool claim() {
         JS_ASSERT(!parallelState_);
-        if (!state->asmJSCompilationInProgress.compareExchange(false, true))
+        if (!WorkerThreadState().asmJSCompilationInProgress.compareExchange(false, true))
             return false;
-        parallelState_ = state;
+        parallelState_ = true;
         return true;
     }
 };
@@ -5391,22 +5445,23 @@ ParallelCompilationEnabled(ExclusiveContext *cx)
     // parsing task, ensure that there another free thread to avoid deadlock.
     // (Note: there is at most one thread used for parsing so we don't have to
     // worry about general dining philosophers.)
-    if (!cx->isJSContext())
-        return cx->workerThreadState()->numThreads > 1;
+    if (WorkerThreadState().threadCount <= 1)
+        return false;
 
+    if (!cx->isJSContext())
+        return true;
     return cx->asJSContext()->runtime()->canUseParallelIonCompilation();
 }
 
 // State of compilation as tracked and updated by the main thread.
 struct ParallelGroupState
 {
-    WorkerThreadState &state;
     js::Vector<AsmJSParallelTask> &tasks;
     int32_t outstandingJobs; // Good work, jobs!
     uint32_t compiledJobs;
 
-    ParallelGroupState(WorkerThreadState &state, js::Vector<AsmJSParallelTask> &tasks)
-      : state(state), tasks(tasks), outstandingJobs(0), compiledJobs(0)
+    ParallelGroupState(js::Vector<AsmJSParallelTask> &tasks)
+      : tasks(tasks), outstandingJobs(0), compiledJobs(0)
     { }
 };
 
@@ -5414,14 +5469,14 @@ struct ParallelGroupState
 static AsmJSParallelTask *
 GetFinishedCompilation(ModuleCompiler &m, ParallelGroupState &group)
 {
-    AutoLockWorkerThreadState lock(*m.cx()->workerThreadState());
+    AutoLockWorkerThreadState lock;
 
-    while (!group.state.asmJSWorkerFailed()) {
-        if (!group.state.asmJSFinishedList.empty()) {
+    while (!WorkerThreadState().asmJSWorkerFailed()) {
+        if (!WorkerThreadState().asmJSFinishedList().empty()) {
             group.outstandingJobs--;
-            return group.state.asmJSFinishedList.popCopy();
+            return WorkerThreadState().asmJSFinishedList().popCopy();
         }
-        group.state.wait(WorkerThreadState::CONSUMER);
+        WorkerThreadState().wait(GlobalWorkerThreadState::CONSUMER);
     }
 
     return nullptr;
@@ -5471,9 +5526,14 @@ GetUnusedTask(ParallelGroupState &group, uint32_t i, AsmJSParallelTask **outTask
 static bool
 CheckFunctionsParallelImpl(ModuleCompiler &m, ParallelGroupState &group)
 {
-    JS_ASSERT(group.state.asmJSWorklist.empty());
-    JS_ASSERT(group.state.asmJSFinishedList.empty());
-    group.state.resetAsmJSFailureState();
+#ifdef DEBUG
+    {
+        AutoLockWorkerThreadState lock;
+        JS_ASSERT(WorkerThreadState().asmJSWorklist().empty());
+        JS_ASSERT(WorkerThreadState().asmJSFinishedList().empty());
+    }
+#endif
+    WorkerThreadState().resetAsmJSFailureState();
 
     for (unsigned i = 0; PeekToken(m.parser()) == TOK_FUNCTION; i++) {
         // Get exclusive access to an empty LifoAlloc from the thread group's pool.
@@ -5488,7 +5548,7 @@ CheckFunctionsParallelImpl(ModuleCompiler &m, ParallelGroupState &group)
             return false;
 
         // Perform optimizations and LIR generation on a worker thread.
-        task->init(func, mir);
+        task->init(m.cx()->compartment()->runtimeFromAnyThread(), func, mir);
         if (!StartOffThreadAsmJSCompile(m.cx(), task))
             return false;
 
@@ -5507,9 +5567,14 @@ CheckFunctionsParallelImpl(ModuleCompiler &m, ParallelGroupState &group)
 
     JS_ASSERT(group.outstandingJobs == 0);
     JS_ASSERT(group.compiledJobs == m.numFunctions());
-    JS_ASSERT(group.state.asmJSWorklist.empty());
-    JS_ASSERT(group.state.asmJSFinishedList.empty());
-    JS_ASSERT(!group.state.asmJSWorkerFailed());
+#ifdef DEBUG
+    {
+        AutoLockWorkerThreadState lock;
+        JS_ASSERT(WorkerThreadState().asmJSWorklist().empty());
+        JS_ASSERT(WorkerThreadState().asmJSFinishedList().empty());
+    }
+#endif
+    JS_ASSERT(!WorkerThreadState().asmJSWorkerFailed());
     return true;
 }
 
@@ -5526,32 +5591,32 @@ CancelOutstandingJobs(ModuleCompiler &m, ParallelGroupState &group)
     if (!group.outstandingJobs)
         return;
 
-    AutoLockWorkerThreadState lock(*m.cx()->workerThreadState());
+    AutoLockWorkerThreadState lock;
 
     // From the compiling tasks, eliminate those waiting for worker assignation.
-    group.outstandingJobs -= group.state.asmJSWorklist.length();
-    group.state.asmJSWorklist.clear();
+    group.outstandingJobs -= WorkerThreadState().asmJSWorklist().length();
+    WorkerThreadState().asmJSWorklist().clear();
 
     // From the compiling tasks, eliminate those waiting for codegen.
-    group.outstandingJobs -= group.state.asmJSFinishedList.length();
-    group.state.asmJSFinishedList.clear();
+    group.outstandingJobs -= WorkerThreadState().asmJSFinishedList().length();
+    WorkerThreadState().asmJSFinishedList().clear();
 
     // Eliminate tasks that failed without adding to the finished list.
-    group.outstandingJobs -= group.state.harvestFailedAsmJSJobs();
+    group.outstandingJobs -= WorkerThreadState().harvestFailedAsmJSJobs();
 
     // Any remaining tasks are therefore undergoing active compilation.
     JS_ASSERT(group.outstandingJobs >= 0);
     while (group.outstandingJobs > 0) {
-        group.state.wait(WorkerThreadState::CONSUMER);
+        WorkerThreadState().wait(GlobalWorkerThreadState::CONSUMER);
 
-        group.outstandingJobs -= group.state.harvestFailedAsmJSJobs();
-        group.outstandingJobs -= group.state.asmJSFinishedList.length();
-        group.state.asmJSFinishedList.clear();
+        group.outstandingJobs -= WorkerThreadState().harvestFailedAsmJSJobs();
+        group.outstandingJobs -= WorkerThreadState().asmJSFinishedList().length();
+        WorkerThreadState().asmJSFinishedList().clear();
     }
 
     JS_ASSERT(group.outstandingJobs == 0);
-    JS_ASSERT(group.state.asmJSWorklist.empty());
-    JS_ASSERT(group.state.asmJSFinishedList.empty());
+    JS_ASSERT(WorkerThreadState().asmJSWorklist().empty());
+    JS_ASSERT(WorkerThreadState().asmJSFinishedList().empty());
 }
 
 static const size_t LIFO_ALLOC_PARALLEL_CHUNK_SIZE = 1 << 12;
@@ -5565,12 +5630,11 @@ CheckFunctionsParallel(ModuleCompiler &m)
     // constraint by hoisting asmJS* state out of WorkerThreadState so multiple
     // concurrent asm.js parallel compilations don't race.)
     ParallelCompilationGuard g;
-    if (!ParallelCompilationEnabled(m.cx()) || !g.claim(m.cx()->workerThreadState()))
+    if (!ParallelCompilationEnabled(m.cx()) || !g.claim())
         return CheckFunctionsSequential(m);
 
     // Saturate all worker threads plus the main thread.
-    WorkerThreadState &state = *m.cx()->workerThreadState();
-    size_t numParallelJobs = state.numThreads + 1;
+    size_t numParallelJobs = WorkerThreadState().threadCount + 1;
 
     // Allocate scoped AsmJSParallelTask objects. Each contains a unique
     // LifoAlloc that provides all necessary memory for compilation.
@@ -5582,12 +5646,12 @@ CheckFunctionsParallel(ModuleCompiler &m)
         tasks.infallibleAppend(LIFO_ALLOC_PARALLEL_CHUNK_SIZE);
 
     // With compilation memory in-scope, dispatch worker threads.
-    ParallelGroupState group(state, tasks);
+    ParallelGroupState group(tasks);
     if (!CheckFunctionsParallelImpl(m, group)) {
         CancelOutstandingJobs(m, group);
 
         // If failure was triggered by a worker thread, report error.
-        if (void *maybeFunc = state.maybeAsmJSFailedFunction()) {
+        if (void *maybeFunc = WorkerThreadState().maybeAsmJSFailedFunction()) {
             ModuleCompiler::Func *func = reinterpret_cast<ModuleCompiler::Func *>(maybeFunc);
             return m.failOffset(func->srcOffset(), "allocation failure during compilation");
         }

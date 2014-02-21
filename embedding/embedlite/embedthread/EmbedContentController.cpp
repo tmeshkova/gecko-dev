@@ -41,14 +41,14 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
     NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
 }
 
-void EmbedContentController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+void EmbedContentController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
       FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers));
+      NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers, aGuid));
     return;
   }
   if (!GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -56,14 +56,14 @@ void EmbedContentController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t 
   }
 }
 
-void EmbedContentController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+void EmbedContentController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
       FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers));
+      NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers, aGuid));
     return;
   }
   if (!GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -71,14 +71,14 @@ void EmbedContentController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t 
   }
 }
 
-void EmbedContentController::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+void EmbedContentController::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
       FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers));
+      NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid));
     return;
   }
   if (!GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -86,7 +86,7 @@ void EmbedContentController::HandleLongTap(const CSSIntPoint& aPoint, int32_t aM
   }
 }
 
-void EmbedContentController::HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers)
+void EmbedContentController::HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
 }
 
@@ -130,6 +130,21 @@ void EmbedContentController::ScrollUpdate(const CSSPoint& aPosition, const float
     return;
   }
   GetListener()->ScrollUpdate(gfxPoint(aPosition.x, aPosition.y), aResolution);
+}
+
+void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
+{
+ if (MessageLoop::current() != mUILoop) {
+    // We have to send this message from the "UI thread" (main
+    // thread).
+    mUILoop->PostTask(
+      FROM_HERE,
+      NewRunnableMethod(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
+    return;
+  }
+  if (!GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
+    unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+  }
 }
 
 void EmbedContentController::ClearRenderFrame()

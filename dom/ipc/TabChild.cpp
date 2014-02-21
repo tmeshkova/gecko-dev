@@ -610,7 +610,7 @@ TabChild::HandlePossibleViewportChange()
     // The page must have been refreshed in some way such as a new document or
     // new CSS viewport, so we know that there's no velocity, acceleration, and
     // we have no idea how long painting will take.
-    metrics, ScreenPoint(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
+    metrics, ScreenPoint(0.0f, 0.0f), 0.0);
   metrics.mCumulativeResolution = metrics.mZoom / metrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
@@ -1518,6 +1518,14 @@ TabChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 }
 
 bool
+TabChild::RecvAcknowledgeScrollUpdate(const ViewID& aScrollId,
+                                      const uint32_t& aScrollGeneration)
+{
+  APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+  return true;
+}
+
+bool
 TabChild::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
   {
     if (!mGlobal || !mTabChildGlobal) {
@@ -1584,7 +1592,7 @@ TabChild::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
 }
 
 bool
-TabChild::RecvHandleDoubleTap(const CSSIntPoint& aPoint)
+TabChild::RecvHandleDoubleTap(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
     if (!mGlobal || !mTabChildGlobal) {
         return true;
@@ -1601,7 +1609,7 @@ TabChild::RecvHandleDoubleTap(const CSSIntPoint& aPoint)
 }
 
 bool
-TabChild::RecvHandleSingleTap(const CSSIntPoint& aPoint)
+TabChild::RecvHandleSingleTap(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
   if (!mGlobal || !mTabChildGlobal) {
     return true;
@@ -1618,7 +1626,7 @@ TabChild::RecvHandleSingleTap(const CSSIntPoint& aPoint)
 }
 
 bool
-TabChild::RecvHandleLongTap(const CSSIntPoint& aPoint)
+TabChild::RecvHandleLongTap(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
   if (!mGlobal || !mTabChildGlobal) {
     return true;
@@ -1628,18 +1636,20 @@ TabChild::RecvHandleLongTap(const CSSIntPoint& aPoint)
       DispatchMouseEvent(NS_LITERAL_STRING("contextmenu"), aPoint, 2, 1, 0, false,
                          nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
 
+  SendContentReceivedTouch(aGuid, mContextMenuHandled);
+
   return true;
 }
 
 bool
-TabChild::RecvHandleLongTapUp(const CSSIntPoint& aPoint)
+TabChild::RecvHandleLongTapUp(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
   if (mContextMenuHandled) {
     mContextMenuHandled = false;
     return true;
   }
 
-  RecvHandleSingleTap(aPoint);
+  RecvHandleSingleTap(aPoint, aGuid);
   return true;
 }
 

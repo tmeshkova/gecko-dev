@@ -240,7 +240,6 @@ public:
   static const CSSRect CalculatePendingDisplayPort(
     const FrameMetrics& aFrameMetrics,
     const ScreenPoint& aVelocity,
-    const gfx::Point& aAcceleration,
     double aEstimatedPaintDuration);
 
   /**
@@ -439,11 +438,6 @@ protected:
   const ScreenPoint GetVelocityVector();
 
   /**
-   * Gets a vector of the acceleration factors of each axis.
-   */
-  const gfx::Point GetAccelerationVector();
-
-  /**
    * Gets a reference to the first touch point from a MultiTouchInput.  This
    * gets only the first one and assumes the rest are either missing or not
    * relevant.
@@ -511,6 +505,15 @@ protected:
    * layers code.
    */
   const FrameMetrics& GetFrameMetrics();
+
+  /**
+   * Sets the timer for content response to a series of touch events, if it
+   * hasn't been already. This is to prevent us from batching up touch events
+   * indefinitely in the case that content doesn't respond with whether or not
+   * it wants to preventDefault. When the timer is fired, the touch event queue
+   * will be flushed.
+   */
+  void SetContentResponseTimer();
 
   /**
    * Timeout function for content response. This should be called on a timer

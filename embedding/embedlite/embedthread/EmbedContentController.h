@@ -32,14 +32,15 @@ public:
 
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
-  virtual void HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers) MOZ_OVERRIDE;
-  virtual void HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers) MOZ_OVERRIDE;
-  virtual void HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers) MOZ_OVERRIDE;
-  virtual void HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers) MOZ_OVERRIDE;
+  virtual void HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
   virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
                                        const CSSRect& aContentRect,
                                        const CSSSize& aScrollableSize) MOZ_OVERRIDE;
   virtual void ScrollUpdate(const CSSPoint& aPosition, const float aResolution) MOZ_OVERRIDE;
+  virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) MOZ_OVERRIDE;
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) MOZ_OVERRIDE;
   virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) MOZ_OVERRIDE;

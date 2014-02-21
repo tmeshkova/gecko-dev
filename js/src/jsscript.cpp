@@ -433,8 +433,9 @@ SaveSharedScriptData(ExclusiveContext *, Handle<JSScript *>, SharedScriptData *,
 
 enum XDRClassKind {
     CK_BlockObject = 0,
-    CK_JSFunction  = 1,
-    CK_JSObject    = 2
+    CK_WithObject  = 1,
+    CK_JSFunction  = 2,
+    CK_JSObject    = 3
 };
 
 template<XDRMode mode>
@@ -766,6 +767,8 @@ js::XDRScript(XDRState<mode> *xdr, HandleObject enclosingScope, HandleScript enc
             JSObject *obj = *objp;
             if (obj->is<BlockObject>())
                 classk = CK_BlockObject;
+            else if (obj->is<StaticWithObject>())
+                classk = CK_WithObject;
             else if (obj->is<JSFunction>())
                 classk = CK_JSFunction;
             else if (obj->is<JSObject>() || obj->is<ArrayObject>())
@@ -778,32 +781,40 @@ js::XDRScript(XDRState<mode> *xdr, HandleObject enclosingScope, HandleScript enc
             return false;
 
         switch (classk) {
-          case CK_BlockObject: {
+          case CK_BlockObject:
+          case CK_WithObject: {
             /* Code the nested block's enclosing scope. */
-            uint32_t blockEnclosingScopeIndex = 0;
+            uint32_t enclosingStaticScopeIndex = 0;
             if (mode == XDR_ENCODE) {
                 NestedScopeObject &scope = (*objp)->as<NestedScopeObject>();
                 if (NestedScopeObject *enclosing = scope.enclosingNestedScope())
-                    blockEnclosingScopeIndex = FindScopeObjectIndex(script, *enclosing);
+                    enclosingStaticScopeIndex = FindScopeObjectIndex(script, *enclosing);
                 else
-                    blockEnclosingScopeIndex = UINT32_MAX;
+                    enclosingStaticScopeIndex = UINT32_MAX;
             }
-            if (!xdr->codeUint32(&blockEnclosingScopeIndex))
+            if (!xdr->codeUint32(&enclosingStaticScopeIndex))
                 return false;
-            Rooted<JSObject*> blockEnclosingScope(cx);
+            Rooted<JSObject*> enclosingStaticScope(cx);
             if (mode == XDR_DECODE) {
-                if (blockEnclosingScopeIndex != UINT32_MAX) {
-                    JS_ASSERT(blockEnclosingScopeIndex < i);
-                    blockEnclosingScope = script->objects()->vector[blockEnclosingScopeIndex];
+                if (enclosingStaticScopeIndex != UINT32_MAX) {
+                    JS_ASSERT(enclosingStaticScopeIndex < i);
+                    enclosingStaticScope = script->objects()->vector[enclosingStaticScopeIndex];
                 } else {
-                    blockEnclosingScope = fun;
+                    enclosingStaticScope = fun;
                 }
             }
 
-            Rooted<StaticBlockObject*> tmp(cx, static_cast<StaticBlockObject *>(objp->get()));
-            if (!XDRStaticBlockObject(xdr, blockEnclosingScope, tmp.address()))
-                return false;
-            *objp = tmp;
+            if (classk == CK_BlockObject) {
+                Rooted<StaticBlockObject*> tmp(cx, static_cast<StaticBlockObject *>(objp->get()));
+                if (!XDRStaticBlockObject(xdr, enclosingStaticScope, tmp.address()))
+                    return false;
+                *objp = tmp;
+            } else {
+                Rooted<StaticWithObject*> tmp(cx, static_cast<StaticWithObject *>(objp->get()));
+                if (!XDRStaticWithObject(xdr, enclosingStaticScope, tmp.address()))
+                    return false;
+                *objp = tmp;
+            }
             break;
           }
 
@@ -1302,11 +1313,15 @@ ScriptSource::setSourceCopy(ExclusiveContext *cx, const jschar *src, uint32_t le
     //    thread (see WorkerThreadState::canStartParseTask) which would cause a
     //    deadlock if there wasn't a second worker thread that could make
     //    progress on our compression task.
+#ifdef JS_THREADSAFE
+    bool canCompressOffThread =
+        WorkerThreadState().cpuCount > 1 &&
+        WorkerThreadState().threadCount >= 2;
+#else
+    bool canCompressOffThread = false;
+#endif
     const size_t HUGE_SCRIPT = 5 * 1024 * 1024;
-    if (length < HUGE_SCRIPT &&
-        cx->cpuCount() > 1 &&
-        cx->workerThreadCount() >= 2)
-    {
+    if (length < HUGE_SCRIPT && canCompressOffThread) {
         task->ss = this;
         task->chars = src;
         ready_ = false;

@@ -233,22 +233,41 @@ APZController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
 }
 
 void
-APZController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+APZController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
+                                       const uint32_t& aScrollGeneration)
+{
+#ifdef DEBUG_CONTROLLER
+  WinUtils::Log("APZController::AcknowledgeScrollUpdate scrollid=%I64d gen=%lu",
+    aScrollId, aScrollGeneration);
+#endif
+  APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+}
+
+void
+APZController::HandleDoubleTap(const CSSIntPoint& aPoint,
+                               int32_t aModifiers,
+                               const ScrollableLayerGuid& aGuid)
 {
 }
 
 void
-APZController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+APZController::HandleSingleTap(const CSSIntPoint& aPoint,
+                               int32_t aModifiers,
+                               const ScrollableLayerGuid& aGuid)
 {
 }
 
 void
-APZController::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+APZController::HandleLongTap(const CSSIntPoint& aPoint,
+                             int32_t aModifiers,
+                             const ScrollableLayerGuid& aGuid)
 {
 }
 
 void
-APZController::HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers)
+APZController::HandleLongTapUp(const CSSIntPoint& aPoint,
+                               int32_t aModifiers,
+                               const ScrollableLayerGuid& aGuid)
 {
 }
 
