@@ -69,10 +69,27 @@ public class PanelsPreferenceCategory extends CustomListCategory {
         mLoadTask.execute();
     }
 
+    /**
+     * Reload the Home Panels list from HomeConfig.
+     */
+    public void refresh() {
+        // Clear all the existing home panels, but leave the
+        // first item (Add panels).
+        int prefCount = getPreferenceCount();
+        while (prefCount > 1) {
+            removePreference(getPreference(1));
+            prefCount--;
+        }
+
+        loadHomeConfig();
+    }
+
     private void displayHomeConfig(HomeConfig.State configState) {
         for (PanelConfig panelConfig : configState) {
+            final boolean isRemovable = panelConfig.isDynamic();
+
             // Create and add the pref.
-            final PanelsPreference pref = new PanelsPreference(getContext(), PanelsPreferenceCategory.this);
+            final PanelsPreference pref = new PanelsPreference(getContext(), PanelsPreferenceCategory.this, isRemovable);
             pref.setTitle(panelConfig.getTitle());
             pref.setKey(panelConfig.getId());
             // XXX: Pull icon from PanelInfo.

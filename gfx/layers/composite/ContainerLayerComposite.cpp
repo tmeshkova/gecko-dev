@@ -311,6 +311,14 @@ ContainerRender(ContainerT* aContainer,
       continue;
     }
 
+    nsIntRect clipRect = layerToRender->GetLayer()->
+        CalculateScissorRect(aClipRect, &aManager->GetWorldTransform());
+    if (clipRect.IsEmpty()) {
+      continue;
+    }
+
+    nsIntRegion savedVisibleRegion;
+    bool restoreVisibleRegion = false;
     if (i + 1 < children.Length() &&
         layerToRender->GetLayer()->GetEffectiveTransform().IsIdentity()) {
       LayerComposite* nextLayer = static_cast<LayerComposite*>(children.ElementAt(i + 1)->ImplData());
@@ -319,19 +327,15 @@ ContainerRender(ContainerT* aContainer,
         nextLayerOpaqueRect = GetOpaqueRect(nextLayer->GetLayer());
       }
       if (!nextLayerOpaqueRect.IsEmpty()) {
+        savedVisibleRegion = layerToRender->GetShadowVisibleRegion();
         nsIntRegion visibleRegion;
-        visibleRegion.Sub(layerToRender->GetShadowVisibleRegion(), nextLayerOpaqueRect);
-        layerToRender->SetShadowVisibleRegion(visibleRegion);
+        visibleRegion.Sub(savedVisibleRegion, nextLayerOpaqueRect);
         if (visibleRegion.IsEmpty()) {
           continue;
         }
+        layerToRender->SetShadowVisibleRegion(visibleRegion);
+        restoreVisibleRegion = true;
       }
-    }
-
-    nsIntRect clipRect = layerToRender->GetLayer()->
-        CalculateScissorRect(aClipRect, &aManager->GetWorldTransform());
-    if (clipRect.IsEmpty()) {
-      continue;
     }
 
     if (layerToRender->HasLayerBeenComposited()) {
@@ -347,6 +351,11 @@ ContainerRender(ContainerT* aContainer,
       }
     } else {
       layerToRender->RenderLayer(clipRect);
+    }
+
+    if (restoreVisibleRegion) {
+      // Restore the region in case it's not covered by opaque content next time
+      layerToRender->SetShadowVisibleRegion(savedVisibleRegion);
     }
 
     if (gfxPrefs::LayersScrollGraph()) {
@@ -381,7 +390,7 @@ ContainerRender(ContainerT* aContainer,
 
   if (aContainer->GetFrameMetrics().IsScrollable()) {
     const FrameMetrics& frame = aContainer->GetFrameMetrics();
-    LayerRect layerBounds = ScreenRect(frame.mCompositionBounds) * ScreenToLayerScale(1.0);
+    LayerRect layerBounds = ParentLayerRect(frame.mCompositionBounds) * ParentLayerToLayerScale(1.0);
     gfx::Rect rect(layerBounds.x, layerBounds.y, layerBounds.width, layerBounds.height);
     gfx::Rect clipRect(aClipRect.x, aClipRect.y, aClipRect.width, aClipRect.height);
     aManager->GetCompositor()->DrawDiagnostics(DIAGNOSTIC_CONTAINER,

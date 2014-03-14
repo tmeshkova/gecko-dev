@@ -34,7 +34,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
 
 XPCOMUtils.defineLazyGetter(this, 'log', function() {
   let log = Log.repository.getLogger("Sync.BrowserIDManager");
-  log.addAppender(new Log.DumpAppender());
   log.level = Log.Level[Svc.Prefs.get("log.logger.identity")] || Log.Level.Error;
   return log;
 });
@@ -516,6 +515,7 @@ this.BrowserIDManager.prototype = {
         this._shouldHaveSyncKeyBundle = true;
         this._syncKeyBundle = null;
         Weave.Status.login = this._authFailureReason;
+        Services.obs.notifyObservers(null, "weave:service:login:error", null);
         throw err;
       });
   },
