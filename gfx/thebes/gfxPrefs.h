@@ -154,6 +154,7 @@ private:
   DECL_GFX_PREF(Live, "layers.draw-bigimage-borders",          DrawBigImageBorders, bool, false);
   DECL_GFX_PREF(Live, "layers.draw-borders",                   DrawLayerBorders, bool, false);
   DECL_GFX_PREF(Live, "layers.draw-tile-borders",              DrawTileBorders, bool, false);
+  DECL_GFX_PREF(Live, "layers.draw-layer-info",                DrawLayerInfo, bool, false);
   DECL_GFX_PREF(Once, "layers.dump",                           LayersDump, bool, false);
   DECL_GFX_PREF(Once, "layers.enable-tiles",                   LayersTilesEnabled, bool, false);
   DECL_GFX_PREF(Once, "layers.simple-tiles",                   LayersUseSimpleTiles, bool, false);
@@ -177,8 +178,9 @@ private:
 
   DECL_GFX_PREF(Live, "nglayout.debug.widget_update_flashing", WidgetUpdateFlashing, bool, false);
 
-  DECL_GFX_PREF(Once, "webgl.force-layers-readback",           WebGLForceLayersReadback, bool, false);
   DECL_GFX_PREF(Live, "ui.click_hold_context_menus.delay",     UiClickHoldContextMenusDelay, int32_t, 500);
+
+  DECL_GFX_PREF(Once, "webgl.force-layers-readback",           WebGLForceLayersReadback, bool, false);
 
 public:
   // Manage the singleton:

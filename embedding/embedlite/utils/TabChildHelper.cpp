@@ -277,9 +277,10 @@ TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   if (aFrameMetrics.mIsRoot) {
     nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-
     if (APZCCallbackHelper::HasValidPresShellId(utils, aFrameMetrics)) {
-      return ProcessUpdateFrame(aFrameMetrics);
+      mLastRootMetrics = ProcessUpdateFrame(aFrameMetrics);
+      APZCCallbackHelper::UpdateCallbackTransform(aFrameMetrics, mLastRootMetrics);
+      return true;
     }
   } else {
     // aFrameMetrics.mIsRoot is false, so we are trying to update a subframe.
@@ -289,6 +290,7 @@ TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     if (content) {
       FrameMetrics newSubFrameMetrics(aFrameMetrics);
       APZCCallbackHelper::UpdateSubFrame(content, newSubFrameMetrics);
+      APZCCallbackHelper::UpdateCallbackTransform(aFrameMetrics, newSubFrameMetrics);
       return true;
     }
   }
@@ -296,7 +298,8 @@ TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   // We've recieved a message that is out of date and we want to ignore.
   // However we can't reply without painting so we reply by painting the
   // exact same thing as we did before.
-  return ProcessUpdateFrame(mLastRootMetrics);
+  mLastRootMetrics = ProcessUpdateFrame(mLastRootMetrics);
+  return true;
 }
 
 nsIWebNavigation*

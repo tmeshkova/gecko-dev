@@ -40,7 +40,7 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
     NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
 }
 
-void EmbedContentController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -55,7 +55,7 @@ void EmbedContentController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t 
   }
 }
 
-void EmbedContentController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -70,7 +70,7 @@ void EmbedContentController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t 
   }
 }
 
-void EmbedContentController::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -85,7 +85,7 @@ void EmbedContentController::HandleLongTap(const CSSIntPoint& aPoint, int32_t aM
   }
 }
 
-void EmbedContentController::HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
 {
 }
 

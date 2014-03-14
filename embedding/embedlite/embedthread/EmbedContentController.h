@@ -32,10 +32,10 @@ public:
 
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
-  virtual void HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
-  virtual void HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
-  virtual void HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
-  virtual void HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleDoubleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleSingleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleLongTapUp(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
   virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
                                        const CSSRect& aContentRect,
                                        const CSSSize& aScrollableSize) MOZ_OVERRIDE;
