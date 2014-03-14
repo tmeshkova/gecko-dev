@@ -746,8 +746,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
     }
   } else if (sharedSurf->Type() == SharedSurfaceType::GLTextureShare) {
     SharedSurface_GLTexture* glTexSurf = SharedSurface_GLTexture::Cast(sharedSurf);
-    glTexSurf->SetConsumerGL(consumerContext);
-    textureHandle = glTexSurf->Texture();
+    textureHandle = glTexSurf->ConsTexture(consumerContext);
     NS_ASSERTION(textureHandle, "Failed to get texture handle, fallback to pixels?");
   } else if (sharedSurf->Type() == SharedSurfaceType::Basic) {
     toUpload = SharedSurface_Basic::Cast(sharedSurf)->GetData();
