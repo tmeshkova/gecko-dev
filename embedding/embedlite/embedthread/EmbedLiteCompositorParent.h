@@ -32,6 +32,7 @@ public:
   mozilla::layers::CompositorParent* Compositor() { return this; }
 
 protected:
+  virtual ~EmbedLiteCompositorParent();
   virtual PLayerTransactionParent*
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                const uint64_t& aId,

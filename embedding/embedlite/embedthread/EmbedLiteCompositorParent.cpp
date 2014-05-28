@@ -49,6 +49,11 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   pview->SetCompositor(this);
 }
 
+
+EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
+{
+}
+
 bool
 EmbedLiteCompositorParent::RecvStop()
 {
