@@ -277,9 +277,9 @@ pref("dom.event.touch.coalescing.enabled", false);
 
 // On memory pressure, release dirty but unused pages held by jemalloc
 // back to the system.
-pref("memory.free_dirty_pages", false);
+pref("memory.free_dirty_pages", true);
 
-pref("layout.imagevisibility.enabled", false);
+pref("layout.imagevisibility.enabled", true);
 
 // Enable Web Audio for Firefox for Android in Nightly and Aurora
 pref("media.webaudio.enabled", true);
