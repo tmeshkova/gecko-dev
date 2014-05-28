@@ -12,10 +12,8 @@ mk_add_options MOZ_MAKE_FLAGS="-j4"
 mk_add_options MOZ_OBJDIR="obj-xr-qt"
 ac_add_options --disable-libjpeg-turbo
 
-ac_add_options --disable-jemalloc
 ac_add_options --with-system-zlib
 ac_add_options --enable-dump-painting
-ac_add_options --enable-trace-malloc
 ac_add_options --enable-signmar
 ac_add_options --enable-gstreamer
 ac_add_options --enable-skia
