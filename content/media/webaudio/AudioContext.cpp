@@ -35,6 +35,7 @@
 #include "OscillatorNode.h"
 #include "nsNetUtil.h"
 #include "AudioStream.h"
+#include "js/RootingAPI.h"
 
 namespace mozilla {
 namespace dom {
@@ -202,18 +203,20 @@ AudioContext::CreateBuffer(JSContext* aJSContext, const ArrayBuffer& aBuffer,
     return nullptr;
   }
 
+  aBuffer.ComputeLengthAndData();
+
+  uint32_t len = aBuffer.Length();
+  uint8_t* data = aBuffer.Data();
+
   // Sniff the content of the media.
   // Failed type sniffing will be handled by SyncDecodeMedia.
   nsAutoCString contentType;
-  NS_SniffContent(NS_DATA_SNIFFER_CATEGORY, nullptr,
-                  aBuffer.Data(), aBuffer.Length(),
-                  contentType);
+  NS_SniffContent(NS_DATA_SNIFFER_CATEGORY, nullptr, data, len, contentType);
 
   nsRefPtr<WebAudioDecodeJob> job =
-    new WebAudioDecodeJob(contentType, this, aBuffer);
+    new WebAudioDecodeJob(contentType, this);
 
-  if (mDecoder.SyncDecodeMedia(contentType.get(),
-                               aBuffer.Data(), aBuffer.Length(), *job) &&
+  if (mDecoder.SyncDecodeMedia(contentType.get(), data, len, *job) &&
       job->mOutput) {
     nsRefPtr<AudioBuffer> buffer = job->mOutput.forget();
     if (aMixToMono) {
@@ -412,6 +415,9 @@ AudioContext::CreatePeriodicWave(const Float32Array& aRealData,
                                  const Float32Array& aImagData,
                                  ErrorResult& aRv)
 {
+  aRealData.ComputeLengthAndData();
+  aImagData.ComputeLengthAndData();
+
   if (aRealData.Length() != aImagData.Length() ||
       aRealData.Length() == 0 ||
       aRealData.Length() > 4096) {
@@ -442,22 +448,35 @@ AudioContext::DecodeAudioData(const ArrayBuffer& aBuffer,
                               DecodeSuccessCallback& aSuccessCallback,
                               const Optional<OwningNonNull<DecodeErrorCallback> >& aFailureCallback)
 {
+  // Neuter the array buffer
+  AutoPushJSContext cx(GetJSContext());
+
+  aBuffer.ComputeLengthAndData();
+
+  size_t length = aBuffer.Length();
+  void* dummy;
+  uint8_t* data;
+  bool rv;
+  JS::RootedObject obj(cx, aBuffer.Obj());
+  rv = JS_StealArrayBufferContents(cx, obj, &dummy, &data);
+
+  if (!rv) {
+    return;
+  }
+
   // Sniff the content of the media.
   // Failed type sniffing will be handled by AsyncDecodeMedia.
   nsAutoCString contentType;
-  NS_SniffContent(NS_DATA_SNIFFER_CATEGORY, nullptr,
-                  aBuffer.Data(), aBuffer.Length(),
-                  contentType);
+  NS_SniffContent(NS_DATA_SNIFFER_CATEGORY, nullptr, data, length, contentType);
 
   nsCOMPtr<DecodeErrorCallback> failureCallback;
   if (aFailureCallback.WasPassed()) {
     failureCallback = &aFailureCallback.Value();
   }
   nsRefPtr<WebAudioDecodeJob> job(
-    new WebAudioDecodeJob(contentType, this, aBuffer,
+    new WebAudioDecodeJob(contentType, this,
                           &aSuccessCallback, failureCallback));
-  mDecoder.AsyncDecodeMedia(contentType.get(),
-                            aBuffer.Data(), aBuffer.Length(), *job);
+  mDecoder.AsyncDecodeMedia(contentType.get(), data, dummy, length, *job);
   // Transfer the ownership to mDecodeJobs
   mDecodeJobs.AppendElement(job);
 }

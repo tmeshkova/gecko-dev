@@ -174,6 +174,7 @@ class ArrayBufferObject : public JSObject
 
     void addView(ArrayBufferViewObject *view);
 
+    void setNewData(ObjectElements *newHeader, uint32_t byteLength);
     void changeContents(JSContext *cx, ObjectElements *newHeader);
 
     /*
@@ -278,6 +279,10 @@ class ArrayBufferViewObject : public JSObject
     void neuter(void *newData);
 
     static void trace(JSTracer *trc, JSObject *obj);
+
+    uint8_t * dataPointer() {
+        return static_cast<uint8_t*>(getPrivate());
+    }
 };
 
 bool

@@ -38,7 +38,7 @@ const BUCKET_TIMESTEPS    = [
 ];
 
 // Time after which seen Page IDs expire.
-const SEENPAGEID_EXPIRY  = 2 * 7 * 24 * 60 * 60 * 1000; // 2 weeks.
+const SEENPAGEID_EXPIRY  = 8 * 7 * 24 * 60 * 60 * 1000; // 8 weeks.
 
 
 this.UITour = {
@@ -143,9 +143,6 @@ this.UITour = {
     XPCOMUtils.defineLazyGetter(this, "url", function () {
       return Services.urlFormatter.formatURLPref("browser.uitour.url");
     });
-
-    UITelemetry.addSimpleMeasureFunction("UITour",
-                                         this.getTelemetry.bind(this));
 
     // Clear the availableTargetsCache on widget changes.
     let listenerMethods = [
@@ -541,6 +538,8 @@ this.UITour = {
                                          BUCKET_TIMESTEPS);
   },
 
+  // This is registered with UITelemetry by BrowserUITelemetry, so that UITour
+  // can remain lazy-loaded on-demand.
   getTelemetry: function() {
     return {
       seenPageIDs: [...this.seenPageIDs.keys()],
