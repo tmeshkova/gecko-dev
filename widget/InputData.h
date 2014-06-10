@@ -11,6 +11,7 @@
 #include "nsTArray.h"
 #include "Units.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/TimeStamp.h"
 
 namespace mozilla {
 
@@ -157,6 +158,12 @@ public:
   {
 
 
+  }
+
+  MultiTouchInput(MultiTouchType aType, uint32_t aTime, TimeStamp aTimeStamp, Modifiers aModifiers)
+    : InputData(MULTITOUCH_INPUT, aTime, aModifiers),
+      mType(aType)
+  {
   }
 
   MultiTouchInput()
