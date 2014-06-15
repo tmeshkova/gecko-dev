@@ -45,7 +45,7 @@ namespace JS {
     D(TOO_MUCH_MALLOC)                          \
     D(ALLOC_TRIGGER)                            \
     D(DEBUG_GC)                                 \
-    D(COMPARTMENT_REVIVED)                      \
+    D(TRANSPLANT)                               \
     D(RESET)                                    \
     D(OUT_OF_NURSERY)                           \
     D(EVICT_NURSERY)                            \
@@ -375,7 +375,7 @@ ShrinkGCBuffers(JSRuntime *rt);
 class JS_PUBLIC_API(AutoAssertOnGC)
 {
 #ifdef DEBUG
-    JSRuntime *runtime;
+    js::gc::GCRuntime *gc;
     size_t gcNumber;
 
   public:

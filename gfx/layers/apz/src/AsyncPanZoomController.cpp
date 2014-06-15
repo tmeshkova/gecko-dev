@@ -505,6 +505,16 @@ public:
     return continueX || continueY;
   }
 
+  virtual void Cancel() MOZ_OVERRIDE
+  {
+    // If the snap-back animation is cancelled for some reason, we need to
+    // clear the overscroll, otherwise the user would be stuck in the
+    // overscrolled state (since touch blocks beginning in an overscrolled
+    // state are ignored).
+    mApzc.mX.ClearOverscroll();
+    mApzc.mY.ClearOverscroll();
+  }
+
 private:
   AsyncPanZoomController& mApzc;
 };
@@ -612,6 +622,8 @@ AsyncPanZoomController::GetGestureEventListener() {
 void
 AsyncPanZoomController::Destroy()
 {
+  CancelAnimation();
+
   { // scope the lock
     MonitorAutoLock lock(mRefPtrMonitor);
     mGeckoContentController = nullptr;
@@ -1684,7 +1696,12 @@ void AsyncPanZoomController::StartAnimation(AsyncPanZoomAnimation* aAnimation)
 void AsyncPanZoomController::CancelAnimation() {
   ReentrantMonitorAutoEnter lock(mMonitor);
   SetState(NOTHING);
-  mAnimation = nullptr;
+  if (mAnimation) {
+    mAnimation->Cancel();
+    mAnimation = nullptr;
+    // mAnimation->Cancel() may have done something that requires a repaint.
+    RequestContentRepaint();
+  }
 }
 
 void AsyncPanZoomController::SetCompositorParent(CompositorParent* aCompositorParent) {
@@ -2244,13 +2261,16 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     mFrameMetrics.mHasScrollgrab = aLayerMetrics.mHasScrollgrab;
 
     if (scrollOffsetUpdated) {
-      CancelAnimation();
-
       APZC_LOG("%p updating scroll offset from (%f, %f) to (%f, %f)\n", this,
         mFrameMetrics.GetScrollOffset().x, mFrameMetrics.GetScrollOffset().y,
         aLayerMetrics.GetScrollOffset().x, aLayerMetrics.GetScrollOffset().y);
 
       mFrameMetrics.CopyScrollInfoFrom(aLayerMetrics);
+
+      // Cancel the animation (which will also trigger a repaint request)
+      // after we update the scroll offset above. Otherwise we can be left
+      // in a state where things are out of sync.
+      CancelAnimation();
 
       // Because of the scroll offset update, any inflight paint requests are
       // going to be ignored by layout, and so mLastDispatchedPaintMetrics

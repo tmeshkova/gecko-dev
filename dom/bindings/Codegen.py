@@ -5594,8 +5594,10 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
     1) A CGThing for the type of the return value, or None if there is no need
        for a return value.
 
-    2) A boolean indicating whether the return value is passed as an out
-       parameter.
+    2) A value indicating the kind of ourparam to pass the value as.  Valid
+       options are None to not pass as an out param at all, "ref" (to pass a
+       reference as an out param), and "ptr" (to pass a pointer as an out
+       param).
 
     3) A CGThing for a tracer for the return value, or None if no tracing is
        needed.
@@ -5605,23 +5607,23 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
     """
     if returnType is None or returnType.isVoid():
         # Nothing to declare
-        return None, False, None, None
+        return None, None, None, None
     if returnType.isPrimitive() and returnType.tag() in builtinNames:
         result = CGGeneric(builtinNames[returnType.tag()])
         if returnType.nullable():
             result = CGTemplatedType("Nullable", result)
-        return result, False, None, None
+        return result, None, None, None
     if returnType.isDOMString():
         if isMember:
-            return CGGeneric("nsString"), True, None, None
-        return CGGeneric("DOMString"), True, None, None
+            return CGGeneric("nsString"), "ref", None, None
+        return CGGeneric("DOMString"), "ref", None, None
     if returnType.isByteString():
-        return CGGeneric("nsCString"), True, None, None
+        return CGGeneric("nsCString"), "ref", None, None
     if returnType.isEnum():
         result = CGGeneric(returnType.unroll().inner.identifier.name)
         if returnType.nullable():
             result = CGTemplatedType("Nullable", result)
-        return result, False, None, None
+        return result, None, None, None
     if returnType.isGeckoInterface():
         result = CGGeneric(descriptorProvider.getDescriptor(
             returnType.unroll().inner.identifier.name).nativeType)
@@ -5632,14 +5634,18 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
             result = CGTemplatedType("nsRefPtr", result)
         else:
             result = CGWrapper(result, post="*")
-        return result, False, None, None
+        return result, None, None, None
     if returnType.isCallback():
         name = returnType.unroll().identifier.name
-        return CGGeneric("nsRefPtr<%s>" % name), False, None, None
+        return CGGeneric("nsRefPtr<%s>" % name), None, None, None
     if returnType.isAny():
-        return CGGeneric("JS::Value"), False, None, None
+        if isMember:
+            return CGGeneric("JS::Value"), None, None, None
+        return CGGeneric("JS::Rooted<JS::Value>"), "ptr", None, "cx"
     if returnType.isObject() or returnType.isSpiderMonkeyInterface():
-        return CGGeneric("JSObject*"), False, None, None
+        if isMember:
+            return CGGeneric("JSObject*"), None, None, None
+        return CGGeneric("JS::Rooted<JSObject*>"), "ptr", None, "cx"
     if returnType.isSequence():
         nullable = returnType.nullable()
         if nullable:
@@ -5659,7 +5665,7 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
         result = CGTemplatedType("nsTArray", result)
         if nullable:
             result = CGTemplatedType("Nullable", result)
-        return result, True, rooter, None
+        return result, "ref", rooter, None
     if returnType.isMozMap():
         nullable = returnType.nullable()
         if nullable:
@@ -5679,7 +5685,7 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
         result = CGTemplatedType("MozMap", result)
         if nullable:
             result = CGTemplatedType("Nullable", result)
-        return result, True, rooter, None
+        return result, "ref", rooter, None
     if returnType.isDictionary():
         nullable = returnType.nullable()
         dictName = CGDictionary.makeDictionaryName(returnType.unroll().inner)
@@ -5694,7 +5700,7 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
             if nullable:
                 result = CGTemplatedType("Nullable", result)
             resultArgs = None
-        return result, True, None, resultArgs
+        return result, "ref", None, resultArgs
     if returnType.isUnion():
         result = CGGeneric(CGUnionStruct.unionTypeName(returnType.unroll(), True))
         if not isMember and typeNeedsRooting(returnType):
@@ -5707,12 +5713,12 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
             if returnType.nullable():
                 result = CGTemplatedType("Nullable", result)
             resultArgs = None
-        return result, True, None, resultArgs
+        return result, "ref", None, resultArgs
     if returnType.isDate():
         result = CGGeneric("Date")
         if returnType.nullable():
             result = CGTemplatedType("Nullable", result)
-        return result, False, None, None
+        return result, None, None, None
     raise TypeError("Don't know how to declare return value for %s" %
                     returnType)
 
@@ -5801,8 +5807,13 @@ class CGCallGenerator(CGThing):
             args.append(arg)
 
         # Return values that go in outparams go here
-        if resultOutParam:
-            args.append(CGGeneric("result"))
+        if resultOutParam is not None:
+            if resultOutParam is "ref":
+                args.append(CGGeneric("result"))
+            else:
+                assert resultOutParam is "ptr"
+                args.append(CGGeneric("&result"))
+
         if isFallible:
             args.append(CGGeneric("rv"))
         args.extend(CGGeneric(arg) for arg in argsPost)
@@ -8190,9 +8201,16 @@ class CGUnionStruct(CGThing):
                 fill("UnionMember<${structType} > m${name}", **vars))
             enumValues.append("e" + vars["name"])
 
-            toJSValCases.append(
-                CGCase("e" + vars["name"],
-                       self.getConversionToJS(vars, t)))
+            skipToJSVal = False
+            try:
+                toJSValCases.append(
+                    CGCase("e" + vars["name"],
+                           self.getConversionToJS(vars, t)))
+            except MethodNotNewObjectError:
+                # If we can't have a ToJSVal() because one of our members can
+                # only be returned from [NewObject] methods, then just skip
+                # generating ToJSVal.
+                skipToJSVal = True
             destructorCases.append(
                 CGCase("e" + vars["name"],
                        CGGeneric("Destroy%s();\n" % vars["name"])))
@@ -8226,18 +8244,19 @@ class CGUnionStruct(CGThing):
                                    bodyInHeader=not self.ownsMembers,
                                    inline=not self.ownsMembers))
 
-        methods.append(
-            ClassMethod(
-                "ToJSVal",
-                "bool",
-                [
-                    Argument("JSContext*", "cx"),
-                    Argument("JS::Handle<JSObject*>", "scopeObj"),
-                    Argument("JS::MutableHandle<JS::Value>", "rval")
-                ],
-                body=CGSwitch("mType", toJSValCases,
-                              default=CGGeneric("return false;\n")).define(),
-                const=True))
+        if not skipToJSVal:
+            methods.append(
+                ClassMethod(
+                    "ToJSVal",
+                    "bool",
+                    [
+                        Argument("JSContext*", "cx"),
+                        Argument("JS::Handle<JSObject*>", "scopeObj"),
+                        Argument("JS::MutableHandle<JS::Value>", "rval")
+                    ],
+                    body=CGSwitch("mType", toJSValCases,
+                                  default=CGGeneric("return false;\n")).define(),
+                    const=True))
 
         constructors = [ctor]
         selfName = CGUnionStruct.unionTypeName(self.type, self.ownsMembers)
@@ -11513,15 +11532,26 @@ class CGNativeMember(ClassMethod):
             return ("already_AddRefed<%s>" % type.unroll().identifier.name,
                     "nullptr", "return ${declName}.forget();\n")
         if type.isAny():
-            return "JS::Value", "JS::UndefinedValue()", "return ${declName};\n"
+            if isMember:
+                # No need for a third element in the isMember case
+                return "JS::Value", None, None
+            # Outparam
+            return "void", "", "aRetVal.set(${declName});\n"
+
         if type.isObject():
-            return "JSObject*", "nullptr", "return ${declName};\n"
+            if isMember:
+                # No need for a third element in the isMember case
+                return "JSObject*", None, None
+            return "void", "", "aRetVal.set(${declName});\n"
         if type.isSpiderMonkeyInterface():
+            if isMember:
+                # No need for a third element in the isMember case
+                return "JSObject*", None, None
             if type.nullable():
-                returnCode = "return ${declName}.IsNull() ? nullptr : ${declName}.Value().Obj();\n"
+                returnCode = "${declName}.IsNull() ? nullptr : ${declName}.Value().Obj();\n"
             else:
-                returnCode = "return ${declName}.Obj();\n"
-            return "JSObject*", "nullptr", returnCode
+                returnCode = "${declName}.Obj();\n"
+            return "void", "", "aRetVal.set(%s);\n" % returnCode
         if type.isSequence():
             # If we want to handle sequence-of-sequences return values, we're
             # going to need to fix example codegen to not produce nsTArray<void>
@@ -11611,6 +11641,11 @@ class CGNativeMember(ClassMethod):
             args.append(Argument("%s&" %
                                  CGUnionStruct.unionTypeDecl(returnType, True),
                                  "aRetVal"))
+        elif returnType.isAny():
+            args.append(Argument("JS::MutableHandle<JS::Value>", "aRetVal"))
+        elif returnType.isObject() or returnType.isSpiderMonkeyInterface():
+            args.append(Argument("JS::MutableHandle<JSObject*>", "aRetVal"))
+
         # And the ErrorResult
         if 'infallible' not in self.extendedAttrs:
             # Use aRv so it won't conflict with local vars named "rv"
@@ -13490,14 +13525,16 @@ class CGEventGetter(CGNativeMember):
                 if (${memberName}) {
                   JS::ExposeObjectToActiveJS(${memberName});
                 }
-                return ${memberName};
+                aRetVal.set(${memberName});
+                return;
                 """,
                 memberName=memberName)
         if type.isAny():
             return fill(
                 """
                 JS::ExposeValueToActiveJS(${memberName});
-                return ${memberName};
+                aRetVal.set(${memberName});
+                return;
                 """,
                 memberName=memberName)
         if type.isUnion():

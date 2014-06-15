@@ -15,6 +15,33 @@ namespace js {
 
 class Shape;
 
+/*
+ * This auto class should be used around any code that might cause a mark bit to
+ * be set on an object in a dead zone. See AutoMaybeTouchDeadZones
+ * for more details.
+ */
+struct AutoMarkInDeadZone
+{
+    explicit AutoMarkInDeadZone(JS::Zone *zone)
+      : zone(zone),
+        scheduled(zone->scheduledForDestruction)
+    {
+        JSRuntime *rt = zone->runtimeFromMainThread();
+        if (rt->gc.manipulatingDeadZones && zone->scheduledForDestruction) {
+            rt->gc.objectsMarkedInDeadZones++;
+            zone->scheduledForDestruction = false;
+        }
+    }
+
+    ~AutoMarkInDeadZone() {
+        zone->scheduledForDestruction = scheduled;
+    }
+
+  private:
+    JS::Zone *zone;
+    bool scheduled;
+};
+
 inline Allocator *
 ThreadSafeContext::allocator() const
 {
@@ -76,15 +103,15 @@ GetGCThingTraceKind(const void *thing)
     return MapAllocToTraceKind(cell->tenuredGetAllocKind());
 }
 
-static inline void
-GCPoke(JSRuntime *rt)
+inline void
+GCRuntime::poke()
 {
-    rt->gc.poke = true;
+    poked = true;
 
 #ifdef JS_GC_ZEAL
     /* Schedule a GC to happen "soon" after a GC poke. */
-    if (rt->gcZeal() == js::gc::ZealPokeValue)
-        rt->gc.nextScheduled = 1;
+    if (zealMode == ZealPokeValue)
+        nextScheduled = 1;
 #endif
 }
 
@@ -489,7 +516,7 @@ CheckAllocatorState(ThreadSafeContext *cx, AllocKind kind)
 
     if (allowGC) {
 #ifdef JS_GC_ZEAL
-        if (rt->needZealousGC())
+        if (rt->gc.needZealousGC())
             js::gc::RunDebugGC(ncx);
 #endif
 
