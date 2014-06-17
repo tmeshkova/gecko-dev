@@ -124,6 +124,7 @@ EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
   nsCOMPtr<nsIDOMWindow> rootWin(do_GetInterface(rootItem));
   NS_ENSURE_TRUE(rootWin, NS_ERROR_FAILURE);
   rootWin->GetTop(getter_AddRefs(window));
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   uint64_t OuterWindowID = 0;
   utils->GetOuterWindowID(&OuterWindowID);
