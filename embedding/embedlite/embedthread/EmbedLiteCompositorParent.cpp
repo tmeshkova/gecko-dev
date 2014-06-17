@@ -112,6 +112,7 @@ bool EmbedLiteCompositorParent::RenderGL()
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
   NS_ENSURE_TRUE(context, false);
+  NS_ENSURE_TRUE(context->IsCurrent(), false);
 
   state->mLayerManager->SetWorldTransform(mWorldTransform);
   state->mLayerManager->GetCompositor()->SetWorldOpacity(mWorldOpacity);
