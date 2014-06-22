@@ -85,6 +85,12 @@
                           oncommand="document.getBindingParent(this).translate();"/>
             </xul:hbox>
 
+            <!-- unavailable -->
+            <xul:vbox class="translation-unavailable" pack="center">
+              <xul:label class="translate-infobar-element"
+                         value="&translation.serviceUnavailable.label;"/>
+            </xul:vbox>
+
           </xul:deck>
           <xul:spacer flex="1"/>
 
@@ -92,7 +98,9 @@
                       class="translate-infobar-element options-menu-button"
                       anonid="options"
                       label="&translation.options.menu;">
-            <xul:menupopup onpopupshowing="document.getBindingParent(this).optionsShowing();">
+            <xul:menupopup class="translation-menupopup cui-widget-panel cui-widget-panelview
+                                  cui-widget-panelWithFooter PanelUI-subView"
+                           onpopupshowing="document.getBindingParent(this).optionsShowing();">
               <xul:menuitem anonid="neverForLanguage"
                             oncommand="document.getBindingParent(this).neverForLanguage();"/>
               <xul:menuitem anonid="neverForSite"
@@ -103,6 +111,12 @@
               <xul:menuitem oncommand="openPreferences('paneContent');"
                             label="&translation.options.preferences.label;"
                             accesskey="&translation.options.preferences.accesskey;"/>
+              <xul:menuitem class="translation-attribution subviewbutton panel-subview-footer"
+                            oncommand="document.getBindingParent(this).openProviderAttribution();">
+                <xul:label>Übersetzungen von</xul:label>
+                <xul:image src="chrome://browser/content/microsoft-translator-attribution.png"
+                           aria-label="Microsoft Translator"/>
+              </xul:menuitem>
             </xul:menupopup>
           </xul:button>
 
@@ -127,12 +141,15 @@
 
           let stateName;
           for (let name of ["OFFER", "TRANSLATING", "TRANSLATED", "ERROR"]) {
-            if (this.translation["STATE_" + name] == val) {
+            if (Translation["STATE_" + name] == val) {
               stateName = name.toLowerCase();
               break;
             }
           }
           this.setAttribute("state", stateName);
+
+          if (val == Translation.STATE_TRANSLATED)
+            this._handleButtonHiding();
 
           deck.selectedIndex = val;
           ]]>
@@ -143,6 +160,11 @@
         <parameter name="aTranslation"/>
         <body>
           <![CDATA[
+            if (Translation.serviceUnavailable) {
+              this.state = Translation.STATE_UNAVAILABLE;
+              return;
+            }
+
             this.translation = aTranslation;
             let bundle = Cc["@mozilla.org/intl/stringbundle;1"]
                            .getService(Ci.nsIStringBundleService)
@@ -172,8 +194,6 @@
 
             if (aTranslation.state)
               this.state = aTranslation.state;
-
-            this._handleButtonHiding(aTranslation.originalShown);
           ]]>
         </body>
       </method>
@@ -188,14 +208,13 @@
       <method name="translate">
         <body>
           <![CDATA[
-            if (this.state == this.translation.STATE_OFFER) {
+            if (this.state == Translation.STATE_OFFER) {
               this._getAnonElt("fromLanguage").value =
                 this._getAnonElt("detectedLanguage").value;
               this._getAnonElt("toLanguage").value =
                 Translation.defaultTargetLanguage;
             }
 
-            this._handleButtonHiding(false);
             this.translation.translate(this._getAnonElt("fromLanguage").value,
                                        this._getAnonElt("toLanguage").value);
           ]]>
@@ -203,11 +222,11 @@
       </method>
 
       <method name="_handleButtonHiding">
-        <parameter name="aOriginalShown"/>
         <body>
           <![CDATA[
-            this._getAnonElt("showOriginal").hidden = aOriginalShown;
-            this._getAnonElt("showTranslation").hidden = !aOriginalShown;
+            let originalShown = this.translation.originalShown;
+            this._getAnonElt("showOriginal").hidden = originalShown;
+            this._getAnonElt("showTranslation").hidden = !originalShown;
           ]]>
         </body>
       </method>
@@ -215,8 +234,8 @@
       <method name="showOriginal">
         <body>
           <![CDATA[
-            this._handleButtonHiding(true);
             this.translation.showOriginalContent();
+            this._handleButtonHiding();
           ]]>
         </body>
       </method>
@@ -224,8 +243,8 @@
       <method name="showTranslation">
         <body>
           <![CDATA[
-            this._handleButtonHiding(false);
             this.translation.showTranslatedContent();
+            this._handleButtonHiding();
           ]]>
         </body>
       </method>
@@ -235,7 +254,7 @@
           <![CDATA[
             // Get the source language name.
             let lang;
-            if (this.state == this.translation.STATE_OFFER)
+            if (this.state == Translation.STATE_OFFER)
               lang = this._getAnonElt("detectedLanguage").value;
             else
               lang = this._getAnonElt("fromLanguage").value;
@@ -300,6 +319,14 @@
             perms.add(uri, "translate", perms.DENY_ACTION);
 
             this.close();
+          ]]>
+        </body>
+      </method>
+
+      <method name="openProviderAttribution">
+        <body>
+          <![CDATA[
+            Translation.openProviderAttribution();
           ]]>
         </body>
       </method>

@@ -45,13 +45,12 @@
 #include "MediaEngineDefault.h"
 #if defined(MOZ_WEBRTC)
 #include "MediaEngineWebRTC.h"
+#include "browser_logging/WebRtcLog.h"
 #endif
 
 #ifdef MOZ_B2G
 #include "MediaPermissionGonk.h"
 #endif
-
-#include "browser_logging/WebRtcLog.h"
 
 // GetCurrentTime is defined in winbase.h as zero argument macro forwarding to
 // GetTickCount() and conflicts with MediaStream::GetCurrentTime.
@@ -1499,14 +1498,6 @@ MediaManager::GetUserMedia(bool aPrivileged,
       rv = permManager->TestExactPermissionFromPrincipal(
         aWindow->GetExtantDoc()->NodePrincipal(), "microphone", &audioPerm);
       NS_ENSURE_SUCCESS(rv, rv);
-      if (audioPerm == nsIPermissionManager::PROMPT_ACTION) {
-        audioPerm = nsIPermissionManager::UNKNOWN_ACTION;
-      }
-      if (audioPerm == nsIPermissionManager::ALLOW_ACTION) {
-        if (!isHTTPS) {
-          audioPerm = nsIPermissionManager::UNKNOWN_ACTION;
-        }
-      }
     }
 
     uint32_t videoPerm = nsIPermissionManager::UNKNOWN_ACTION;
@@ -1514,33 +1505,11 @@ MediaManager::GetUserMedia(bool aPrivileged,
       rv = permManager->TestExactPermissionFromPrincipal(
         aWindow->GetExtantDoc()->NodePrincipal(), "camera", &videoPerm);
       NS_ENSURE_SUCCESS(rv, rv);
-      if (videoPerm == nsIPermissionManager::PROMPT_ACTION) {
-        videoPerm = nsIPermissionManager::UNKNOWN_ACTION;
-      }
-      if (videoPerm == nsIPermissionManager::ALLOW_ACTION) {
-        if (!isHTTPS) {
-          videoPerm = nsIPermissionManager::UNKNOWN_ACTION;
-        }
-      }
     }
 
-    if ((!IsOn(c.mAudio) || audioPerm != nsIPermissionManager::UNKNOWN_ACTION) &&
-        (!IsOn(c.mVideo) || videoPerm != nsIPermissionManager::UNKNOWN_ACTION)) {
-      // All permissions we were about to request already have a saved value.
-      if (IsOn(c.mAudio) && audioPerm == nsIPermissionManager::DENY_ACTION) {
-        c.mAudio.SetAsBoolean() = false;
-        runnable->SetContraints(c);
-      }
-      if (IsOn(c.mVideo) && videoPerm == nsIPermissionManager::DENY_ACTION) {
-        c.mVideo.SetAsBoolean() = false;
-        runnable->SetContraints(c);
-      }
-
-      if (!IsOn(c.mAudio) && !IsOn(c.mVideo)) {
-        return runnable->Denied(NS_LITERAL_STRING("PERMISSION_DENIED"));
-      }
-
-      return mMediaThread->Dispatch(runnable, NS_DISPATCH_NORMAL);
+    if ((!IsOn(c.mAudio) || audioPerm == nsIPermissionManager::DENY_ACTION) &&
+        (!IsOn(c.mVideo) || videoPerm == nsIPermissionManager::DENY_ACTION)) {
+      return runnable->Denied(NS_LITERAL_STRING("PERMISSION_DENIED"));
     }
 
     // Ask for user permission, and dispatch runnable (or not) when a response
@@ -1577,7 +1546,9 @@ MediaManager::GetUserMedia(bool aPrivileged,
     obs->NotifyObservers(req, "getUserMedia:request", nullptr);
   }
 
+#ifdef MOZ_WEBRTC
   EnableWebRtcLog();
+#endif
 
   return NS_OK;
 }

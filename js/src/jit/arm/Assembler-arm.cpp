@@ -541,9 +541,6 @@ Assembler::finish()
     JS_ASSERT(!isFinished);
     isFinished = true;
 
-    for (size_t i = 0; i < jumps_.length(); i++)
-        jumps_[i].fixOffset(m_buffer);
-
     for (unsigned int i = 0; i < tmpDataRelocations_.length(); i++) {
         int offset = tmpDataRelocations_[i].getOffset();
         int real_offset = offset + m_buffer.poolSizeBefore(offset);
@@ -1678,11 +1675,11 @@ Assembler::as_dtm(LoadStore ls, Register rn, uint32_t mask,
 }
 
 BufferOffset
-Assembler::as_Imm32Pool(Register dest, uint32_t value, ARMBuffer::PoolEntry *pe, Condition c)
+Assembler::as_Imm32Pool(Register dest, uint32_t value, Condition c)
 {
     PoolHintPun php;
     php.phd.init(0, c, PoolHintData::poolDTR, dest);
-    return m_buffer.insertEntry(4, (uint8_t*)&php.raw, int32Pool, (uint8_t*)&value, pe);
+    return m_buffer.insertEntry(4, (uint8_t*)&php.raw, int32Pool, (uint8_t*)&value);
 }
 
 void
@@ -1719,12 +1716,12 @@ Assembler::as_BranchPool(uint32_t value, RepatchLabel *label, ARMBuffer::PoolEnt
 }
 
 BufferOffset
-Assembler::as_FImm64Pool(VFPRegister dest, double value, ARMBuffer::PoolEntry *pe, Condition c)
+Assembler::as_FImm64Pool(VFPRegister dest, double value, Condition c)
 {
     JS_ASSERT(dest.isDouble());
     PoolHintPun php;
     php.phd.init(0, c, PoolHintData::poolVDTR, dest);
-    return m_buffer.insertEntry(4, (uint8_t*)&php.raw, doublePool, (uint8_t*)&value, pe);
+    return m_buffer.insertEntry(4, (uint8_t*)&php.raw, doublePool, (uint8_t*)&value);
 }
 
 struct PaddedFloat32
@@ -1735,7 +1732,7 @@ struct PaddedFloat32
 JS_STATIC_ASSERT(sizeof(PaddedFloat32) == sizeof(double));
 
 BufferOffset
-Assembler::as_FImm32Pool(VFPRegister dest, float value, ARMBuffer::PoolEntry *pe, Condition c)
+Assembler::as_FImm32Pool(VFPRegister dest, float value, Condition c)
 {
     /*
      * Insert floats into the double pool as they have the same limitations on
@@ -1746,7 +1743,7 @@ Assembler::as_FImm32Pool(VFPRegister dest, float value, ARMBuffer::PoolEntry *pe
     PoolHintPun php;
     php.phd.init(0, c, PoolHintData::poolVDTR, dest);
     PaddedFloat32 pf = { value, 0 };
-    return m_buffer.insertEntry(4, (uint8_t*)&php.raw, doublePool, (uint8_t*)&pf, pe);
+    return m_buffer.insertEntry(4, (uint8_t*)&php.raw, doublePool, (uint8_t*)&pf);
 }
 
 // Pool callbacks stuff:

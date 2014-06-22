@@ -172,6 +172,12 @@ user_pref("browser.webapps.testing", true);
 user_pref("browser.snippets.enabled", false);
 user_pref("browser.snippets.syncPromo.enabled", false);
 
+// Disable useragent updates.
+user_pref("general.useragent.updates.enabled", false);
+
+// Disable webapp updates.  Yes, it is supposed to be an integer.
+user_pref("browser.webapps.checkForUpdates", 0);
+
 // Do not turn HTTP cache v2 for our infra tests (some tests are failing)
 user_pref("browser.cache.use_new_backend_temp", false);
 
