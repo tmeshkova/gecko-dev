@@ -580,14 +580,11 @@ CompositorOGL::PrepareViewport(const gfx::IntSize& aSize,
   // Matrix to transform (0, 0, aWidth, aHeight) to viewport space (-1.0, 1.0,
   // 2, 2) and flip the contents.
   Matrix viewMatrix;
-  if (mGLContext->IsOffscreen()) {
-    // In case of rendering via GL Offscreen context, disable Y-Flipping
-    viewMatrix.Translate(-1.0, -1.0);
-    viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
-  } else {
-    viewMatrix.Translate(-1.0, 1.0);
-    viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
-    viewMatrix.Scale(1.0f, -1.0f);
+  viewMatrix.Translate(-1.0, 1.0);
+  viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
+  viewMatrix.Scale(1.0f, -1.0f);
+  if (!mTarget) {
+    viewMatrix.Translate(mRenderOffset.x, mRenderOffset.y);
   }
 
   viewMatrix = aWorldTransform * viewMatrix;
