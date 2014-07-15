@@ -58,6 +58,11 @@ DeviceStorageRequestChild::
     mCallback = nullptr;
   }
 
+  nsCOMPtr<nsPIDOMWindow> window = mRequest->GetOwner();
+  if (!window) {
+    return true;
+  }
+
   switch (aValue.type()) {
 
     case DeviceStorageResponseValue::TErrorResponse:
@@ -72,8 +77,8 @@ DeviceStorageRequestChild::
       nsString fullPath;
       mDSFile->GetFullPath(fullPath);
       AutoJSContext cx;
-      JS::Rooted<JS::Value> result(cx,
-        StringToJsval(mRequest->GetOwner(), fullPath));
+      JS::Rooted<JS::Value> result(cx);
+      StringToJsval(window, fullPath, &result);
       mRequest->FireSuccess(result);
       break;
     }
@@ -85,8 +90,8 @@ DeviceStorageRequestChild::
       nsString fullPath;
       mDSFile->GetFullPath(fullPath);
       AutoJSContext cx;
-      JS::Rooted<JS::Value> result(cx,
-        StringToJsval(mRequest->GetOwner(), fullPath));
+      JS::Rooted<JS::Value> result(cx);
+      StringToJsval(window, fullPath, &result);
 
       mDSFileDescriptor->mDSFile = mDSFile;
       mDSFileDescriptor->mFileDescriptor = r.fileDescriptor();
@@ -103,7 +108,7 @@ DeviceStorageRequestChild::
       nsCOMPtr<nsIDOMFile> file = do_QueryInterface(blob);
       AutoJSContext cx;
       JS::Rooted<JS::Value> result(cx,
-        InterfaceToJsval(mRequest->GetOwner(), file, &NS_GET_IID(nsIDOMFile)));
+        InterfaceToJsval(window, file, &NS_GET_IID(nsIDOMFile)));
       mRequest->FireSuccess(result);
       break;
     }
@@ -130,8 +135,8 @@ DeviceStorageRequestChild::
     {
       AvailableStorageResponse r = aValue;
       AutoJSContext cx;
-      JS::Rooted<JS::Value> result(
-        cx, StringToJsval(mRequest->GetOwner(), r.mountState()));
+      JS::Rooted<JS::Value> result(cx);
+      StringToJsval(window, r.mountState(), &result);
       mRequest->FireSuccess(result);
       break;
     }
@@ -140,8 +145,8 @@ DeviceStorageRequestChild::
     {
       StorageStatusResponse r = aValue;
       AutoJSContext cx;
-      JS::Rooted<JS::Value> result(
-        cx, StringToJsval(mRequest->GetOwner(), r.storageStatus()));
+      JS::Rooted<JS::Value> result(cx);
+      StringToJsval(window, r.storageStatus(), &result);
       mRequest->FireSuccess(result);
       break;
     }
@@ -150,8 +155,8 @@ DeviceStorageRequestChild::
     {
       FormatStorageResponse r = aValue;
       AutoJSContext cx;
-      JS::Rooted<JS::Value> result(
-        cx, StringToJsval(mRequest->GetOwner(), r.mountState()));
+      JS::Rooted<JS::Value> result(cx);
+      StringToJsval(window, r.mountState(), &result);
       mRequest->FireSuccess(result);
       break;
     }
@@ -160,8 +165,8 @@ DeviceStorageRequestChild::
     {
       MountStorageResponse r = aValue;
       AutoJSContext cx;
-      JS::Rooted<JS::Value> result(
-        cx, StringToJsval(mRequest->GetOwner(), r.storageStatus()));
+      JS::Rooted<JS::Value> result(cx);
+      StringToJsval(window, r.storageStatus(), &result);
       mRequest->FireSuccess(result);
       break;
     }
@@ -170,8 +175,8 @@ DeviceStorageRequestChild::
     {
       UnmountStorageResponse r = aValue;
       AutoJSContext cx;
-      JS::Rooted<JS::Value> result(
-        cx, StringToJsval(mRequest->GetOwner(), r.storageStatus()));
+      JS::Rooted<JS::Value> result(cx);
+      StringToJsval(window, r.storageStatus(), &result);
       mRequest->FireSuccess(result);
       break;
     }

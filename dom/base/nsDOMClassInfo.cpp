@@ -2642,9 +2642,12 @@ nsWindowSH::GlobalResolve(nsGlobalWindow *aWin, JSContext *cx,
   }
 
 #ifdef USE_CONTROLLERS_SHIM
+  // Note: We use |obj| rather than |aWin| to get the principal here, because
+  // this is called during Window setup when the Document isn't necessarily
+  // hooked up yet.
   if (id == XPCJSRuntime::Get()->GetStringID(XPCJSRuntime::IDX_CONTROLLERS) &&
       !xpc::IsXrayWrapper(obj) &&
-      !nsContentUtils::IsSystemPrincipal(aWin->GetPrincipal()))
+      !nsContentUtils::IsSystemPrincipal(nsContentUtils::ObjectPrincipal(obj)))
   {
     if (aWin->GetDoc()) {
       aWin->GetDoc()->WarnOnceAbout(nsIDocument::eWindow_Controllers);
@@ -2661,7 +2664,10 @@ nsWindowSH::GlobalResolve(nsGlobalWindow *aWin, JSContext *cx,
   nsScriptNameSpaceManager *nameSpaceManager = GetNameSpaceManager();
   NS_ENSURE_TRUE(nameSpaceManager, NS_ERROR_NOT_INITIALIZED);
 
-  nsDependentJSString name(id);
+  // Note - Our only caller is nsGlobalWindow::DoNewResolve, which checks that
+  // JSID_IS_STRING(id) is true.
+  nsDependentJSString name;
+  name.infallibleInit(id);
 
   const char16_t *class_name = nullptr;
   const nsGlobalNameStruct *name_struct =

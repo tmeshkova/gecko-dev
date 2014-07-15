@@ -63,7 +63,7 @@ add_task(function* test_setup() {
   gPolicy = new Experiments.Policy();
   patchPolicy(gPolicy, {
     updatechannel: () => "nightly",
-    healthReportPayload: () => {},
+    healthReportPayload: () => "{}",
     oneshotTimer: (callback, timeout, thisObj, name) => gTimerScheduleOffset = timeout,
   });
 });
@@ -190,6 +190,13 @@ add_task(function* test_cache() {
   checkExperimentListsEqual(experimentListData.slice(1), list);
   checkExperimentSerializations(experiments._experiments.values());
 
+  let branch = yield experiments.getExperimentBranch(EXPERIMENT1_ID);
+  Assert.strictEqual(branch, null);
+
+  yield experiments.setExperimentBranch(EXPERIMENT1_ID, "testbranch");
+  branch = yield experiments.getExperimentBranch(EXPERIMENT1_ID);
+  Assert.strictEqual(branch, "testbranch");
+
   // Re-init, clock set for experiment 1 to stop.
 
   now = futureDate(now, 20 * MS_IN_ONE_DAY);
@@ -206,6 +213,9 @@ add_task(function* test_cache() {
   experimentListData[1].endDate = now.getTime();
   checkExperimentListsEqual(experimentListData.slice(1), list);
   checkExperimentSerializations(experiments._experiments.values());
+
+  branch = yield experiments.getExperimentBranch(EXPERIMENT1_ID);
+  Assert.strictEqual(branch, "testbranch");
 
   // Re-init, clock set for experiment 2 to start.
 

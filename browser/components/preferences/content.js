@@ -22,6 +22,11 @@ var gContentPane = {
     if (Services.prefs.getBoolPref(prefName)) {
       let row = document.getElementById("translationBox");
       row.removeAttribute("hidden");
+
+      // Update translation provider attribution string.
+      Components.utils.import("resource:///modules/translation/Translation.jsm");
+      document.getElementById("translationAttributionBeforeLogo").textContent =
+        Translation.getAttributionString();
     }
   },
 
@@ -188,5 +193,10 @@ var gContentPane = {
     document.documentElement.openWindow("Browser:TranslationExceptions",
                                         "chrome://browser/content/preferences/translation.xul",
                                         "", null);
+  },
+
+  openTranslationProviderAttribution: function ()
+  {
+    Translation.openProviderAttribution();
   }
 };

@@ -46,12 +46,18 @@ CheckTimes(const CERTCertificate* cert, PRTime time)
 }
 
 // 4.2.1.3. Key Usage (id-ce-keyUsage)
-// Modeled after GetKeyUsage in certdb.c
+
+// As explained in the comment in CheckKeyUsage, bit 0 is the most significant
+// bit and bit 7 is the least significant bit.
+inline uint8_t KeyUsageToBitMask(KeyUsage keyUsage)
+{
+  PR_ASSERT(keyUsage != KeyUsage::noParticularKeyUsageRequired);
+  return 0x80u >> static_cast<uint8_t>(keyUsage);
+}
+
 Result
-CheckKeyUsage(EndEntityOrCA endEntityOrCA,
-              const SECItem* encodedKeyUsage,
-              KeyUsages requiredKeyUsagesIfPresent,
-              PLArenaPool* arena)
+CheckKeyUsage(EndEntityOrCA endEntityOrCA, const SECItem* encodedKeyUsage,
+              KeyUsage requiredKeyUsageIfPresent)
 {
   if (!encodedKeyUsage) {
     // TODO(bug 970196): Reject certificates that are being used to verify
@@ -68,39 +74,92 @@ CheckKeyUsage(EndEntityOrCA endEntityOrCA,
     return Success;
   }
 
-  SECItem tmpItem;
-  Result rv = MapSECStatus(SEC_QuickDERDecodeItem(arena, &tmpItem,
-                              SEC_ASN1_GET(SEC_BitStringTemplate),
-                              encodedKeyUsage));
-  if (rv != Success) {
-    return rv;
+  der::Input input;
+  if (input.Init(encodedKeyUsage->data, encodedKeyUsage->len) != der::Success) {
+    return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
   }
-
-  // TODO XXX: Why is tmpItem.len > 1?
-
-  KeyUsages allowedKeyUsages = tmpItem.data[0];
-  if ((allowedKeyUsages & requiredKeyUsagesIfPresent)
-        != requiredKeyUsagesIfPresent) {
+  der::Input value;
+  if (der::ExpectTagAndGetValue(input, der::BIT_STRING, value) != der::Success) {
     return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
   }
 
-  if (endEntityOrCA == EndEntityOrCA::MustBeCA) {
-   // "If the keyUsage extension is present, then the subject public key
-   //  MUST NOT be used to verify signatures on certificates or CRLs unless
-   //  the corresponding keyCertSign or cRLSign bit is set."
-   if ((allowedKeyUsages & KU_KEY_CERT_SIGN) == 0) {
+  uint8_t numberOfPaddingBits;
+  if (value.Read(numberOfPaddingBits) != der::Success) {
+    return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
+  }
+  if (numberOfPaddingBits > 7) {
+    return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
+  }
+
+  uint8_t bits;
+  if (value.Read(bits) != der::Success) {
+    // Reject empty bit masks.
+    return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
+  }
+
+  // The most significant bit is numbered 0 (digitalSignature) and the least
+  // significant bit is numbered 7 (encipherOnly), and the padding is in the
+  // least significant bits of the last byte. The numbering of bits in a byte
+  // is backwards from how we usually interpret them.
+  //
+  // For example, let's say bits is encoded in one byte with of value 0xB0 and
+  // numberOfPaddingBits == 4. Then, bits is 10110000 in binary:
+  //
+  //      bit 0  bit 3
+  //          |  |
+  //          v  v
+  //          10110000
+  //              ^^^^
+  //               |
+  //               4 padding bits
+  //
+  // Since bits is the last byte, we have to consider the padding by ensuring
+  // that the least significant 4 bits are all zero, since DER rules require
+  // all padding bits to be zero. Then we have to look at the bit N bits to the
+  // right of the most significant bit, where N is a value from the KeyUsage
+  // enumeration.
+  //
+  // Let's say we're interested in the keyCertSign (5) bit. We'd need to look
+  // at bit 5, which is zero, so keyCertSign is not asserted. (Since we check
+  // that the padding is all zeros, it is OK to read from the padding bits.)
+  //
+  // Let's say we're interested in the digitalSignature (0) bit. We'd need to
+  // look at the bit 0 (the most significant bit), which is set, so that means
+  // digitalSignature is asserted. Similarly, keyEncipherment (2) and
+  // dataEncipherment (3) are asserted.
+  //
+  // Note that since the KeyUsage enumeration is limited to values 0-7, we
+  // only ever need to examine the first byte test for
+  // requiredKeyUsageIfPresent.
+
+  if (requiredKeyUsageIfPresent != KeyUsage::noParticularKeyUsageRequired) {
+    // Check that the required key usage bit is set.
+    if ((bits & KeyUsageToBitMask(requiredKeyUsageIfPresent)) == 0) {
       return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
     }
-  } else {
-    // "The keyCertSign bit is asserted when the subject public key is
-    //  used for verifying signatures on public key certificates.  If the
-    //  keyCertSign bit is asserted, then the cA bit in the basic
-    //  constraints extension (Section 4.2.1.9) MUST also be asserted."
-    // TODO XXX: commented out to match classic NSS behavior.
-    //if ((allowedKeyUsages & KU_KEY_CERT_SIGN) != 0) {
-    //  // XXX: better error code.
-    //  return Fail(RecoverableError, SEC_ERROR_INADEQUATE_CERT_TYPE);
-    //}
+  }
+
+  if (endEntityOrCA != EndEntityOrCA::MustBeCA) {
+    // RFC 5280 says "The keyCertSign bit is asserted when the subject public
+    // key is used for verifying signatures on public key certificates. If the
+    // keyCertSign bit is asserted, then the cA bit in the basic constraints
+    // extension (Section 4.2.1.9) MUST also be asserted."
+    if ((bits & KeyUsageToBitMask(KeyUsage::keyCertSign)) != 0) {
+      return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
+    }
+  }
+
+  // The padding applies to the last byte, so skip to the last byte.
+  while (!value.AtEnd()) {
+    if (value.Read(bits) != der::Success) {
+      return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
+    }
+  }
+
+  // All of the padding bits must be zero, according to DER rules.
+  uint8_t paddingMask = static_cast<uint8_t>((1 << numberOfPaddingBits) - 1);
+  if ((bits & paddingMask) != 0) {
+    return Fail(RecoverableError, SEC_ERROR_INADEQUATE_KEY_USAGE);
   }
 
   return Success;
@@ -348,8 +407,75 @@ BackCert::GetConstrainedNames(/*out*/ const CERTGeneralName** result)
 Result
 CheckNameConstraints(BackCert& cert)
 {
-  if (!cert.encodedNameConstraints) {
-    return Success;
+  static const char constraintFranceGov[] =
+                                     "\x30\x5D" /* sequence len 93*/
+                                     "\xA0\x5B" /* element len 91 */
+                                     "\x30\x05" /* sequence len 5 */
+                                     "\x82\x03" /* entry len 3 */
+                                     ".fr"
+                                     "\x30\x05\x82\x03" /* sequence len 5, entry len 3 */
+                                     ".gp"
+                                     "\x30\x05\x82\x03"
+                                     ".gf"
+                                     "\x30\x05\x82\x03"
+                                     ".mq"
+                                     "\x30\x05\x82\x03"
+                                     ".re"
+                                     "\x30\x05\x82\x03"
+                                     ".yt"
+                                     "\x30\x05\x82\x03"
+                                     ".pm"
+                                     "\x30\x05\x82\x03"
+                                     ".bl"
+                                     "\x30\x05\x82\x03"
+                                     ".mf"
+                                     "\x30\x05\x82\x03"
+                                     ".wf"
+                                     "\x30\x05\x82\x03"
+                                     ".pf"
+                                     "\x30\x05\x82\x03"
+                                     ".nc"
+                                     "\x30\x05\x82\x03"
+                                     ".tf";
+
+  /* The stringified value for the subject is:
+     E=igca@sgdn.pm.gouv.fr,CN=IGC/A,OU=DCSSI,O=PM/SGDN,L=Paris,ST=France,C=FR
+   */
+  static const char rawANSSISubject[] =
+                                 "\x30\x81\x85\x31\x0B\x30\x09\x06\x03\x55\x04"
+                                 "\x06\x13\x02\x46\x52\x31\x0F\x30\x0D\x06\x03"
+                                 "\x55\x04\x08\x13\x06\x46\x72\x61\x6E\x63\x65"
+                                 "\x31\x0E\x30\x0C\x06\x03\x55\x04\x07\x13\x05"
+                                 "\x50\x61\x72\x69\x73\x31\x10\x30\x0E\x06\x03"
+                                 "\x55\x04\x0A\x13\x07\x50\x4D\x2F\x53\x47\x44"
+                                 "\x4E\x31\x0E\x30\x0C\x06\x03\x55\x04\x0B\x13"
+                                 "\x05\x44\x43\x53\x53\x49\x31\x0E\x30\x0C\x06"
+                                 "\x03\x55\x04\x03\x13\x05\x49\x47\x43\x2F\x41"
+                                 "\x31\x23\x30\x21\x06\x09\x2A\x86\x48\x86\xF7"
+                                 "\x0D\x01\x09\x01\x16\x14\x69\x67\x63\x61\x40"
+                                 "\x73\x67\x64\x6E\x2E\x70\x6D\x2E\x67\x6F\x75"
+                                 "\x76\x2E\x66\x72";
+
+  const SECItem ANSSI_SUBJECT = {
+    siBuffer,
+    reinterpret_cast<uint8_t *>(const_cast<char *>(rawANSSISubject)),
+    sizeof(rawANSSISubject) - 1
+  };
+
+  const SECItem PERMIT_FRANCE_GOV_NC = {
+    siBuffer,
+    reinterpret_cast<uint8_t *>(const_cast<char *>(constraintFranceGov)),
+    sizeof(constraintFranceGov) - 1
+  };
+
+  const SECItem* nameConstraintsToUse = cert.encodedNameConstraints;
+
+  if (!nameConstraintsToUse) {
+    if (SECITEM_ItemsAreEqual(&cert.GetSubject(), &ANSSI_SUBJECT)) {
+      nameConstraintsToUse = &PERMIT_FRANCE_GOV_NC;
+    } else {
+      return Success;
+    }
   }
 
   PLArenaPool* arena = cert.GetArena();
@@ -359,7 +485,7 @@ CheckNameConstraints(BackCert& cert)
 
   // Owned by arena
   const CERTNameConstraints* constraints =
-    CERT_DecodeNameConstraintsExtension(arena, cert.encodedNameConstraints);
+    CERT_DecodeNameConstraintsExtension(arena, nameConstraintsToUse);
   if (!constraints) {
     return MapSECStatus(SECFailure);
   }
@@ -549,7 +675,7 @@ CheckIssuerIndependentProperties(TrustDomain& trustDomain,
                                  BackCert& cert,
                                  PRTime time,
                                  EndEntityOrCA endEntityOrCA,
-                                 KeyUsages requiredKeyUsagesIfPresent,
+                                 KeyUsage requiredKeyUsageIfPresent,
                                  KeyPurposeId requiredEKUIfPresent,
                                  const CertPolicyId& requiredPolicy,
                                  unsigned int subCACount,
@@ -584,18 +710,13 @@ CheckIssuerIndependentProperties(TrustDomain& trustDomain,
                           !cert.GetNSSCert()->version.len) ? der::Version::v1
                                                            : der::Version::v3;
 
-  PLArenaPool* arena = cert.GetArena();
-  if (!arena) {
-    return FatalError;
-  }
-
   // 4.2.1.1. Authority Key Identifier is ignored (see bug 965136).
 
   // 4.2.1.2. Subject Key Identifier is ignored (see bug 965136).
 
   // 4.2.1.3. Key Usage
   rv = CheckKeyUsage(endEntityOrCA, cert.encodedKeyUsage,
-                     requiredKeyUsagesIfPresent, arena);
+                     requiredKeyUsageIfPresent);
   if (rv != Success) {
     return rv;
   }

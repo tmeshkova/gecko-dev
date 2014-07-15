@@ -275,15 +275,6 @@ ContainerRender(ContainerT* aContainer,
     SurfaceInitMode mode = INIT_MODE_CLEAR;
     gfx::IntRect surfaceRect = gfx::IntRect(visibleRect.x, visibleRect.y,
                                             visibleRect.width, visibleRect.height);
-    // we're about to create a framebuffer backed by textures to use as an intermediate
-    // surface. What to do if its size (as given by framebufferRect) would exceed the
-    // maximum texture size supported by the GL? The present code chooses the compromise
-    // of just clamping the framebuffer's size to the max supported size.
-    // This gives us a lower resolution rendering of the intermediate surface (children layers).
-    // See bug 827170 for a discussion.
-    int32_t maxTextureSize = compositor->GetMaxTextureSize();
-    surfaceRect.width = std::min(maxTextureSize, surfaceRect.width);
-    surfaceRect.height = std::min(maxTextureSize, surfaceRect.height);
     if (aContainer->GetEffectiveVisibleRegion().GetNumRects() == 1 &&
         (aContainer->GetContentFlags() & Layer::CONTENT_OPAQUE))
     {
@@ -323,7 +314,9 @@ ContainerRender(ContainerT* aContainer,
   // with the background color by drawing a rectangle of the background color
   // over the entire composited area before drawing the container contents.
   if (AsyncPanZoomController* apzc = aContainer->GetAsyncPanZoomController()) {
-    if (apzc->IsOverscrolled()) {
+    // Make sure not to do this on a "scrollinfo" layer (one with an empty visible
+    // region) because it's just a placeholder for APZ purposes.
+    if (apzc->IsOverscrolled() && !aContainer->GetVisibleRegion().IsEmpty()) {
       gfxRGBA color = aContainer->GetBackgroundColor();
       // If the background is completely transparent, there's no point in
       // drawing anything for it. Hopefully the layers behind, if any, will
@@ -436,7 +429,7 @@ ContainerRender(ContainerT* aContainer,
 
   if (aContainer->GetFrameMetrics().IsScrollable()) {
     const FrameMetrics& frame = aContainer->GetFrameMetrics();
-    LayerRect layerBounds = ParentLayerRect(frame.mCompositionBounds) * ParentLayerToLayerScale(1.0);
+    LayerRect layerBounds = frame.mCompositionBounds * ParentLayerToLayerScale(1.0);
     gfx::Rect rect(layerBounds.x, layerBounds.y, layerBounds.width, layerBounds.height);
     gfx::Rect clipRect(aClipRect.x, aClipRect.y, aClipRect.width, aClipRect.height);
     aManager->GetCompositor()->DrawDiagnostics(DiagnosticFlags::CONTAINER,

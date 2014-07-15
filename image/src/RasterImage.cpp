@@ -211,13 +211,16 @@ public:
 
     bool success = false;
     if (!dstLocked) {
+      // We need to hold a lock onto the RasterImage object itself so that
+      // it (and its associated imgFrames) aren't marked as discardable.
+      bool imgLocked = NS_SUCCEEDED(image->LockImage());
       bool srcLocked = NS_SUCCEEDED(srcFrame->LockImageData());
       srcSurface = srcFrame->GetSurface();
 
       dstLocked = NS_SUCCEEDED(dstFrame->LockImageData());
       dstSurface = dstFrame->GetSurface();
 
-      success = srcLocked && dstLocked && srcSurface && dstSurface;
+      success = imgLocked && srcLocked && dstLocked && srcSurface && dstSurface;
 
       if (success) {
         srcData = srcFrame->GetImageData();
@@ -253,6 +256,7 @@ public:
       if (DiscardingEnabled())
         dstFrame->SetDiscardable();
       success = NS_SUCCEEDED(dstFrame->UnlockImageData());
+      success = success && NS_SUCCEEDED(image->UnlockImage());
 
       dstLocked = false;
       srcData = nullptr;
@@ -3405,6 +3409,22 @@ RasterImage::DecodePool::DecodeJob::Run()
   }
 
   return NS_OK;
+}
+
+RasterImage::DecodePool::DecodeJob::~DecodeJob()
+{
+  if (gMultithreadedDecoding) {
+    // Dispatch mImage to main thread to prevent mImage from being destructed by decode thread.
+    nsCOMPtr<nsIThread> mainThread = do_GetMainThread();
+    NS_WARN_IF_FALSE(mainThread, "Couldn't get the main thread!");
+    if (mainThread) {
+      // Handle ambiguous nsISupports inheritance
+      RasterImage* rawImg = nullptr;
+      mImage.swap(rawImg);
+      DebugOnly<nsresult> rv = NS_ProxyRelease(mainThread, NS_ISUPPORTS_CAST(ImageResource*, rawImg));
+      MOZ_ASSERT(NS_SUCCEEDED(rv), "Failed to proxy release to main thread");
+    }
+  }
 }
 
 nsresult

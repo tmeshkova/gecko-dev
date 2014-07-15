@@ -399,14 +399,14 @@ WebAudioDecodeJob::AllocateBuffer()
   MOZ_ASSERT(!mOutput);
   MOZ_ASSERT(NS_IsMainThread());
 
+  AutoJSAPI jsapi;
+  JSContext* cx = jsapi.cx();
+
   // We need the global for the context so that we can enter its compartment.
-  JSObject* global = mContext->GetGlobalJSObject();
+  JS::Rooted<JSObject*> global(cx, mContext->GetGlobalJSObject());
   if (NS_WARN_IF(!global)) {
     return false;
   }
-
-  AutoJSAPI jsapi;
-  JSContext* cx = jsapi.cx();
   JSAutoCompartment ac(cx, global);
 
   // Now create the AudioBuffer
@@ -469,12 +469,24 @@ bool
 MediaBufferDecoder::EnsureThreadPoolInitialized()
 {
   if (!mThreadPool) {
-    mThreadPool = SharedThreadPool::Get(NS_LITERAL_CSTRING("MediaBufferDecoder"));
+    mThreadPool = do_CreateInstance(NS_THREADPOOL_CONTRACTID);
     if (!mThreadPool) {
       return false;
     }
+    mThreadPool->SetName(NS_LITERAL_CSTRING("MediaBufferDecoder"));
   }
   return true;
+}
+
+void
+MediaBufferDecoder::Shutdown() {
+  if (mThreadPool) {
+    // Setting threadLimit to 0 causes threads to exit when all events have
+    // been run, like nsIThreadPool::Shutdown(), but doesn't run a nested event
+    // loop nor wait until this has happened.
+    mThreadPool->SetThreadLimit(0);
+    mThreadPool = nullptr;
+  }
 }
 
 WebAudioDecodeJob::WebAudioDecodeJob(const nsACString& aContentType,

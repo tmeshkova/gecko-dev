@@ -796,11 +796,14 @@
                 seekToPosition : function(newPosition) {
                     newPosition /= 1000; // convert from ms
                     this.log("+++ seeking to " + newPosition);
-                    if (isTouchControl) {
-                      this.video.fastSeek(newPosition);
-                    } else {
-                      this.video.currentTime = newPosition;
-                    }
+#ifdef MOZ_WIDGET_GONK
+                    // We use fastSeek() on B2G, and an accurate (but slower)
+                    // seek on other platforms (that are likely to be higher
+                    // perf).
+                    this.video.fastSeek(newPosition);
+#else
+                    this.video.currentTime = newPosition;
+#endif
                 },
 
                 setVolume : function(newVolume) {
@@ -1671,27 +1674,19 @@
             },
 
             isVideoCasting : function () {
-              let unwrappedVideo = XPCNativeWrapper.unwrap(this.video);
-              if (unwrappedVideo.mozIsCasting)
+              if (this.video.mozIsCasting)
                 return true;
               return false;
             },
 
             updateCasting : function (eventDetail) {
-              let unwrappedVideo = XPCNativeWrapper.unwrap(this.video);
               let castingData = JSON.parse(eventDetail);
               if ("allow" in castingData) {
-                if (castingData.allow)
-                  unwrappedVideo.mozAllowCasting = true;
-                else
-                  delete unwrappedVideo.mozAllowCasting;
+                this.video.mozAllowCasting = !!castingData.allow;
               }
 
               if ("active" in castingData) {
-                if (castingData.active)
-                  unwrappedVideo.mozIsCasting = true;
-                else
-                  delete unwrappedVideo.mozIsCasting;
+                this.video.mozIsCasting = !!castingData.active;
               }
               this.setCastButtonState();
             },
@@ -1701,13 +1696,12 @@
             },
 
             setCastButtonState : function () {
-              let unwrappedVideo = XPCNativeWrapper.unwrap(this.video);
-              if (this.isAudioOnly || !unwrappedVideo.mozAllowCasting) {
+              if (this.isAudioOnly || !this.video.mozAllowCasting) {
                 this.castingButton.hidden = true;
                 return;
               }
 
-              if (unwrappedVideo.mozIsCasting) {
+              if (this.video.mozIsCasting) {
                 this.castingButton.setAttribute("active", "true");
               } else {
                 this.castingButton.removeAttribute("active");

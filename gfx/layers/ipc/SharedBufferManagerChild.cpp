@@ -37,7 +37,6 @@ SharedBufferManagerChild::SharedBufferManagerChild()
   : mBufferMutex("BufferMonitor")
 #endif
 {
-
 }
 
 static bool
@@ -154,8 +153,9 @@ bool
 SharedBufferManagerChild::StartUpOnThread(base::Thread* aThread)
 {
   NS_ABORT_IF_FALSE(aThread, "SharedBufferManager needs a thread.");
-  if (sSharedBufferManagerChildSingleton != nullptr)
+  if (sSharedBufferManagerChildSingleton != nullptr) {
     return false;
+  }
 
   sSharedBufferManagerChildThread = aThread;
   if (!aThread->IsRunning()) {
@@ -321,7 +321,7 @@ bool SharedBufferManagerChild::RecvDropGrallocBuffer(const mozilla::layers::Mayb
 {
 #ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
   NS_ASSERTION(handle.type() == mozilla::layers::MaybeMagicGrallocBufferHandle::TGrallocBufferRef, "shouldn't go this way");
-  int bufferKey = handle.get_GrallocBufferRef().mKey;
+  int64_t bufferKey = handle.get_GrallocBufferRef().mKey;
 
   {
     MutexAutoLock lock(mBufferMutex);
@@ -334,14 +334,27 @@ bool SharedBufferManagerChild::RecvDropGrallocBuffer(const mozilla::layers::Mayb
 
 #ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
 android::sp<android::GraphicBuffer>
-SharedBufferManagerChild::GetGraphicBuffer(int key)
+SharedBufferManagerChild::GetGraphicBuffer(int64_t key)
 {
   MutexAutoLock lock(mBufferMutex);
-  if (mBuffers.count(key) == 0)
+  if (mBuffers.count(key) == 0) {
+    printf_stderr("SharedBufferManagerChild::GetGraphicBuffer -- invalid key");
     return nullptr;
+  }
   return mBuffers[key];
 }
 #endif
+
+bool
+SharedBufferManagerChild::IsValidKey(int64_t key)
+{
+#ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
+  if (mBuffers.count(key) != 1) {
+    return false;
+  }
+#endif
+  return true;
+}
 
 } /* namespace layers */
 } /* namespace mozilla */

@@ -325,7 +325,7 @@ JitRuntime::generateEnterJIT(JSContext *cx, EnterJitType type)
     // We're using a load-double here.  In order for that to work,
     // the data needs to be stored in two consecutive registers,
     // make sure this is the case
-    //   ASSERT(JSReturnReg_Type.code() == JSReturnReg_Data.code()+1);
+    //   JS_ASSERT(JSReturnReg_Type.code() == JSReturnReg_Data.code()+1);
     //   aasm->as_extdtr(IsStore, 64, true, Offset,
     //                   JSReturnReg_Data, EDtrAddr(r5, EDtrOffImm(0)));
 
@@ -615,10 +615,14 @@ JitRuntime::generateBailoutTable(JSContext *cx, uint32_t frameClass)
 {
     MacroAssembler masm(cx);
 
-    Label bailout;
-    for (size_t i = 0; i < BAILOUT_TABLE_SIZE; i++)
-        masm.ma_bl(&bailout);
-    masm.bind(&bailout);
+    {
+        // Emit the table without any pools being inserted.
+        Label bailout;
+        AutoForbidPools afp(&masm);
+        for (size_t i = 0; i < BAILOUT_TABLE_SIZE; i++)
+            masm.ma_bl(&bailout);
+        masm.bind(&bailout);
+    }
 
     GenerateBailoutThunk(cx, masm, frameClass);
 

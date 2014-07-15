@@ -229,9 +229,12 @@ TextureHostOGL::SetAcquireFence(const android::sp<android::Fence>& aAcquireFence
 }
 
 android::sp<android::Fence>
-TextureHostOGL::GetAcquireFence()
+TextureHostOGL::GetAndResetAcquireFence()
 {
-  return mAcquireFence;
+  android::sp<android::Fence> fence = mAcquireFence;
+  // Reset current AcquireFence.
+  mAcquireFence = android::Fence::NO_FENCE;
+  return fence;
 }
 
 void
@@ -385,8 +388,11 @@ TextureImageTextureSourceOGL::GetSize() const
 gfx::SurfaceFormat
 TextureImageTextureSourceOGL::GetFormat() const
 {
-  MOZ_ASSERT(mTexImage);
-  return mTexImage->GetTextureFormat();
+  if (mTexImage) {
+    return mTexImage->GetTextureFormat();
+  }
+  NS_WARNING("Trying to query the format of an empty TextureSource.");
+  return gfx::SurfaceFormat::UNKNOWN;
 }
 
 nsIntRect TextureImageTextureSourceOGL::GetTileRect()

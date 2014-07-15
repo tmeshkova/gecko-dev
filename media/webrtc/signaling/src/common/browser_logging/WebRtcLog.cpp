@@ -28,6 +28,15 @@ static PRLogModuleInfo* GetWebRtcTraceLog()
   return sLog;
 }
 
+static PRLogModuleInfo* GetWebRtcAECLog()
+{
+  static PRLogModuleInfo *sLog;
+  if (!sLog) {
+    sLog = PR_NewLogModule("AEC");
+  }
+  return sLog;
+}
+
 class WebRtcTraceCallback: public webrtc::TraceCallback
 {
 public:
@@ -42,11 +51,13 @@ public:
 static WebRtcTraceCallback gWebRtcCallback;
 
 #ifdef MOZILLA_INTERNAL_API
-void GetWebRtcLogPrefs(uint32_t *aTraceMask, nsACString* aLogFile, bool *aMultiLog)
+void GetWebRtcLogPrefs(uint32_t *aTraceMask, nsACString* aLogFile, nsACString *aAECLogDir, bool *aMultiLog)
 {
   *aMultiLog = mozilla::Preferences::GetBool("media.webrtc.debug.multi_log");
   *aTraceMask = mozilla::Preferences::GetUint("media.webrtc.debug.trace_mask");
   mozilla::Preferences::GetCString("media.webrtc.debug.log_file", aLogFile);
+  mozilla::Preferences::GetCString("media.webrtc.debug.aec_log_dir", aAECLogDir);
+  webrtc::Trace::set_aec_debug_size(mozilla::Preferences::GetUint("media.webrtc.debug.aec_dump_max_size"));
 }
 #endif
 
@@ -69,46 +80,63 @@ void CheckOverrides(uint32_t *aTraceMask, nsACString *aLogFile, bool *aMultiLog)
     *aTraceMask = log_info->level;
   }
 
+  log_info = GetWebRtcAECLog();
+  if (log_info && (log_info->level != 0)) {
+    webrtc::Trace::set_aec_debug(true);
+  }
+
   const char *file_name = PR_GetEnv("WEBRTC_TRACE_FILE");
   if (file_name) {
     aLogFile->Assign(file_name);
   }
 }
 
-void ConfigWebRtcLog(uint32_t trace_mask, nsCString &aLogFile, bool multi_log)
+void ConfigWebRtcLog(uint32_t trace_mask, nsCString &aLogFile, nsCString &aAECLogDir, bool multi_log)
 {
-  if (gWebRtcTraceLoggingOn || trace_mask == 0) {
+  if (gWebRtcTraceLoggingOn) {
     return;
   }
 
-  if (aLogFile.IsEmpty()) {
+  nsCString logFile;
+  nsCString aecLogDir;
 #if defined(XP_WIN)
-    // Use the Windows TEMP environment variable as part of the default location.
-    const char *temp_dir = PR_GetEnv("TEMP");
-    if (!temp_dir) {
-      aLogFile.Assign(default_log);
-    } else {
-      aLogFile.Assign(temp_dir);
-      aLogFile.Append('/');
-      aLogFile.Append(default_log);
-    }
+  // Use the Windows TEMP environment variable as part of the default location.
+  const char *temp_dir = PR_GetEnv("TEMP");
+  if (!temp_dir) {
+    logFile.Assign(default_log);
+  } else {
+    logFile.Assign(temp_dir);
+    logFile.Append('/');
+    aecLogDir = logFile;
+    logFile.Append(default_log);
+  }
 #elif defined(ANDROID)
-    // Special case: use callback to pipe to NSPR logging.
-    aLogFile.Assign("nspr");
+  // Special case: use callback to pipe to NSPR logging.
+  logFile.Assign("nspr");
+  // for AEC, force the user to specify a directory
+  aecLogDir.Assign("/dev/null");
 #else
-    // UNIX-like place for the others
-    aLogFile.Assign("/tmp/");
-    aLogFile.Append(default_log);
+  // UNIX-like place for the others
+  logFile.Assign("/tmp/");
+  aecLogDir = logFile;
+  logFile.Append(default_log);
 #endif
+  if (aLogFile.IsEmpty()) {
+    aLogFile = logFile;
+  }
+  if (aAECLogDir.IsEmpty()) {
+    aAECLogDir = aecLogDir;
   }
 
   webrtc::Trace::set_level_filter(trace_mask);
-  if (aLogFile.EqualsLiteral("nspr")) {
-    webrtc::Trace::SetTraceCallback(&gWebRtcCallback);
-  } else {
-    webrtc::Trace::SetTraceFile(aLogFile.get(), multi_log);
+  webrtc::Trace::set_aec_debug_filename(aAECLogDir.get());
+  if (trace_mask != 0) {
+    if (aLogFile.EqualsLiteral("nspr")) {
+      webrtc::Trace::SetTraceCallback(&gWebRtcCallback);
+    } else {
+      webrtc::Trace::SetTraceFile(aLogFile.get(), multi_log);
+    }
   }
-
   return;
 }
 
@@ -118,7 +146,7 @@ void StartWebRtcLog(uint32_t log_level)
     return;
   }
 
-  if (log_level == 0) { 
+  if (log_level == 0) {
     if (gWebRtcTraceLoggingOn) {
       gWebRtcTraceLoggingOn = false;
       webrtc::Trace::set_level_filter(webrtc::kTraceNone);
@@ -129,9 +157,10 @@ void StartWebRtcLog(uint32_t log_level)
   uint32_t trace_mask = 0;
   bool multi_log = false;
   nsAutoCString log_file;
+  nsAutoCString aec_log_dir;
 
 #ifdef MOZILLA_INTERNAL_API
-  GetWebRtcLogPrefs(&trace_mask, &log_file, &multi_log);
+  GetWebRtcLogPrefs(&trace_mask, &log_file, &aec_log_dir, &multi_log);
 #endif
   CheckOverrides(&trace_mask, &log_file, &multi_log);
 
@@ -139,7 +168,7 @@ void StartWebRtcLog(uint32_t log_level)
     trace_mask = log_level;
   }
 
-  ConfigWebRtcLog(trace_mask, log_file, multi_log);
+  ConfigWebRtcLog(trace_mask, log_file, aec_log_dir, multi_log);
   return;
 
 }
@@ -153,12 +182,12 @@ void EnableWebRtcLog()
   uint32_t trace_mask = 0;
   bool multi_log = false;
   nsAutoCString log_file;
+  nsAutoCString aec_log_dir;
 
 #ifdef MOZILLA_INTERNAL_API
-  GetWebRtcLogPrefs(&trace_mask, &log_file, &multi_log);
+  GetWebRtcLogPrefs(&trace_mask, &log_file, &aec_log_dir, &multi_log);
 #endif
   CheckOverrides(&trace_mask, &log_file, &multi_log);
-  ConfigWebRtcLog(trace_mask, log_file, multi_log);
+  ConfigWebRtcLog(trace_mask, log_file, aec_log_dir, multi_log);
   return;
 }
-

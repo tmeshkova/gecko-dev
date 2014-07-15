@@ -111,6 +111,7 @@ public:
     CONSUMED,
     NOT_CONSUMED
   };
+
   /**
    * Notify that the stream is hooked up and we'd like to start or stop receiving
    * data on it. Only fires on SourceMediaStreams.
@@ -157,16 +158,17 @@ public:
    */
   virtual void NotifyOutput(MediaStreamGraph* aGraph, GraphTime aCurrentTime) {}
 
-  /**
-   * Notify that the stream finished.
-   */
-  virtual void NotifyFinished(MediaStreamGraph* aGraph) {}
+  enum MediaStreamGraphEvent {
+    EVENT_FINISHED,
+    EVENT_REMOVED,
+    EVENT_HAS_DIRECT_LISTENERS, // transition from no direct listeners
+    EVENT_HAS_NO_DIRECT_LISTENERS,  // transition to no direct listeners
+  };
 
   /**
-   * Notify that your listener has been removed, either due to RemoveListener(),
-   * or due to the stream being destroyed.  You will get no further notifications.
+   * Notify that an event has occurred on the Stream
    */
-  virtual void NotifyRemoved(MediaStreamGraph* aGraph) {}
+  virtual void NotifyEvent(MediaStreamGraph* aGraph, MediaStreamGraphEvent aEvent) {}
 
   enum {
     TRACK_EVENT_CREATED = 0x01,
@@ -381,7 +383,8 @@ public:
    * updates that were sent from the graph thread or will be sent before the
    * graph thread receives the next graph update.
    *
-   * If the graph has been shutdown or destroyed, or if it is non-realtime
+   * If the graph has been shut down or destroyed, then the runnable will be
+   * dispatched to the event queue immediately.  If the graph is non-realtime
    * and has not started, then the runnable will be run
    * synchronously/immediately.  (There are no pending updates in these
    * situations.)

@@ -38,7 +38,7 @@
                           oncommand="document.getBindingParent(this).translate();"/>
               <xul:button class="translate-infobar-element"
                           label="&translation.notNow.button;" anonid="notNow"
-                          oncommand="document.getBindingParent(this).close();"/>
+                          oncommand="document.getBindingParent(this).closeCommand();"/>
             </xul:hbox>
 
             <!-- translating -->
@@ -85,6 +85,12 @@
                           oncommand="document.getBindingParent(this).translate();"/>
             </xul:hbox>
 
+            <!-- unavailable -->
+            <xul:vbox class="translation-unavailable" pack="center">
+              <xul:label class="translate-infobar-element"
+                         value="&translation.serviceUnavailable.label;"/>
+            </xul:vbox>
+
           </xul:deck>
           <xul:spacer flex="1"/>
 
@@ -92,7 +98,9 @@
                       class="translate-infobar-element options-menu-button"
                       anonid="options"
                       label="&translation.options.menu;">
-            <xul:menupopup onpopupshowing="document.getBindingParent(this).optionsShowing();">
+            <xul:menupopup class="translation-menupopup cui-widget-panel cui-widget-panelview
+                                  cui-widget-panelWithFooter PanelUI-subView"
+                           onpopupshowing="document.getBindingParent(this).optionsShowing();">
               <xul:menuitem anonid="neverForLanguage"
                             oncommand="document.getBindingParent(this).neverForLanguage();"/>
               <xul:menuitem anonid="neverForSite"
@@ -103,15 +111,22 @@
               <xul:menuitem oncommand="openPreferences('paneContent');"
                             label="&translation.options.preferences.label;"
                             accesskey="&translation.options.preferences.accesskey;"/>
+              <xul:menuitem class="translation-attribution subviewbutton panel-subview-footer"
+                            oncommand="document.getBindingParent(this).openProviderAttribution();">
+                <xul:label anonid="beforeLogo"/>
+                <xul:image src="chrome://browser/content/microsoft-translator-attribution.png"
+                           aria-label="Microsoft Translator"/>
+              </xul:menuitem>
             </xul:menupopup>
           </xul:button>
 
         </xul:hbox>
         <xul:toolbarbutton ondblclick="event.stopPropagation();"
+                           anonid="closeButton"
                            class="messageCloseButton close-icon tabbable"
                            xbl:inherits="hidden=hideclose"
                            tooltiptext="&closeNotification.tooltip;"
-                           oncommand="document.getBindingParent(this).close();"/>
+                           oncommand="document.getBindingParent(this).closeCommand();"/>
       </xul:hbox>
     </content>
     <implementation>
@@ -127,12 +142,15 @@
 
           let stateName;
           for (let name of ["OFFER", "TRANSLATING", "TRANSLATED", "ERROR"]) {
-            if (this.translation["STATE_" + name] == val) {
+            if (Translation["STATE_" + name] == val) {
               stateName = name.toLowerCase();
               break;
             }
           }
           this.setAttribute("state", stateName);
+
+          if (val == Translation.STATE_TRANSLATED)
+            this._handleButtonHiding();
 
           deck.selectedIndex = val;
           ]]>
@@ -172,8 +190,6 @@
 
             if (aTranslation.state)
               this.state = aTranslation.state;
-
-            this._handleButtonHiding(aTranslation.originalShown);
           ]]>
         </body>
       </method>
@@ -188,26 +204,35 @@
       <method name="translate">
         <body>
           <![CDATA[
-            if (this.state == this.translation.STATE_OFFER) {
+            if (this.state == Translation.STATE_OFFER) {
               this._getAnonElt("fromLanguage").value =
                 this._getAnonElt("detectedLanguage").value;
               this._getAnonElt("toLanguage").value =
                 Translation.defaultTargetLanguage;
             }
 
-            this._handleButtonHiding(false);
             this.translation.translate(this._getAnonElt("fromLanguage").value,
                                        this._getAnonElt("toLanguage").value);
           ]]>
         </body>
       </method>
 
-      <method name="_handleButtonHiding">
-        <parameter name="aOriginalShown"/>
+      <!-- To be called when the infobar should be closed per user's wish (e.g.
+           by clicking the notification's close button -->
+      <method name="closeCommand">
         <body>
           <![CDATA[
-            this._getAnonElt("showOriginal").hidden = aOriginalShown;
-            this._getAnonElt("showTranslation").hidden = !aOriginalShown;
+            this.close();
+            this.translation.infobarClosed();
+          ]]>
+        </body>
+      </method>
+      <method name="_handleButtonHiding">
+        <body>
+          <![CDATA[
+            let originalShown = this.translation.originalShown;
+            this._getAnonElt("showOriginal").hidden = originalShown;
+            this._getAnonElt("showTranslation").hidden = !originalShown;
           ]]>
         </body>
       </method>
@@ -215,8 +240,8 @@
       <method name="showOriginal">
         <body>
           <![CDATA[
-            this._handleButtonHiding(true);
             this.translation.showOriginalContent();
+            this._handleButtonHiding();
           ]]>
         </body>
       </method>
@@ -224,8 +249,8 @@
       <method name="showTranslation">
         <body>
           <![CDATA[
-            this._handleButtonHiding(false);
             this.translation.showTranslatedContent();
+            this._handleButtonHiding();
           ]]>
         </body>
       </method>
@@ -235,7 +260,7 @@
           <![CDATA[
             // Get the source language name.
             let lang;
-            if (this.state == this.translation.STATE_OFFER)
+            if (this.state == Translation.STATE_OFFER)
               lang = this._getAnonElt("detectedLanguage").value;
             else
               lang = this._getAnonElt("fromLanguage").value;
@@ -271,6 +296,9 @@
             item = this._getAnonElt("neverForSite");
             item.disabled =
               perms.testExactPermission(uri, "translate") == perms.DENY_ACTION;
+
+            this._getAnonElt("beforeLogo").textContent =
+              Translation.getAttributionString();
           ]]>
         </body>
       </method>
@@ -287,7 +315,7 @@
 
             Services.prefs.setCharPref(kPrefName, val);
 
-            this.close();
+            this.closeCommand();
           ]]>
         </body>
       </method>
@@ -299,7 +327,15 @@
             let perms = Services.perms;
             perms.add(uri, "translate", perms.DENY_ACTION);
 
-            this.close();
+            this.closeCommand();
+          ]]>
+        </body>
+      </method>
+
+      <method name="openProviderAttribution">
+        <body>
+          <![CDATA[
+            Translation.openProviderAttribution();
           ]]>
         </body>
       </method>
