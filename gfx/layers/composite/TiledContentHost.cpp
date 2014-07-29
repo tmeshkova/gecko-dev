@@ -238,6 +238,42 @@ TiledContentHost::Attach(Layer* aLayer,
 }
 
 void
+TiledContentHost::Detach(Layer* aLayer,
+                         AttachFlags aFlags /* = NO_FLAGS */)
+{
+  if (!mKeepAttached || aLayer == mLayer || aFlags & FORCE_DETACH) {
+
+    // Unlock any buffers that may still be locked. If we have a pending upload,
+    // we will need to unlock the buffer that was about to be uploaded.
+    // If a buffer that was being composited had double-buffered tiles, we will
+    // need to unlock that buffer too.
+    if (mPendingUpload) {
+      mTiledBuffer.ReadUnlock();
+      if (mOldTiledBuffer.HasDoubleBufferedTiles()) {
+        mOldTiledBuffer.ReadUnlock();
+      }
+    } else if (mTiledBuffer.HasDoubleBufferedTiles()) {
+      mTiledBuffer.ReadUnlock();
+    }
+
+    if (mPendingLowPrecisionUpload) {
+      mLowPrecisionTiledBuffer.ReadUnlock();
+      if (mOldLowPrecisionTiledBuffer.HasDoubleBufferedTiles()) {
+        mOldLowPrecisionTiledBuffer.ReadUnlock();
+      }
+    } else if (mLowPrecisionTiledBuffer.HasDoubleBufferedTiles()) {
+      mLowPrecisionTiledBuffer.ReadUnlock();
+    }
+
+    mTiledBuffer = TiledLayerBufferComposite();
+    mLowPrecisionTiledBuffer = TiledLayerBufferComposite();
+    mOldTiledBuffer = TiledLayerBufferComposite();
+    mOldLowPrecisionTiledBuffer = TiledLayerBufferComposite();
+  }
+  CompositableHost::Detach(aLayer,aFlags);
+}
+
+void
 TiledContentHost::UseTiledLayerBuffer(ISurfaceAllocator* aAllocator,
                                       const SurfaceDescriptorTiles& aTiledDescriptor)
 {
@@ -305,8 +341,12 @@ TiledContentHost::Composite(EffectChain& aEffectChain,
     }
   }
 
-  RenderLayerBuffer(mLowPrecisionTiledBuffer, aEffectChain, aOpacity, aFilter,
-                    aClipRect, aLayerProperties->mVisibleRegion, aTransform);
+  // Render the low and high precision buffers. Reduce the opacity of the
+  // low-precision buffer to make it a little more subtle and less jarring.
+  // In particular, text rendered at low-resolution and scaled tends to look
+  // pretty heavy and this helps mitigate that.
+  RenderLayerBuffer(mLowPrecisionTiledBuffer, aEffectChain, aOpacity * gfxPrefs::LowPrecisionOpacity(),
+                    aFilter, aClipRect, aLayerProperties->mVisibleRegion, aTransform);
   RenderLayerBuffer(mTiledBuffer, aEffectChain, aOpacity, aFilter,
                     aClipRect, aLayerProperties->mVisibleRegion, aTransform);
 

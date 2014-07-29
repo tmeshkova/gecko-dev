@@ -403,7 +403,9 @@ MediaStreamGraphImpl::UpdateCurrentTime()
     // Calculate blocked time and fire Blocked/Unblocked events
     GraphTime blockedTime = 0;
     GraphTime t = prevCurrentTime;
-    while (t < nextCurrentTime) {
+    // include |nextCurrentTime| to ensure NotifyBlockingChanged() is called
+    // before NotifyEvent(this, EVENT_FINISHED) when |nextCurrentTime == stream end time|
+    while (t <= nextCurrentTime) {
       GraphTime end;
       bool blocked = stream->mBlocked.GetAt(t, &end);
       if (blocked) {
@@ -458,12 +460,14 @@ MediaStreamGraphImpl::UpdateCurrentTime()
     // out.
     if (mCurrentTime >=
           stream->StreamTimeToGraphTime(stream->GetStreamBuffer().GetAllTracksEnd()))  {
+      NS_WARN_IF_FALSE(stream->mNotifiedBlocked,
+        "Should've notified blocked=true for a fully finished stream");
       stream->mNotifiedFinished = true;
       stream->mLastPlayedVideoFrame.SetNull();
       SetStreamOrderDirty();
       for (uint32_t j = 0; j < stream->mListeners.Length(); ++j) {
         MediaStreamListener* l = stream->mListeners[j];
-        l->NotifyFinished(this);
+        l->NotifyEvent(this, MediaStreamListener::EVENT_FINISHED);
       }
     }
   }
@@ -695,7 +699,7 @@ MediaStreamGraphImpl::RecomputeBlocking(GraphTime aEndBlockingDecisions)
                               this, MediaTimeToSeconds(mStateComputedTime),
                               MediaTimeToSeconds(aEndBlockingDecisions)));
   mStateComputedTime = aEndBlockingDecisions;
- 
+
   if (blockingDecisionsWillChange) {
     // Make sure we wake up to notify listeners about these changes.
     EnsureNextIteration();
@@ -1715,6 +1719,11 @@ MediaStreamGraphImpl::RunInStableState()
   for (uint32_t i = 0; i < controlMessagesToRunDuringShutdown.Length(); ++i) {
     controlMessagesToRunDuringShutdown[i]->RunDuringShutdown();
   }
+
+#ifdef DEBUG
+  mCanRunMessagesSynchronously = mDetectedNotRunning &&
+    mLifecycleState >= LIFECYCLE_WAITING_FOR_THREAD_SHUTDOWN;
+#endif
 }
 
 static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
@@ -1764,7 +1773,14 @@ MediaStreamGraphImpl::AppendMessage(ControlMessage* aMessage)
     // this message.
     // This should only happen during forced shutdown, or after a non-realtime
     // graph has finished processing.
+#ifdef DEBUG
+    MOZ_ASSERT(mCanRunMessagesSynchronously);
+    mCanRunMessagesSynchronously = false;
+#endif
     aMessage->RunDuringShutdown();
+#ifdef DEBUG
+    mCanRunMessagesSynchronously = true;
+#endif
     delete aMessage;
     if (IsEmpty() &&
         mLifecycleState >= LIFECYCLE_WAITING_FOR_STREAM_DESTRUCTION) {
@@ -1932,7 +1948,7 @@ MediaStream::RemoveAllListenersImpl()
 {
   for (int32_t i = mListeners.Length() - 1; i >= 0; --i) {
     nsRefPtr<MediaStreamListener> listener = mListeners[i].forget();
-    listener->NotifyRemoved(GraphImpl());
+    listener->NotifyEvent(GraphImpl(), MediaStreamListener::EVENT_REMOVED);
   }
   mListeners.Clear();
 }
@@ -2110,7 +2126,7 @@ MediaStream::AddListenerImpl(already_AddRefed<MediaStreamListener> aListener)
   listener->NotifyBlockingChanged(GraphImpl(),
     mNotifiedBlocked ? MediaStreamListener::BLOCKED : MediaStreamListener::UNBLOCKED);
   if (mNotifiedFinished) {
-    listener->NotifyFinished(GraphImpl());
+    listener->NotifyEvent(GraphImpl(), MediaStreamListener::EVENT_FINISHED);
   }
   if (mNotifiedHasCurrentData) {
     listener->NotifyHasCurrentData(GraphImpl());
@@ -2135,11 +2151,11 @@ MediaStream::AddListener(MediaStreamListener* aListener)
 
 void
 MediaStream::RemoveListenerImpl(MediaStreamListener* aListener)
-{ 
+{
   // wouldn't need this if we could do it in the opposite order
   nsRefPtr<MediaStreamListener> listener(aListener);
   mListeners.RemoveElement(aListener);
-  listener->NotifyRemoved(GraphImpl());
+  listener->NotifyEvent(GraphImpl(), MediaStreamListener::EVENT_REMOVED);
 }
 
 void
@@ -2187,7 +2203,10 @@ MediaStream::RunAfterPendingUpdates(nsRefPtr<nsIRunnable> aRunnable)
     }
     virtual void RunDuringShutdown() MOZ_OVERRIDE
     {
-      mRunnable->Run();
+      // Don't run mRunnable now as it may call AppendMessage() which would
+      // assume that there are no remaining controlMessagesToRunDuringShutdown.
+      MOZ_ASSERT(NS_IsMainThread());
+      NS_DispatchToCurrentThread(mRunnable);
     }
   private:
     nsRefPtr<nsIRunnable> mRunnable;
@@ -2307,7 +2326,7 @@ SourceMediaStream::ResampleAudioToGraphSampleRate(TrackData* aTrackData, MediaSe
 #endif
     }
   }
-  segment->ResampleChunks(aTrackData->mResampler);
+  segment->ResampleChunks(aTrackData->mResampler, aTrackData->mInputRate, GraphImpl()->AudioSampleRate());
 }
 
 bool
@@ -2363,15 +2382,37 @@ SourceMediaStream::NotifyDirectConsumers(TrackData *aTrack,
 void
 SourceMediaStream::AddDirectListener(MediaStreamDirectListener* aListener)
 {
-  MutexAutoLock lock(mMutex);
-  mDirectListeners.AppendElement(aListener);
+  bool wasEmpty;
+  {
+    MutexAutoLock lock(mMutex);
+    wasEmpty = mDirectListeners.IsEmpty();
+    mDirectListeners.AppendElement(aListener);
+  }
+
+  if (wasEmpty) {
+    for (uint32_t j = 0; j < mListeners.Length(); ++j) {
+      MediaStreamListener* l = mListeners[j];
+      l->NotifyEvent(GraphImpl(), MediaStreamListener::EVENT_HAS_DIRECT_LISTENERS);
+    }
+  }
 }
 
 void
 SourceMediaStream::RemoveDirectListener(MediaStreamDirectListener* aListener)
 {
-  MutexAutoLock lock(mMutex);
-  mDirectListeners.RemoveElement(aListener);
+  bool isEmpty;
+  {
+    MutexAutoLock lock(mMutex);
+    mDirectListeners.RemoveElement(aListener);
+    isEmpty = mDirectListeners.IsEmpty();
+  }
+
+  if (isEmpty) {
+    for (uint32_t j = 0; j < mListeners.Length(); ++j) {
+      MediaStreamListener* l = mListeners[j];
+      l->NotifyEvent(GraphImpl(), MediaStreamListener::EVENT_HAS_NO_DIRECT_LISTENERS);
+    }
+  }
 }
 
 bool
@@ -2451,7 +2492,7 @@ SourceMediaStream::EndAllTrackAndFinish()
     data->mCommands |= TRACK_END;
   }
   FinishWithLockHeld();
-  // we will call NotifyFinished() to let GetUserMedia know
+  // we will call NotifyEvent() to let GetUserMedia know
 }
 
 TrackTicks
@@ -2667,6 +2708,9 @@ MediaStreamGraphImpl::MediaStreamGraphImpl(bool aRealtime, TrackRate aSampleRate
   , mSelfRef(MOZ_THIS_IN_INITIALIZER_LIST())
   , mAudioStreamSizes()
   , mNeedsMemoryReport(false)
+#ifdef DEBUG
+  , mCanRunMessagesSynchronously(false)
+#endif
 {
 #ifdef PR_LOGGING
   if (!gMediaStreamGraphLog) {
@@ -2782,9 +2826,15 @@ MediaStreamGraphImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
       EnsureImmediateWakeUpLocked(monitorLock);
     }
 
-    // Wait for the report to complete.
+    if (mLifecycleState >= LIFECYCLE_WAITING_FOR_THREAD_SHUTDOWN) {
+      // Shutting down, nothing to report.
+      return NS_OK;
+    }
+
+    // Wait for up to one second for the report to complete.
     nsresult rv;
-    while ((rv = memoryReportLock.Wait()) != NS_OK) {
+    const PRIntervalTime kMaxWait = PR_SecondsToInterval(1);
+    while ((rv = memoryReportLock.Wait(kMaxWait)) != NS_OK) {
       if (PR_GetError() != PR_PENDING_INTERRUPT_ERROR) {
         return rv;
       }

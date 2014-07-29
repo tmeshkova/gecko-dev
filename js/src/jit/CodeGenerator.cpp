@@ -3210,19 +3210,9 @@ struct ScriptCountBlockState
 
     Sprinter printer;
 
-    uint32_t instructionBytes;
-    uint32_t spillBytes;
-
-    // Pointer to instructionBytes, spillBytes, or nullptr, depending on the
-    // last instruction processed.
-    uint32_t *last;
-    uint32_t lastLength;
-
   public:
     ScriptCountBlockState(IonBlockCounts *block, MacroAssembler *masm)
-      : block(*block), masm(*masm),
-        printer(GetIonContext()->cx),
-        instructionBytes(0), spillBytes(0), last(nullptr), lastLength(0)
+      : block(*block), masm(*masm), printer(GetIonContext()->cx)
     {
     }
 
@@ -3244,11 +3234,6 @@ struct ScriptCountBlockState
 
     void visitInstruction(LInstruction *ins)
     {
-        if (last)
-            *last += masm.size() - lastLength;
-        lastLength = masm.size();
-        last = ins->isMoveGroup() ? &spillBytes : &instructionBytes;
-
         // Prefix stream of assembly instructions with their LIR instruction
         // name and any associated high level info.
         if (const char *extra = ins->extraName())
@@ -3261,12 +3246,7 @@ struct ScriptCountBlockState
     {
         masm.setPrinter(nullptr);
 
-        if (last)
-            *last += masm.size() - lastLength;
-
         block.setCode(printer.string());
-        block.setInstructionBytes(instructionBytes);
-        block.setSpillBytes(spillBytes);
     }
 };
 
@@ -6817,7 +6797,7 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
         ionScript->setHasUncompiledCallTarget();
 
     invalidateEpilogueData_.fixup(&masm);
-    Assembler::patchDataWithValueCheck(CodeLocationLabel(code, invalidateEpilogueData_),
+    Assembler::PatchDataWithValueCheck(CodeLocationLabel(code, invalidateEpilogueData_),
                                        ImmPtr(ionScript),
                                        ImmPtr((void*)-1));
 
@@ -6839,7 +6819,7 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
 
     for (size_t i = 0; i < ionScriptLabels_.length(); i++) {
         ionScriptLabels_[i].fixup(&masm);
-        Assembler::patchDataWithValueCheck(CodeLocationLabel(code, ionScriptLabels_[i]),
+        Assembler::PatchDataWithValueCheck(CodeLocationLabel(code, ionScriptLabels_[i]),
                                            ImmPtr(ionScript),
                                            ImmPtr((void*)-1));
     }
@@ -6877,14 +6857,14 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
     TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
     for (uint32_t i = 0; i < patchableTraceLoggers_.length(); i++) {
         patchableTraceLoggers_[i].fixup(&masm);
-        Assembler::patchDataWithValueCheck(CodeLocationLabel(code, patchableTraceLoggers_[i]),
+        Assembler::PatchDataWithValueCheck(CodeLocationLabel(code, patchableTraceLoggers_[i]),
                                            ImmPtr(logger),
                                            ImmPtr(nullptr));
     }
     uint32_t scriptId = TraceLogCreateTextId(logger, script);
     for (uint32_t i = 0; i < patchableTLScripts_.length(); i++) {
         patchableTLScripts_[i].fixup(&masm);
-        Assembler::patchDataWithValueCheck(CodeLocationLabel(code, patchableTLScripts_[i]),
+        Assembler::PatchDataWithValueCheck(CodeLocationLabel(code, patchableTLScripts_[i]),
                                            ImmPtr((void *) uintptr_t(scriptId)),
                                            ImmPtr((void *)0));
     }
@@ -8657,7 +8637,7 @@ CodeGenerator::visitAsmJSCall(LAsmJSCall *ins)
     MAsmJSCall *mir = ins->mir();
 
 #if defined(JS_CODEGEN_ARM)
-    if (!useHardFpABI() && mir->callee().which() == MAsmJSCall::Callee::Builtin) {
+    if (!UseHardFpABI() && mir->callee().which() == MAsmJSCall::Callee::Builtin) {
         for (unsigned i = 0, e = ins->numOperands(); i < e; i++) {
             LAllocation *a = ins->getOperand(i);
             if (a->isFloatReg()) {

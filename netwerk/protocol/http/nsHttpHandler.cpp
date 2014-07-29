@@ -142,7 +142,8 @@ nsHttpHandler::nsHttpHandler()
     , mProxyPipelining(true)
     , mIdleTimeout(PR_SecondsToInterval(10))
     , mSpdyTimeout(PR_SecondsToInterval(180))
-    , mResponseTimeout(PR_SecondsToInterval(600))
+    , mResponseTimeout(300)
+    , mResponseTimeoutEnabled(false)
     , mMaxRequestAttempts(10)
     , mMaxRequestDelay(10)
     , mIdleSynTimeout(250)
@@ -347,6 +348,7 @@ nsHttpHandler::Init()
         mObserverService->AddObserver(this, "net:prune-dead-connections", true);
         mObserverService->AddObserver(this, "net:failed-to-process-uri-content", true);
         mObserverService->AddObserver(this, "last-pb-context-exited", true);
+        mObserverService->AddObserver(this, "browser:purge-session-history", true);
     }
 
     MakeNewRequestTokenBucket();
@@ -1456,6 +1458,10 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
                                                       1, kMaxTCPKeepIdle);
     }
 
+    // Enable HTTP response timeout if TCP Keepalives are disabled.
+    mResponseTimeoutEnabled = !mTCPKeepaliveShortLivedEnabled &&
+                              !mTCPKeepaliveLongLivedEnabled;
+
 #undef PREF_CHANGED
 #undef MULTI_PREF_CHANGED
 }
@@ -1857,6 +1863,12 @@ nsHttpHandler::Observe(nsISupports *subject,
     }
     else if (strcmp(topic, "last-pb-context-exited") == 0) {
         mPrivateAuthCache.ClearAll();
+    } else if (strcmp(topic, "browser:purge-session-history") == 0) {
+        if (mConnMgr && gSocketTransportService) {
+            nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(mConnMgr,
+                &nsHttpConnectionMgr::ClearConnectionHistory);
+            gSocketTransportService->Dispatch(event, NS_DISPATCH_NORMAL);
+        }
     }
 
     return NS_OK;

@@ -34,6 +34,7 @@
 #ifdef MOZILLA_INTERNAL_API
 #include "nsIPrincipal.h"
 #include "nsIDocument.h"
+#include "mozilla/Preferences.h"
 #endif
 
 #include <stdlib.h>
@@ -257,16 +258,22 @@ int VcmSIPCCBinding::getVideoCodecsHw()
   // Note that currently, OMXCodecReservation needs to be held by an sp<> because it puts
   // 'this' into an sp<EventListener> to talk to the resource reservation code
 #ifdef MOZ_WEBRTC_OMX
-  android::sp<android::OMXCodecReservation> encode = new android::OMXCodecReservation(true);
-  android::sp<android::OMXCodecReservation> decode = new android::OMXCodecReservation(false);
+#ifdef MOZILLA_INTERNAL_API
+  if (Preferences::GetBool("media.peerconnection.video.h264_enabled")) {
+#endif
+    android::sp<android::OMXCodecReservation> encode = new android::OMXCodecReservation(true);
+    android::sp<android::OMXCodecReservation> decode = new android::OMXCodecReservation(false);
 
-  // Currently we just check if they're available right now, which will fail if we're
-  // trying to call ourself, for example.  It will work for most real-world cases, like
-  // if we try to add a person to a 2-way call to make a 3-way mesh call
-  if (encode->ReserveOMXCodec() && decode->ReserveOMXCodec()) {
-    CSFLogDebug( logTag, "%s: H264 hardware codec available", __FUNCTION__);
-    return VCM_CODEC_RESOURCE_H264;
-  }
+    // Currently we just check if they're available right now, which will fail if we're
+    // trying to call ourself, for example.  It will work for most real-world cases, like
+    // if we try to add a person to a 2-way call to make a 3-way mesh call
+    if (encode->ReserveOMXCodec() && decode->ReserveOMXCodec()) {
+      CSFLogDebug( logTag, "%s: H264 hardware codec available", __FUNCTION__);
+      return VCM_CODEC_RESOURCE_H264;
+    }
+#if defined( MOZILLA_INTERNAL_API)
+   }
+#endif
 #endif
 
   return 0;
@@ -378,22 +385,7 @@ extern "C" {
 #define CREATE_MT_MAP(a,b)        ((a << 16) | b)
 #define DYNAMIC_PAYLOAD_TYPE(x)    ((x >> 16) & 0xFFFF)
 
-#define    MAX_SPROP_LEN    32
-
 #define VCM_ERROR -1
-
-struct h264_video
-{
-    char       sprop_parameter_set[MAX_SPROP_LEN];
-    int        packetization_mode;
-    int        profile_level_id;
-    int        max_mbps;
-    int        max_fs;
-    int        max_cpb;
-    int        max_dpb;
-    int        max_br;
-    int        tias_bw;
-};
 
 /**
  *  start/stop ringing
@@ -2387,15 +2379,24 @@ static int vcmTxCreateAudioConduit(int level,
 static int vcmTxCreateVideoConduit(int level,
                                    const vcm_payload_info_t *payload,
                                    sipcc::PeerConnectionWrapper &pc,
+                                   const vcm_mediaAttrs_t *attrs,
                                    mozilla::RefPtr<mozilla::MediaSessionConduit> &conduit)
 {
   mozilla::VideoCodecConfig *config_raw;
+  struct VideoCodecConfigH264 *negotiated = nullptr;
+
+  if (attrs->video.opaque &&
+      (payload->codec_type == RTP_H264_P0 || payload->codec_type == RTP_H264_P1)) {
+    negotiated = static_cast<struct VideoCodecConfigH264 *>(attrs->video.opaque);
+  }
+
   config_raw = new mozilla::VideoCodecConfig(
     payload->remote_rtp_pt,
     ccsdpCodecName(payload->codec_type),
     payload->video.rtcp_fb_types,
     payload->video.max_fs,
-    payload->video.max_fr);
+    payload->video.max_fr,
+    negotiated);
 
   // Take possession of this pointer
   mozilla::ScopedDeletePtr<mozilla::VideoCodecConfig> config(config_raw);
@@ -2501,7 +2502,7 @@ static int vcmTxStartICE_m(cc_mcapid_t mcap_id,
     err = vcmTxCreateAudioConduit(level, payload, pc, attrs, conduit);
   } else if (CC_IS_VIDEO(mcap_id)) {
     mediaType = "video";
-    err = vcmTxCreateVideoConduit(level, payload, pc, conduit);
+    err = vcmTxCreateVideoConduit(level, payload, pc, attrs, conduit);
   } else {
     CSFLogError(logTag, "%s: mcap_id unrecognized", __FUNCTION__);
   }
@@ -2792,14 +2793,26 @@ int vcmGetVideoCodecList(int request_type)
 }
 
 /**
- * Get max supported H.264 video packetization mode.
- * @return maximum supported video packetization mode for H.264. Value returned
- * must be 0 or 1. Value 2 is not supported yet.
+ * Get supported H.264 video packetization modes
+ * @return mask of supported video packetization modes for H.264. Value returned
+ * must be 1 to 3 (bit 0 is mode 0, bit 1 is mode 1.
+ * Bit 2 (Mode 2) is not supported yet.
  */
-int vcmGetVideoMaxSupportedPacketizationMode()
+int vcmGetH264SupportedPacketizationModes()
 {
-  // We support mode 1 packetization in webrtc
-  return 1;
+  // We support mode 1 packetization only in webrtc currently
+  return VCM_H264_MODE_1;
+}
+
+/**
+ * Get supported H.264 profile-level-id
+ * @return supported profile-level-id value
+ */
+uint32_t vcmGetVideoH264ProfileLevelID()
+{
+  // constrained baseline level 1.2
+  // XXX make variable based on openh264 and OMX support
+  return 0x42E00C;
 }
 
 /**
@@ -2939,16 +2952,22 @@ void vcmFreeMediaPtr(void *ptr)
  * @return cc_boolean - true if attributes are accepted false otherwise
  */
 
-cc_boolean vcmCheckAttribs(cc_uint32_t media_type, void *sdp_p, int level, void **rcapptr)
+cc_boolean vcmCheckAttribs(cc_uint32_t media_type, void *sdp_p, int level,
+                           int remote_pt, void **rcapptr)
 {
     CSFLogDebug( logTag, "vcmCheckAttribs(): media=%d", media_type);
 
     cc_uint16_t     temp;
     const char      *ptr;
     uint32_t        t_uint;
-    struct h264_video *rcap;
+    struct VideoCodecConfigH264 *rcap;
 
     *rcapptr = nullptr;
+
+    int fmtp_inst = ccsdpAttrGetFmtpInst(sdp_p, level, remote_pt);
+    if (fmtp_inst < 0) {
+      return TRUE;
+    }
 
     switch (media_type)
     {
@@ -2958,26 +2977,26 @@ cc_boolean vcmCheckAttribs(cc_uint32_t media_type, void *sdp_p, int level, void 
     case RTP_H264_P0:
     case RTP_H264_P1:
 
-        rcap = (struct h264_video *) cpr_malloc( sizeof(struct h264_video) );
+        rcap = (struct VideoCodecConfigH264 *) cpr_malloc( sizeof(struct VideoCodecConfigH264) );
         if ( rcap == nullptr )
         {
             CSFLogDebug( logTag, "vcmCheckAttribs(): Malloc Failed for rcap");
             return FALSE;
         }
-        memset( rcap, 0, sizeof(struct h264_video) );
+        memset( rcap, 0, sizeof(struct VideoCodecConfigH264) );
 
-        if ( (ptr = ccsdpAttrGetFmtpParamSets(sdp_p, level, 0, 1)) != nullptr )
+        if ( (ptr = ccsdpAttrGetFmtpParamSets(sdp_p, level, 0, fmtp_inst)) != nullptr )
         {
-            memset(rcap->sprop_parameter_set, 0, csf_countof(rcap->sprop_parameter_set));
-            sstrncpy(rcap->sprop_parameter_set, ptr, csf_countof(rcap->sprop_parameter_set));
+            memset(rcap->sprop_parameter_sets, 0, csf_countof(rcap->sprop_parameter_sets));
+            sstrncpy(rcap->sprop_parameter_sets, ptr, csf_countof(rcap->sprop_parameter_sets));
         }
 
-        if ( ccsdpAttrGetFmtpPackMode(sdp_p, level, 0, 1, &temp) == SDP_SUCCESS )
+        if ( ccsdpAttrGetFmtpPackMode(sdp_p, level, 0, fmtp_inst, &temp) == SDP_SUCCESS )
         {
             rcap->packetization_mode = temp;
         }
 
-        if ( (ptr = ccsdpAttrGetFmtpProfileLevelId(sdp_p, level, 0, 1)) != nullptr )
+        if ( (ptr = ccsdpAttrGetFmtpProfileLevelId(sdp_p, level, 0, fmtp_inst)) != nullptr )
         {
 #ifdef _WIN32
             sscanf_s(ptr, "%x", &rcap->profile_level_id, sizeof(int*));
@@ -2986,32 +3005,32 @@ cc_boolean vcmCheckAttribs(cc_uint32_t media_type, void *sdp_p, int level, void 
 #endif
         }
 
-        if ( ccsdpAttrGetFmtpMaxMbps(sdp_p, level, 0, 1, &t_uint) == SDP_SUCCESS )
+        if ( ccsdpAttrGetFmtpMaxMbps(sdp_p, level, 0, fmtp_inst, &t_uint) == SDP_SUCCESS )
         {
             rcap->max_mbps = t_uint;
         }
 
-        if ( ccsdpAttrGetFmtpMaxFs(sdp_p, level, 0, 1, &t_uint) == SDP_SUCCESS )
+        if ( ccsdpAttrGetFmtpMaxFs(sdp_p, level, 0, fmtp_inst, &t_uint) == SDP_SUCCESS )
         {
             rcap->max_fs = t_uint;
         }
 
-        if ( ccsdpAttrGetFmtpMaxCpb(sdp_p, level, 0, 1, &t_uint) == SDP_SUCCESS )
+        if ( ccsdpAttrGetFmtpMaxCpb(sdp_p, level, 0, fmtp_inst, &t_uint) == SDP_SUCCESS )
         {
             rcap->max_cpb = t_uint;
         }
 
-        if ( ccsdpAttrGetFmtpMaxCpb(sdp_p, level, 0, 1, &t_uint) == SDP_SUCCESS )
+        if ( ccsdpAttrGetFmtpMaxCpb(sdp_p, level, 0, fmtp_inst, &t_uint) == SDP_SUCCESS )
         {
             rcap->max_dpb = t_uint;
         }
 
-        if ( ccsdpAttrGetFmtpMaxCpb(sdp_p, level, 0, 1, &t_uint) == SDP_SUCCESS )
+        if ( ccsdpAttrGetFmtpMaxCpb(sdp_p, level, 0, fmtp_inst, &t_uint) == SDP_SUCCESS )
         {
             rcap->max_br = t_uint;
         }
 
-        rcap->tias_bw = ccsdpGetBandwidthValue(sdp_p, level, 1);
+        rcap->tias_bw = ccsdpGetBandwidthValue(sdp_p, level, fmtp_inst);
         if ( rcap->tias_bw == 0 )
         {
             // received bandwidth of 0 reject this
@@ -3025,7 +3044,7 @@ cc_boolean vcmCheckAttribs(cc_uint32_t media_type, void *sdp_p, int level, void 
         }
 
         CSFLogDebug( logTag, "vcmCheckAttribs(): Negotiated media attrs\nsprop=%s\npack_mode=%d\nprofile_level_id=%X\nmbps=%d\nmax_fs=%d\nmax_cpb=%d\nmax_dpb=%d\nbr=%d bw=%d\n",
-            rcap->sprop_parameter_set,
+            rcap->sprop_parameter_sets,
             rcap->packetization_mode,
             rcap->profile_level_id,
             rcap->max_mbps,
@@ -3040,62 +3059,6 @@ cc_boolean vcmCheckAttribs(cc_uint32_t media_type, void *sdp_p, int level, void 
 
     default:
         return FALSE;
-    }
-}
-
-/**
- * Add Video attributes in the offer/answer SDP
- *
- * This method is called for video codecs only. This method should populate the
- * Video SDP attributes using the SDP helper API
- *
- * @param [in] sdp_p - opaque SDP pointer to be used via SDP helper APIs
- * @param [in] level - Parameter to be used with SDP helper APIs
- * @param [in] media_type - codec for which the SDP attributes are to be populated
- * @param [in] payload_number - RTP payload type used for the SDP
- * @param [in] isOffer - cc_boolean indicating we are encoding an offer or an aswer
- *
- * @return void
- */
-void vcmPopulateAttribs(void *sdp_p, int level, cc_uint32_t media_type,
-                          cc_uint16_t payload_number, cc_boolean isOffer)
-{
-    CSFLogDebug( logTag, "vcmPopulateAttribs(): media=%d PT=%d, isOffer=%d", media_type, payload_number, isOffer);
-    uint16_t a_inst;//, a_inst2, a_inst3, a_inst4;
-    int profile;
-    char profile_level_id[MAX_SPROP_LEN];
-
-    switch (media_type)
-    {
-    case RTP_H264_P0:
-    case RTP_H264_P1:
-
-        if ( ccsdpAddNewAttr(sdp_p, level, 0, SDP_ATTR_FMTP, &a_inst) != SDP_SUCCESS ) return;
-
-        (void) ccsdpAttrSetFmtpPayloadType(sdp_p, level, 0, a_inst, payload_number);
-
-        if (media_type == RTP_H264_P1) {
-          (void) ccsdpAttrSetFmtpPackMode(sdp_p, level, 0, a_inst, 1 /*packetization_mode*/);
-        }
-        //(void) sdp_attr_set_fmtp_parameter_sets(sdp_p, level, 0, a_inst, "J0KAFJWgUH5A,KM4H8n==");    // NAL units 27 42 80 14 95 a0 50 7e 40 28 ce 07 f2
-
-        //profile = 0x42E000 + H264ToSDPLevel( vt_GetClientProfileLevel() );
-        profile = 0x42E00C;
-        csf_sprintf(profile_level_id, MAX_SPROP_LEN, "%X", profile);
-        (void) ccsdpAttrSetFmtpProfileLevelId(sdp_p, level, 0, a_inst, profile_level_id);
-
-        //(void) sdp_attr_set_fmtp_max_mbps(sdp_p, level, 0, a_inst, max_mbps);
-        //(void) sdp_attr_set_fmtp_max_fs(sdp_p, level, 0, a_inst, max_fs);
-        //(void) sdp_attr_set_fmtp_max_cpb(sdp_p, level, 0, a_inst, max_cpb);
-        //(void) sdp_attr_set_fmtp_max_dpb(sdp_p, level, 0, a_inst, max_dpb);
-        //(void) sdp_attr_set_fmtp_max_br(sdp_p, level, 0, a_inst, max_br);
-        //(void) sdp_add_new_bw_line(sdp_p, level, &a_inst);
-        //(void) sdp_set_bw(sdp_p, level, a_inst, SDP_BW_MODIFIER_TIAS, tias_bw);
-
-        break;
-
-    default:
-        break;
     }
 }
 

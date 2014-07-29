@@ -1853,6 +1853,15 @@ RilObject.prototype = {
       options.featureStr = "";
       this.sendCdmaFlashCommand(options);
     } else {
+      // Only accept one conference request at a time..
+      if (this._hasConferenceRequest) {
+        options.success = false;
+        options.errorName = "addError";
+        options.errorMsg = GECKO_ERROR_GENERIC_FAILURE;
+        this.sendChromeMessage(options);
+        return;
+      }
+
       this._hasConferenceRequest = true;
       this.telephonyRequestQueue.push(REQUEST_CONFERENCE,
                                       this.sendRilRequestConference, options);
@@ -4445,13 +4454,8 @@ RilObject.prototype = {
       }
 
       let state = strings[i + 3];
-      if (state === NETWORK_STATE_UNKNOWN) {
-        // TODO: looks like this might conflict in style with
-        // GECKO_NETWORK_STYLE_UNKNOWN / nsINetworkManager
-        state = GECKO_QAN_STATE_UNKNOWN;
-      }
+      network.state = RIL_QAN_STATE_TO_GECKO_STATE[state];
 
-      network.state = state;
       networks.push(network);
     }
     return networks;
@@ -5507,7 +5511,7 @@ RilObject.prototype[REQUEST_GET_CURRENT_CALLS] = function REQUEST_GET_CURRENT_CA
     if (RILQUIRKS_CALLSTATE_EXTRA_UINT32) {
       Buf.readInt32();
     }
-    call.number             = Buf.readString(); //TODO munge with TOA
+    call.number             = Buf.readString();
     call.numberPresentation = Buf.readInt32(); // CALL_PRESENTATION_*
     call.name               = Buf.readString();
     call.namePresentation   = Buf.readInt32();
@@ -6833,7 +6837,7 @@ RilObject.prototype[UNSOLICITED_CDMA_CALL_WAITING] = function UNSOLICITED_CDMA_C
   call.alertPitch          = Buf.readInt32();
   call.signal              = Buf.readInt32();
   this.sendChromeMessage({rilMessageType: "cdmaCallWaiting",
-                          number: call.number});
+                          waitingCall: call});
 };
 RilObject.prototype[UNSOLICITED_CDMA_OTA_PROVISION_STATUS] = function UNSOLICITED_CDMA_OTA_PROVISION_STATUS() {
   let status = this.context.Buf.readInt32List()[0];
@@ -13912,8 +13916,8 @@ ICCUtilsHelperObject.prototype = {
       }
     } else {
       // GSM family display rule.
-      let operatorMnc = RIL.operator.mnc;
-      let operatorMcc = RIL.operator.mcc;
+      let operatorMnc = RIL.operator ? RIL.operator.mnc : -1;
+      let operatorMcc = RIL.operator ? RIL.operator.mcc : -1;
 
       // First detect if we are on HPLMN or one of the PLMN
       // specified by the SIM card.

@@ -1343,7 +1343,7 @@ DataConnectionHandler.prototype = {
       return;
     }
 
-    if (defaultDataCallConnected && wifi_active) {
+    if (networkInterface.enabled && wifi_active) {
       if (DEBUG) {
         this.debug("Disconnect data call when Wifi is connected.");
       }
@@ -1351,7 +1351,7 @@ DataConnectionHandler.prototype = {
       return;
     }
 
-    if (!this.dataCallSettings.enabled || networkInterface.enabled) {
+    if (!this.dataCallSettings.enabled || defaultDataCallConnected) {
       if (DEBUG) {
         this.debug("Data call settings: nothing to do.");
       }
@@ -2075,7 +2075,7 @@ RadioInterface.prototype = {
         gTelephonyService.notifyConferenceCallStateChanged(message.state);
         break;
       case "cdmaCallWaiting":
-        gTelephonyService.notifyCdmaCallWaiting(this.clientId, message.number);
+        gTelephonyService.notifyCdmaCallWaiting(this.clientId, message.waitingCall);
         break;
       case "suppSvcNotification":
         gTelephonyService.notifySupplementaryService(this.clientId,

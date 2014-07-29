@@ -42,8 +42,26 @@ let MockAsyncShutdown = {
       do_print("Mock profileBeforeChange blocker for '" + aName + "'");
       MockAsyncShutdown.hook = aBlocker;
     }
-  }
+  },
+  Barrier: function (name) {
+    this.name = name;
+    this.client.addBlocker = (name, blocker) => {
+      do_print("Mock Barrier blocker for '" + name + "' for barrier '" + this.name + "'");
+      this.blockers.push({name: name, blocker: blocker});
+    };
+  },
 };
+
+MockAsyncShutdown.Barrier.prototype = Object.freeze({
+  blockers: [],
+  client: {},
+  wait: Task.async(function* () {
+    for (let b of this.blockers) {
+      yield b.blocker();
+    }
+  }),
+});
+
 AMscope.AsyncShutdown = MockAsyncShutdown;
 
 var gInternalManager = null;
@@ -1337,6 +1355,16 @@ var data = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
            "</blocklist>\n";
 stream.write(data, data.length);
 stream.close();
+
+// Copies blocklistFile (an nsIFile) to gProfD/blocklist.xml.
+function copyBlocklistToProfile(blocklistFile) {
+  var dest = gProfD.clone();
+  dest.append("blocklist.xml");
+  if (dest.exists())
+    dest.remove(false);
+  blocklistFile.copyTo(gProfD, "blocklist.xml");
+  dest.lastModifiedTime = Date.now();
+}
 
 // Throw a failure and attempt to abandon the test if it looks like it is going
 // to timeout

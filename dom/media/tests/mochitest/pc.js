@@ -350,7 +350,7 @@ function isNetworkReady() {
 
       for (var j = 0; j < length; j++) {
         var ip = ips.value[j];
-        // skip IPv6 address
+        // skip IPv6 address until bug 797262 is implemented
         if (ip.indexOf(":") < 0) {
           info("Network interface is ready with address: " + ip);
           return true;
@@ -380,12 +380,12 @@ function getNetworkUtils() {
      *
      * @param aCallback callback after data connection is ready.
      */
-    prepareNetwork: function(aCallback) {
+    prepareNetwork: function(onSuccess) {
       script.addMessageListener('network-ready', function (message) {
         info("Network interface is ready");
-        aCallback();
+        onSuccess();
       });
-      info("Setup network interface");
+      info("Setting up network interface");
       script.sendAsyncMessage("prepare-network", true);
     },
     /**
@@ -393,17 +393,59 @@ function getNetworkUtils() {
      *
      * @param aCallback callback after data connection is closed.
      */
-    tearDownNetwork: function(aCallback) {
-      script.addMessageListener('network-disabled', function (message) {
-        ok(true, 'network-disabled');
-        script.destroy();
-        aCallback();
-      });
-      script.sendAsyncMessage("network-cleanup", true);
+    tearDownNetwork: function(onSuccess, onFailure) {
+      if (isNetworkReady()) {
+        script.addMessageListener('network-disabled', function (message) {
+          info("Network interface torn down");
+          script.destroy();
+          onSuccess();
+        });
+        info("Tearing down network interface");
+        script.sendAsyncMessage("network-cleanup", true);
+      } else {
+        info("No network to tear down");
+        onFailure();
+      }
     }
   };
 
   return utils;
+}
+
+/**
+ * Setup network on Gonk if needed and execute test once network is up
+ *
+ */
+function startNetworkAndTest(onSuccess) {
+  if (!isNetworkReady()) {
+    SimpleTest.waitForExplicitFinish();
+    var utils = getNetworkUtils();
+    // Trigger network setup to obtain IP address before creating any PeerConnection.
+    utils.prepareNetwork(onSuccess);
+  } else {
+    onSuccess();
+  }
+}
+
+/**
+ * A wrapper around SimpleTest.finish() to handle B2G network teardown
+ */
+function networkTestFinished() {
+  if ("nsINetworkInterfaceListService" in SpecialPowers.Ci) {
+    var utils = getNetworkUtils();
+    utils.tearDownNetwork(SimpleTest.finish, SimpleTest.finish);
+  } else {
+    SimpleTest.finish();
+  }
+}
+
+/**
+ * A wrapper around runTest() which handles B2G network setup and teardown
+ */
+function runNetworkTest(testFunction) {
+  startNetworkAndTest(function() {
+    runTest(testFunction);
+  });
 }
 
 /**
@@ -450,27 +492,6 @@ function PeerConnectionTest(options) {
     }
   }
 
-  var netTeardownCommand = null;
-  if (!isNetworkReady()) {
-    var utils = getNetworkUtils();
-    // Trigger network setup to obtain IP address before creating any PeerConnection.
-    utils.prepareNetwork(function() {
-      ok(isNetworkReady(),'setup network connection successfully');
-    });
-
-    netTeardownCommand = [
-      [
-        'TEARDOWN_NETWORK',
-        function(test) {
-          utils.tearDownNetwork(function() {
-            info('teardown network connection');
-            test.next();
-          });
-        }
-      ]
-    ];
-  }
-
   if (options.is_local)
     this.pcLocal = new PeerConnectionWrapper('pcLocal', options.config_local);
   else
@@ -488,11 +509,6 @@ function PeerConnectionTest(options) {
   }
   if (!options.is_remote) {
     this.chain.filterOut(/^PC_REMOTE/);
-  }
-
-  // Insert network teardown after testcase execution.
-  if (netTeardownCommand) {
-    this.chain.append(netTeardownCommand);
   }
 
   var self = this;
@@ -761,7 +777,7 @@ PeerConnectionTest.prototype.teardown = function PCT_teardown() {
   this.close(function () {
     info("Test finished");
     if (window.SimpleTest)
-      SimpleTest.finish();
+      networkTestFinished();
     else
       finish();
   });
@@ -1072,32 +1088,55 @@ DataChannelTest.prototype = Object.create(PeerConnectionTest.prototype, {
      */
     value : function DCT_waitForInitialDataChannel(peer, onSuccess, onFailure) {
       var dcConnectionTimeout = null;
+      var dcOpened = false;
 
       function dataChannelConnected(channel) {
-        clearTimeout(dcConnectionTimeout);
-        is(channel.readyState, "open", peer + " dataChannels[0] is in state: 'open'");
-        onSuccess();
-      }
-
-      if ((peer.dataChannels.length >= 1) &&
-          (peer.dataChannels[0].readyState === "open")) {
-        is(peer.dataChannels[0].readyState, "open", peer + " dataChannels[0] is in state: 'open'");
-        onSuccess();
-        return;
+        // in case the switch statement below had called onSuccess already we
+        // don't want to call it again
+        if (!dcOpened) {
+          clearTimeout(dcConnectionTimeout);
+          is(channel.readyState, "open", peer + " dataChannels[0] switched to state: 'open'");
+          dcOpened = true;
+          onSuccess();
+        }
       }
 
       // TODO: drno: convert dataChannels into an object and make
-      //             registerDataChannelOPenEvent a generic function
+      //             registerDataChannelOpenEvent a generic function
       if (peer == this.pcLocal) {
         peer.dataChannels[0].onopen = dataChannelConnected;
       } else {
         peer.registerDataChannelOpenEvents(dataChannelConnected);
       }
 
-      dcConnectionTimeout = setTimeout(function () {
-        info(peer + " timed out while waiting for dataChannels[0] to connect");
-        onFailure();
-      }, 60000);
+      if (peer.dataChannels.length >= 1) {
+        // snapshot of the live value as it might change during test execution
+        const readyState = peer.dataChannels[0].readyState;
+        switch (readyState) {
+          case "open": {
+            is(readyState, "open", peer + " dataChannels[0] is already in state: 'open'");
+            dcOpened = true;
+            onSuccess();
+            break;
+          }
+          case "connecting": {
+            is(readyState, "connecting", peer + " dataChannels[0] is in state: 'connecting'");
+            if (onFailure) {
+              dcConnectionTimeout = setTimeout(function () {
+                is(peer.dataChannels[0].readyState, "open", peer + " timed out while waiting for dataChannels[0] to open");
+                onFailure();
+              }, 60000);
+            }
+            break;
+          }
+          default: {
+            ok(false, "dataChannels[0] is in unexpected state " + readyState);
+            if (onFailure) {
+              onFailure()
+            }
+          }
+        }
+      }
     }
   }
 

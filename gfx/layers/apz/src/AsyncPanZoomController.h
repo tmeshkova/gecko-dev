@@ -1044,9 +1044,6 @@ public:
   virtual bool Sample(FrameMetrics& aFrameMetrics,
                       const TimeDuration& aDelta) = 0;
 
-  // Called if the animation is cancelled before it ends.
-  virtual void Cancel() {}
-
   /**
    * Get the deferred tasks in |mDeferredTasks|. See |mDeferredTasks|
    * for more information.

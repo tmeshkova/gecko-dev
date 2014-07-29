@@ -9,7 +9,6 @@ Cu.import('resource://gre/modules/SettingsChangeNotifier.jsm');
 Cu.import('resource://gre/modules/DataStoreChangeNotifier.jsm');
 Cu.import('resource://gre/modules/AlarmService.jsm');
 Cu.import('resource://gre/modules/ActivitiesService.jsm');
-Cu.import('resource://gre/modules/PermissionPromptHelper.jsm');
 Cu.import('resource://gre/modules/NotificationDB.jsm');
 Cu.import('resource://gre/modules/Payment.jsm');
 Cu.import("resource://gre/modules/AppsUtils.jsm");
@@ -210,11 +209,6 @@ var shell = {
     }, "network-connection-state-changed", false);
   },
 
-  get contentBrowser() {
-    delete this.contentBrowser;
-    return this.contentBrowser = document.getElementById('systemapp');
-  },
-
   get homeURL() {
     try {
       let homeSrc = Services.env.get('B2G_HOMESCREEN');
@@ -314,7 +308,7 @@ var shell = {
       container.removeChild(hotfix);
     }
 #endif
-    container.appendChild(systemAppFrame);
+    this.contentBrowser = container.appendChild(systemAppFrame);
 
     systemAppFrame.contentWindow
                   .QueryInterface(Ci.nsIInterfaceRequestor)
@@ -1244,7 +1238,7 @@ window.addEventListener('ContentStart', function update_onContentStart() {
   // We must set the size in KB, and keep a bit of free space.
   let size = Math.floor(stats.totalBytes / 1024) - 1024;
   Services.prefs.setIntPref("browser.cache.disk.capacity", size);
-}) ()
+})();
 #endif
 
 #ifdef MOZ_WIDGET_GONK

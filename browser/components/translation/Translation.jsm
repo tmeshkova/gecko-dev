@@ -82,6 +82,26 @@ this.Translation = {
       trUI.showTranslationInfoBar();
   },
 
+  getAttributionString: function() {
+    let locale = Cc["@mozilla.org/chrome/chrome-registry;1"]
+                   .getService(Ci.nsIXULChromeRegistry)
+                   .getSelectedLocale("browser")
+                   .split("-")[0];
+
+    // Hardcoded translations for the locales that are relevant for Firefox 32.
+    if (locale == "de")
+      return "\xDCbersetzungen von";
+    if (locale == "pl")
+      return "T\u0142umacze\u0144 dostarcza";
+    if (locale == "tr")
+      return "\xC7eviriler:";
+    if (locale == "vi")
+      return "D\u1ECBch b\u1EB1ng";
+
+    // Fallback to the English string if we don't have a suitable translation.
+    return "Translations by";
+  },
+
   openProviderAttribution: function() {
     Cu.import("resource:///modules/RecentWindow.jsm");
     RecentWindow.getMostRecentBrowserWindow().openUILinkIn(
@@ -122,6 +142,16 @@ TranslationUI.prototype = {
          this.translatedFrom == aFrom && this.translatedTo == aTo)) {
       // Nothing to do.
       return;
+    }
+
+    if (this.state == Translation.STATE_OFFER) {
+      if (this.detectedLanguage != aFrom)
+        TranslationHealthReport.recordDetectedLanguageChange(true);
+    } else {
+      if (this.translatedFrom != aFrom)
+        TranslationHealthReport.recordDetectedLanguageChange(false);
+      if (this.translatedTo != aTo)
+        TranslationHealthReport.recordTargetLanguageChange();
     }
 
     this.state = Translation.STATE_TRANSLATING;
@@ -184,6 +214,7 @@ TranslationUI.prototype = {
     this.originalShown = true;
     this.showURLBarIcon();
     this.browser.messageManager.sendAsyncMessage("Translation:ShowOriginal");
+    TranslationHealthReport.recordShowOriginalContent();
   },
 
   showTranslatedContent: function() {
@@ -211,12 +242,19 @@ TranslationUI.prototype = {
     // Check if we should never show the infobar for this language.
     let neverForLangs =
       Services.prefs.getCharPref("browser.translation.neverForLanguages");
-    if (neverForLangs.split(",").indexOf(this.detectedLanguage) != -1)
+    if (neverForLangs.split(",").indexOf(this.detectedLanguage) != -1) {
+      TranslationHealthReport.recordAutoRejectedTranslationOffer();
       return false;
+    }
 
     // or if we should never show the infobar for this domain.
     let perms = Services.perms;
-    return perms.testExactPermission(aURI, "translate") != perms.DENY_ACTION;
+    if (perms.testExactPermission(aURI, "translate") ==  perms.DENY_ACTION) {
+      TranslationHealthReport.recordAutoRejectedTranslationOffer();
+      return false;
+    }
+
+    return true;
   },
 
   showTranslationUI: function(aDetectedLanguage) {
@@ -255,6 +293,11 @@ TranslationUI.prototype = {
         }
         break;
     }
+  },
+
+  infobarClosed: function() {
+    if (this.state == Translation.STATE_OFFER)
+      TranslationHealthReport.recordDeniedTranslationOffer();
   }
 };
 
@@ -282,6 +325,20 @@ let TranslationHealthReport = {
     this._withProvider(provider => provider.recordMissedTranslationOpportunity(language));
   },
 
+  /**
+   * Record an automatically rejected translation offer in the health
+   * report. A translation offer is automatically rejected when a user
+   * has previously clicked "Never translate this language" or "Never
+   * translate this site", which results in the infobar not being shown for
+   * the translation opportunity.
+   *
+   * These translation opportunities should still be recorded in addition to
+   * recording the automatic rejection of the offer.
+   */
+  recordAutoRejectedTranslationOffer: function () {
+    this._withProvider(provider => provider.recordAutoRejectedTranslationOffer());
+  },
+
    /**
    * Record a translation in the health report.
    * @param langFrom
@@ -297,7 +354,7 @@ let TranslationHealthReport = {
 
   /**
    * Record a change of the detected language in the health report. This should
-   * only be called when actually executing a translation not every time the
+   * only be called when actually executing a translation, not every time the
    * user changes in the language in the UI.
    *
    * @param beforeFirstTranslation
@@ -307,8 +364,31 @@ let TranslationHealthReport = {
    *        the user has manually adjusted the detected language false should
    *        be passed.
    */
-  recordLanguageChange: function (beforeFirstTranslation) {
-    this._withProvider(provider => provider.recordLanguageChange(beforeFirstTranslation));
+  recordDetectedLanguageChange: function (beforeFirstTranslation) {
+    this._withProvider(provider => provider.recordDetectedLanguageChange(beforeFirstTranslation));
+  },
+
+  /**
+   * Record a change of the target language in the health report. This should
+   * only be called when actually executing a translation, not every time the
+   * user changes in the language in the UI.
+   */
+  recordTargetLanguageChange: function () {
+    this._withProvider(provider => provider.recordTargetLanguageChange());
+  },
+
+  /**
+   * Record a denied translation offer.
+   */
+  recordDeniedTranslationOffer: function () {
+    this._withProvider(provider => provider.recordDeniedTranslationOffer());
+  },
+
+  /**
+   * Record a "Show Original" command use.
+   */
+  recordShowOriginalContent: function () {
+    this._withProvider(provider => provider.recordShowOriginalContent());
   },
 
   /**
@@ -369,8 +449,12 @@ TranslationMeasurement1.prototype = Object.freeze({
     pageTranslatedCountsByLanguage: DAILY_LAST_TEXT_FIELD,
     detectedLanguageChangedBefore: DAILY_COUNTER_FIELD,
     detectedLanguageChangedAfter: DAILY_COUNTER_FIELD,
+    targetLanguageChanged: DAILY_COUNTER_FIELD,
+    deniedTranslationOffer: DAILY_COUNTER_FIELD,
+    showOriginalContent: DAILY_COUNTER_FIELD,
     detectLanguageEnabled: DAILY_LAST_NUMERIC_FIELD,
     showTranslationUI: DAILY_LAST_NUMERIC_FIELD,
+    autoRejectedTranslationOffer: DAILY_COUNTER_FIELD,
   },
 
   shouldIncludeField: function (field) {
@@ -469,6 +553,15 @@ TranslationProvider.prototype = Object.freeze({
     }.bind(this));
   },
 
+  recordAutoRejectedTranslationOffer: function (date=new Date()) {
+    let m = this.getMeasurement(TranslationMeasurement1.prototype.name,
+                                TranslationMeasurement1.prototype.version);
+
+    return this._enqueueTelemetryStorageTask(function* recordTask() {
+      yield m.incrementDailyCounter("autoRejectedTranslationOffer", date);
+    }.bind(this));
+  },
+
   recordTranslation: function (langFrom, langTo, numCharacters, date=new Date()) {
     let m = this.getMeasurement(TranslationMeasurement1.prototype.name,
                                 TranslationMeasurement1.prototype.version);
@@ -492,7 +585,7 @@ TranslationProvider.prototype = Object.freeze({
     }.bind(this));
   },
 
-  recordLanguageChange: function (beforeFirstTranslation) {
+  recordDetectedLanguageChange: function (beforeFirstTranslation) {
     let m = this.getMeasurement(TranslationMeasurement1.prototype.name,
                                 TranslationMeasurement1.prototype.version);
 
@@ -502,6 +595,33 @@ TranslationProvider.prototype = Object.freeze({
         } else {
           yield m.incrementDailyCounter("detectedLanguageChangedAfter");
         }
+    }.bind(this));
+  },
+
+  recordTargetLanguageChange: function () {
+    let m = this.getMeasurement(TranslationMeasurement1.prototype.name,
+                                TranslationMeasurement1.prototype.version);
+
+    return this._enqueueTelemetryStorageTask(function* recordTask() {
+      yield m.incrementDailyCounter("targetLanguageChanged");
+    }.bind(this));
+  },
+
+  recordDeniedTranslationOffer: function () {
+    let m = this.getMeasurement(TranslationMeasurement1.prototype.name,
+                                TranslationMeasurement1.prototype.version);
+
+    return this._enqueueTelemetryStorageTask(function* recordTask() {
+      yield m.incrementDailyCounter("deniedTranslationOffer");
+    }.bind(this));
+  },
+
+  recordShowOriginalContent: function () {
+    let m = this.getMeasurement(TranslationMeasurement1.prototype.name,
+                                TranslationMeasurement1.prototype.version);
+
+    return this._enqueueTelemetryStorageTask(function* recordTask() {
+      yield m.incrementDailyCounter("showOriginalContent");
     }.bind(this));
   },
 

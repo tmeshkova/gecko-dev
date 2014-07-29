@@ -91,6 +91,7 @@ SocialUI = {
     if (!this._initialized) {
       return;
     }
+    SocialSidebar.saveWindowState();
 
     Services.obs.removeObserver(this, "social:ambient-notification-changed");
     Services.obs.removeObserver(this, "social:profile-changed");
@@ -179,8 +180,11 @@ SocialUI = {
   },
 
   // This handles "ActivateSocialFeature" events fired against content documents
-  // in this window.
-  _activationEventHandler: function SocialUI_activationHandler(e) {
+  // in this window.  If this activation happens from within Firefox, such as
+  // about:home or the share panel, we bypass the enable prompt. Any website
+  // activation, such as from the activations directory or a providers website
+  // will still get the prompt.
+  _activationEventHandler: function SocialUI_activationHandler(e, aBypassUserEnable=false) {
     let targetDoc;
     let node;
     if (e.target instanceof HTMLDocument) {
@@ -194,8 +198,7 @@ SocialUI = {
     if (!(targetDoc instanceof HTMLDocument))
       return;
 
-    // Ignore events fired in background tabs or iframes
-    if (targetDoc.defaultView != content)
+    if (!aBypassUserEnable && targetDoc.defaultView != content)
       return;
 
     // If we are in PB mode, we silently do nothing (bug 829404 exists to
@@ -235,7 +238,7 @@ SocialUI = {
           openUILinkIn(provider.postActivationURL, "tab");
         }
       });
-    });
+    }, aBypassUserEnable);
   },
 
   showLearnMore: function() {
@@ -551,10 +554,15 @@ SocialShare = {
   },
 
   update: function() {
-    let shareButton = this.shareButton;
-    shareButton.hidden = !SocialUI.enabled ||
-                         [p for (p of Social.providers) if (p.shareURL)].length == 0;
-    let disabled = shareButton.hidden || !this.canSharePage(gBrowser.currentURI);
+    let widget = CustomizableUI.getWidget("social-share-button");
+    if (!widget)
+      return;
+    let shareButton = widget.forWindow(window).node;
+    // hidden state is based on available share providers and location of
+    // button. It's always visible and disabled in the customization palette.
+    shareButton.hidden = !SocialUI.enabled || (widget.areaType &&
+                         [p for (p of Social.providers) if (p.shareURL)].length == 0);
+    let disabled = !widget.areaType || shareButton.hidden || !this.canSharePage(gBrowser.currentURI);
 
     // 1. update the relevent command's disabled state so the keyboard
     // shortcut only works when available.
@@ -571,12 +579,18 @@ SocialShare = {
     }
   },
 
+  _onclick: function() {
+    Services.telemetry.getHistogramById("SOCIAL_PANEL_CLICKS").add(0);
+  },
+  
   onShowing: function() {
     this.anchor.setAttribute("open", "true");
+    this.iframe.addEventListener("click", this._onclick, true);
   },
 
   onHidden: function() {
     this.anchor.removeAttribute("open");
+    this.iframe.removeEventListener("click", this._onclick, true);
     this.iframe.setAttribute("src", "data:text/plain;charset=utf8,");
     this.currentShare = null;
   },
@@ -693,10 +707,13 @@ SocialShare = {
     let anchor = document.getAnonymousElementByAttribute(this.anchor, "class", "toolbarbutton-icon");
     this.panel.openPopup(anchor, "bottomcenter topright", 0, 0, false, false);
     Social.setErrorListener(iframe, this.setErrorMessage.bind(this));
+    Services.telemetry.getHistogramById("SOCIAL_TOOLBAR_BUTTONS").add(0);
   }
 };
 
 SocialSidebar = {
+  _openStartTime: 0,
+
   // Whether the sidebar can be shown for this window.
   get canShow() {
     if (!SocialUI.enabled || document.mozFullScreen)
@@ -711,6 +728,11 @@ SocialSidebar = {
   },
 
   restoreWindowState: function() {
+    // Window state is used to allow different sidebar providers in each window.
+    // We also store the provider used in a pref as the default sidebar to
+    // maintain that state for users who do not restore window state. The
+    // existence of social.sidebar.provider means the sidebar is open with that
+    // provider.
     this._initialized = true;
     if (!this.canShow)
       return;
@@ -738,13 +760,22 @@ SocialSidebar = {
     let data = SessionStore.getWindowValue(window, "socialSidebar");
     // if this window doesn't have it's own state, use the state from the opener
     if (!data && window.opener && !window.opener.closed) {
-      data = SessionStore.getWindowValue(window.opener, "socialSidebar");
+      try {
+        data = SessionStore.getWindowValue(window.opener, "socialSidebar");
+      } catch(e) {
+        // Window is not tracked, which happens on osx if the window is opened
+        // from the hidden window. That happens when you close the last window
+        // without quiting firefox, then open a new window.
+      }
     }
     if (data) {
       data = JSON.parse(data);
       document.getElementById("social-sidebar-browser").setAttribute("origin", data.origin);
       if (!data.hidden)
         this.show(data.origin);
+    } else if (Services.prefs.prefHasUserValue("social.sidebar.provider")) {
+      // no window state, use the global state if it is available
+      this.show(Services.prefs.getCharPref("social.sidebar.provider"));
     }
   },
 
@@ -755,7 +786,23 @@ SocialSidebar = {
       "hidden": broadcaster.hidden,
       "origin": sidebarOrigin
     };
-    SessionStore.setWindowValue(window, "socialSidebar", JSON.stringify(data));
+    if (broadcaster.hidden) {
+      Services.telemetry.getHistogramById("SOCIAL_SIDEBAR_OPEN_DURATION").add(Date.now()  / 1000 - this._openStartTime);
+    } else {
+      this._openStartTime = Date.now() / 1000;
+    }
+
+    // Save a global state for users who do not restore state.
+    if (broadcaster.hidden)
+      Services.prefs.clearUserPref("social.sidebar.provider");
+    else
+      Services.prefs.setCharPref("social.sidebar.provider", sidebarOrigin);
+
+    try {
+      SessionStore.setWindowValue(window, "socialSidebar", JSON.stringify(data));
+    } catch(e) {
+      // window not tracked during uninit
+    }
   },
 
   setSidebarVisibilityState: function(aEnabled) {
@@ -841,11 +888,16 @@ SocialSidebar = {
     this._updateCheckedMenuItems(this.opened && this.provider ? this.provider.origin : null);
   },
 
+  _onclick: function() {
+    Services.telemetry.getHistogramById("SOCIAL_PANEL_CLICKS").add(3);
+  },
+
   _loadListener: function SocialSidebar_loadListener() {
     let sbrowser = document.getElementById("social-sidebar-browser");
     sbrowser.removeEventListener("load", SocialSidebar._loadListener, true);
     document.getElementById("social-sidebar-button").removeAttribute("loading");
     SocialSidebar.setSidebarVisibilityState(true);
+    sbrowser.addEventListener("click", SocialSidebar._onclick, true);
   },
 
   unloadSidebar: function SocialSidebar_unloadSidebar() {
@@ -853,6 +905,7 @@ SocialSidebar = {
     if (!sbrowser.hasAttribute("origin"))
       return;
 
+    sbrowser.removeEventListener("click", SocialSidebar._onclick, true);
     sbrowser.stop();
     sbrowser.removeAttribute("origin");
     sbrowser.setAttribute("src", "about:blank");
@@ -953,6 +1006,7 @@ SocialSidebar = {
     else
       SocialSidebar.update();
     this.saveWindowState();
+    Services.telemetry.getHistogramById("SOCIAL_SIDEBAR_STATE").add(true);
   },
 
   hide: function() {
@@ -962,6 +1016,7 @@ SocialSidebar = {
     this.clearProviderMenus();
     SocialSidebar.update();
     this.saveWindowState();
+    Services.telemetry.getHistogramById("SOCIAL_SIDEBAR_STATE").add(false);
   },
 
   toggleSidebar: function SocialSidebar_toggle() {
@@ -1286,6 +1341,10 @@ SocialStatus = {
       notificationFrame.contentDocument.documentElement.dispatchEvent(evt);
     }
 
+    function _onclick() {
+      Services.telemetry.getHistogramById("SOCIAL_PANEL_CLICKS").add(1);
+    }
+
     // we only use a dynamic resizer when we're located the toolbar.
     let dynamicResizer;
     if (!inMenuPanel && notificationFrame.getAttribute("dynamicresizer") == "true") {
@@ -1298,6 +1357,7 @@ SocialStatus = {
         dynamicResizer.stop();
       notificationFrame.docShell.isActive = false;
       dispatchPanelEvent("socialFrameHide");
+      notificationFrame.removeEventListener("click", _onclick, true);
     });
 
     panel.addEventListener(showingEvent, function onpopupshown() {
@@ -1313,6 +1373,7 @@ SocialStatus = {
         if (dynamicResizer)
           dynamicResizer.start(panel, notificationFrame);
         dispatchPanelEvent("socialFrameShow");
+        notificationFrame.addEventListener("click", _onclick, true);
       };
       if (!inMenuPanel)
         aToolbarButton.setAttribute("open", "true");

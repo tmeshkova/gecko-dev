@@ -701,6 +701,7 @@ GK_ATOM(oncut, "oncut")
 GK_ATOM(ondatachange, "ondatachange")
 GK_ATOM(ondataerror, "ondataerror")
 GK_ATOM(ondblclick, "ondblclick")
+GK_ATOM(ondeleted, "ondeleted")
 GK_ATOM(ondeliverysuccess, "ondeliverysuccess")
 GK_ATOM(ondeliveryerror, "ondeliveryerror")
 GK_ATOM(ondevicefound, "ondevicefound")
@@ -1816,6 +1817,10 @@ GK_ATOM(onuserproximity, "onuserproximity")
 
 // light sensor support
 GK_ATOM(ondevicelight, "ondevicelight")
+
+// Audio channel events
+GK_ATOM(onmozinterruptbegin, "onmozinterruptbegin")
+GK_ATOM(onmozinterruptend, "onmozinterruptbegin")
 
 //---------------------------------------------------------------------------
 // Special atoms

@@ -37,10 +37,10 @@ const kSmsDeliverySuccessObserverTopic   = "sms-delivery-success";
 const kSmsDeliveryErrorObserverTopic     = "sms-delivery-error";
 const kSmsReadSuccessObserverTopic       = "sms-read-success";
 const kSmsReadErrorObserverTopic         = "sms-read-error";
+const kSmsDeletedObserverTopic           = "sms-deleted";
 
 const NS_XPCOM_SHUTDOWN_OBSERVER_ID      = "xpcom-shutdown";
 const kNetworkConnStateChangedTopic      = "network-connection-state-changed";
-const kMobileMessageDeletedObserverTopic = "mobile-message-deleted";
 
 const kPrefRilRadioDisabled              = "ril.radio.disabled";
 
@@ -283,28 +283,6 @@ MmsConnection.prototype = {
     Services.obs.addObserver(this, kNetworkConnStateChangedTopic,
                              false);
     Services.obs.addObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
-
-    this.connected = this.radioInterface.getDataCallStateByType("mms") ==
-      Ci.nsINetworkInterface.NETWORK_STATE_CONNECTED;
-    // If the MMS network is connected during the initialization, it means the
-    // MMS network must share the same APN with the mobile network by default.
-    // Under this case, |networkManager.active| should keep the mobile network,
-    // which is supposed be an instance of |nsIRilNetworkInterface| for sure.
-    if (this.connected) {
-      let networkManager =
-        Cc["@mozilla.org/network/manager;1"].getService(Ci.nsINetworkManager);
-      let activeNetwork = networkManager.active;
-
-      let rilNetwork = activeNetwork.QueryInterface(Ci.nsIRilNetworkInterface);
-      if (rilNetwork.serviceId != this.serviceId) {
-        if (DEBUG) debug("Sevice ID between active/MMS network doesn't match.");
-        return;
-      }
-
-      // Set up the MMS APN setting based on the connected MMS network,
-      // which is going to be used for the HTTP requests later.
-      this.setApnSetting(rilNetwork);
-    }
   },
 
   /**
@@ -473,15 +451,13 @@ MmsConnection.prototype = {
 
         // Check if the network state change belongs to this service.
         let network = subject.QueryInterface(Ci.nsIRilNetworkInterface);
-        if (network.serviceId != this.serviceId) {
+        if (network.serviceId != this.serviceId ||
+            network.type != Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE_MMS) {
           return;
         }
 
-        // We only need to capture the state change of MMS network. Using
-        // |network.state| isn't reliable due to the possibilty of shared APN.
         let connected =
-          this.radioInterface.getDataCallStateByType("mms") ==
-            Ci.nsINetworkInterface.NETWORK_STATE_CONNECTED;
+          network.state == Ci.nsINetworkInterface.NETWORK_STATE_CONNECTED;
 
         // Return if the MMS network state doesn't change, where the network
         // state change can come from other non-MMS networks.
@@ -934,7 +910,7 @@ CancellableTransaction.prototype = {
   registerRunCallback: function(callback) {
     if (!this.isObserversAdded) {
       Services.obs.addObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
-      Services.obs.addObserver(this, kMobileMessageDeletedObserverTopic, false);
+      Services.obs.addObserver(this, kSmsDeletedObserverTopic, false);
       Services.prefs.addObserver(kPrefRilRadioDisabled, this, false);
       Services.prefs.addObserver(kPrefDefaultServiceId, this, false);
       this.isObserversAdded = true;
@@ -947,7 +923,7 @@ CancellableTransaction.prototype = {
   removeObservers: function() {
     if (this.isObserversAdded) {
       Services.obs.removeObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
-      Services.obs.removeObserver(this, kMobileMessageDeletedObserverTopic);
+      Services.obs.removeObserver(this, kSmsDeletedObserverTopic);
       Services.prefs.removeObserver(kPrefRilRadioDisabled, this);
       Services.prefs.removeObserver(kPrefDefaultServiceId, this);
       this.isObserversAdded = false;
@@ -996,13 +972,11 @@ CancellableTransaction.prototype = {
         this.cancelRunning(_MMS_ERROR_SHUTDOWN);
         break;
       }
-      case kMobileMessageDeletedObserverTopic: {
-        data = JSON.parse(data);
-        if (data.id != this.cancellableId) {
-          return;
+      case kSmsDeletedObserverTopic: {
+        if (subject && subject.deletedMessageIds &&
+            subject.deletedMessageIds.indexOf(this.cancellableId) >= 0) {
+          this.cancelRunning(_MMS_ERROR_MESSAGE_DELETED);
         }
-
-        this.cancelRunning(_MMS_ERROR_MESSAGE_DELETED);
         break;
       }
       case NS_PREFBRANCH_PREFCHANGE_TOPIC_ID: {

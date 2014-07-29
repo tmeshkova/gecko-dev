@@ -271,12 +271,13 @@ JSCompartment::wrap(JSContext *cx, JSString **strp)
 
     /* If the string is already in this compartment, we are done. */
     JSString *str = *strp;
-    if (str->zone() == zone())
+    if (str->zoneFromAnyThread() == zone())
         return true;
 
     /* If the string is an atom, we don't have to copy. */
     if (str->isAtom()) {
-        JS_ASSERT(cx->runtime()->isAtomsZone(str->zone()));
+        JS_ASSERT(str->isPermanentAtom() ||
+                  cx->runtime()->isAtomsZone(str->zone()));
         return true;
     }
 
@@ -925,7 +926,7 @@ JSCompartment::removeDebuggeeUnderGC(FreeOp *fop,
 }
 
 void
-JSCompartment::clearBreakpointsIn(FreeOp *fop, js::Debugger *dbg, JSObject *handler)
+JSCompartment::clearBreakpointsIn(FreeOp *fop, js::Debugger *dbg, HandleObject handler)
 {
     for (gc::ZoneCellIter i(zone(), gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
         JSScript *script = i.get<JSScript>();

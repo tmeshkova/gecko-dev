@@ -144,6 +144,13 @@ GrallocTextureSourceOGL::BindTexture(GLenum aTextureUnit, gfx::Filter aFilter)
   }
 
   ApplyFilterToBoundTexture(gl(), aFilter, textureTarget);
+
+#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
+  if (mTextureHost) {
+    // Wait until it's ready.
+    mTextureHost->WaitAcquireFenceSyncComplete();
+  }
+#endif
 }
 
 void GrallocTextureSourceOGL::Lock()
@@ -298,13 +305,13 @@ GrallocTextureHostOGL::GrallocTextureHostOGL(TextureFlags aFlags,
     format =
       SurfaceFormatForAndroidPixelFormat(graphicBuffer->getPixelFormat(),
                                          aFlags & TextureFlags::RB_SWAPPED);
+    mTextureSource = new GrallocTextureSourceOGL(nullptr,
+                                                 this,
+                                                 graphicBuffer,
+                                                 format);
   } else {
-    NS_WARNING("gralloc buffer is nullptr");
+    printf_stderr("gralloc buffer is nullptr");
   }
-  mTextureSource = new GrallocTextureSourceOGL(nullptr,
-                                               this,
-                                               graphicBuffer,
-                                               format);
 }
 
 GrallocTextureHostOGL::~GrallocTextureHostOGL()
@@ -315,7 +322,9 @@ GrallocTextureHostOGL::~GrallocTextureHostOGL()
 void
 GrallocTextureHostOGL::SetCompositor(Compositor* aCompositor)
 {
-  mTextureSource->SetCompositor(static_cast<CompositorOGL*>(aCompositor));
+  if (mTextureSource) {
+    mTextureSource->SetCompositor(static_cast<CompositorOGL*>(aCompositor));
+  }
 }
 
 bool
@@ -337,12 +346,18 @@ GrallocTextureHostOGL::Unlock()
 bool
 GrallocTextureHostOGL::IsValid() const
 {
+  if (!mTextureSource) {
+    return false;
+  }
   return mTextureSource->IsValid();
 }
 
 gfx::SurfaceFormat
 GrallocTextureHostOGL::GetFormat() const
 {
+  if (!mTextureSource) {
+    return gfx::SurfaceFormat::UNKNOWN;
+  }
   return mTextureSource->GetFormat();
 }
 
@@ -351,6 +366,7 @@ GrallocTextureHostOGL::DeallocateSharedData()
 {
   if (mTextureSource) {
     mTextureSource->ForgetBuffer();
+    mTextureSource = nullptr;
   }
   if (mGrallocHandle.buffer().type() != SurfaceDescriptor::Tnull_t) {
     MaybeMagicGrallocBufferHandle handle = mGrallocHandle.buffer();
@@ -362,7 +378,7 @@ GrallocTextureHostOGL::DeallocateSharedData()
       owner = handle.get_MagicGrallocBufferHandle().mRef.mOwner;
     }
 
-    SharedBufferManagerParent::GetInstance(owner)->DropGrallocBuffer(mGrallocHandle);
+    SharedBufferManagerParent::DropGrallocBuffer(owner, mGrallocHandle);
   }
 }
 
@@ -371,13 +387,16 @@ GrallocTextureHostOGL::ForgetSharedData()
 {
   if (mTextureSource) {
     mTextureSource->ForgetBuffer();
+    mTextureSource = nullptr;
   }
 }
 
 void
 GrallocTextureHostOGL::DeallocateDeviceData()
 {
-  mTextureSource->DeallocateDeviceData();
+  if (mTextureSource) {
+    mTextureSource->DeallocateDeviceData();
+  }
 }
 
 LayerRenderState
@@ -443,12 +462,6 @@ GrallocTextureSourceOGL::GetGLTexture()
 void
 GrallocTextureSourceOGL::BindEGLImage()
 {
-#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
-  if (mTextureHost) {
-    mTextureHost->WaitAcquireFenceSyncComplete();
-  }
-#endif
-
   if (mCompositableBackendData) {
     CompositableDataGonkOGL* backend = static_cast<CompositableDataGonkOGL*>(mCompositableBackendData.get());
     backend->BindEGLImage(GetTextureTarget(), mEGLImage);

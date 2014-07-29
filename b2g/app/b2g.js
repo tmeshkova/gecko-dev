@@ -110,6 +110,7 @@ pref("mozilla.widget.disable-native-theme", true);
 pref("layout.reflow.synthMouseMove", false);
 pref("layers.enable-tiles", true);
 pref("layers.low-precision-buffer", true);
+pref("layers.low-precision-opacity", "0.5");
 /*
    Cross Process Mutex is not supported on Mac OS X so progressive
    paint cannot be enabled for B2G on Mac OS X desktop
@@ -466,6 +467,17 @@ pref("services.push.pingInterval", 1800000); // 30 minutes
 pref("services.push.requestTimeout", 10000);
 // enable udp wakeup support
 pref("services.push.udp.wakeupEnabled", true);
+// This value should be the prefix to be added to the current PDP context[1]
+// domain or a full-qualified domain name.
+// If finished with a dot, it will be added as a prefix to the PDP context
+// domain. If not, will be used as the DNS query.
+// If the DNS query is unsuccessful, the push agent will send a null netid and
+// is a server decision what to do with the device. If the MCC-MNC identifies a
+// unique network the server will change to UDP mode. Otherwise, a websocket
+// connection will be maintained.
+// [1] Packet Data Protocol
+//     http://en.wikipedia.org/wiki/GPRS_core_network#PDP_context
+pref("services.push.udp.well-known_netidAddress", "_wakeup_.");
 
 // NetworkStats
 #ifdef MOZ_WIDGET_GONK
@@ -954,10 +966,10 @@ pref("apz.overscroll.enabled", true);
 pref("apz.overscroll.fling_friction", "0.02");
 pref("apz.overscroll.fling_stopped_threshold", "0.4");
 pref("apz.overscroll.clamping", "0.5");
-pref("apz.overscroll.z_effect", "0.2");
+pref("apz.overscroll.z_effect", "0.5");
 pref("apz.overscroll.snap_back.spring_stiffness", "0.6");
 pref("apz.overscroll.snap_back.spring_friction", "0.1");
-pref("apz.overscroll.snap_back.mass", "1000");
+pref("apz.overscroll.snap_back.mass", "1200");
 
 // This preference allows FirefoxOS apps (and content, I think) to force
 // the use of software (instead of hardware accelerated) 2D canvases by
@@ -988,7 +1000,8 @@ pref("services.sync.fxaccounts.enabled", true);
 pref("identity.fxaccounts.enabled", true);
 #endif
 
-pref("services.mobileid.server.uri", "http://msisdn.dev.mozaws.net");
+// Mobile Identity API.
+pref("services.mobileid.server.uri", "https://msisdn.services.mozilla.com");
 
 // Enable mapped array buffer
 pref("dom.mapped_arraybuffer.enabled", true);

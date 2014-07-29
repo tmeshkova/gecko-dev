@@ -14,6 +14,7 @@ import traceback
 from mozhttpd import MozHttpd
 import mozinfo
 from mozprofile import Profile
+import mozversion
 
 from .firefoxrunner import TPSFirefoxRunner
 from .phase import TPSTestPhase
@@ -46,7 +47,7 @@ class TempFile(object):
 
 class TPSTestRunner(object):
 
-    default_env = {
+    extra_env = {
         'MOZ_CRASHREPORTER_DISABLE': '1',
         'GNOME_DISABLE_CRASH_DIALOG': '1',
         'XRE_NO_WINDOWS_CRASH_DIALOG': '1',
@@ -294,7 +295,7 @@ class TPSTestRunner(object):
         logstr = "\n%s | %s%s\n" % (result[0], testname, (' | %s' % result[1] if result[1] else ''))
 
         try:
-            repoinfo = self.firefoxRunner.runner.get_repositoryInfo()
+            repoinfo = mozversion.get_version(self.binary)
         except:
             repoinfo = {}
         apprepo = repoinfo.get('application_repository', '')
@@ -351,9 +352,11 @@ class TPSTestRunner(object):
         if os.access(self.logfile, os.F_OK):
             os.remove(self.logfile)
 
-        # Make a copy of the default env variables and preferences, and update
-        # them for custom settings
-        self.env = self.default_env.copy()
+        # Copy the system env variables, and update them for custom settings
+        self.env = os.environ.copy()
+        self.env.update(self.extra_env)
+
+        # Update preferences for custom settings
         self.update_preferences()
 
         # Acquire a lock to make sure no other threads are running tests

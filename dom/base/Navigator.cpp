@@ -1513,6 +1513,25 @@ Navigator::GetFeature(const nsAString& aName)
     return p.forget();
   } // hardware.memory
 #endif
+
+  // Hardcoded manifest features. Some are still b2g specific.
+  const char manifestFeatures[][64] = {
+    "manifest.origin"
+  , "manifest.redirects"
+#ifdef MOZ_B2G
+  , "manifest.chrome.navigation"
+  , "manifest.precompile"
+#endif
+  };
+
+  nsAutoCString feature = NS_ConvertUTF16toUTF8(aName);
+  for (uint32_t i = 0; i < MOZ_ARRAY_LENGTH(manifestFeatures); i++) {
+    if (feature.Equals(manifestFeatures[i])) {
+      p->MaybeResolve(true);
+      return p.forget();
+    }
+  }
+
   // resolve with <undefined> because the feature name is not supported
   p->MaybeResolve(JS::UndefinedHandleValue);
 
@@ -1589,7 +1608,8 @@ Navigator::GetMozTelephony(ErrorResult& aRv)
 
 #ifdef MOZ_B2G
 already_AddRefed<Promise>
-Navigator::GetMobileIdAssertion(ErrorResult& aRv)
+Navigator::GetMobileIdAssertion(const MobileIdOptions& aOptions,
+                                ErrorResult& aRv)
 {
   if (!mWindow || !mWindow->GetDocShell()) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
@@ -1603,8 +1623,22 @@ Navigator::GetMobileIdAssertion(ErrorResult& aRv)
     return nullptr;
   }
 
+  JSContext *cx = nsContentUtils::GetCurrentJSContext();
+  if (!cx) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  JS::Rooted<JS::Value> optionsValue(cx);
+  if (!ToJSValue(cx, aOptions, &optionsValue)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
   nsCOMPtr<nsISupports> promise;
-  aRv = service->GetMobileIdAssertion(mWindow, getter_AddRefs(promise));
+  aRv = service->GetMobileIdAssertion(mWindow,
+                                      optionsValue,
+                                      getter_AddRefs(promise));
 
   nsRefPtr<Promise> p = static_cast<Promise*>(promise.get());
   return p.forget();
@@ -2206,13 +2240,14 @@ Navigator::HasWifiManagerSupport(JSContext* /* unused */,
 bool
 Navigator::HasNFCSupport(JSContext* /* unused */, JSObject* aGlobal)
 {
+  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
+
   // Do not support NFC if NFC content helper does not exist.
   nsCOMPtr<nsISupports> contentHelper = do_GetService("@mozilla.org/nfc/content-helper;1");
   if (!contentHelper) {
     return false;
   }
 
-  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
   return win && (CheckPermission(win, "nfc-read") ||
                  CheckPermission(win, "nfc-write"));
 }
@@ -2363,6 +2398,31 @@ Navigator::HasFeatureDetectionSupport(JSContext* /* unused */, JSObject* aGlobal
   return CheckPermission(win, "feature-detection");
 }
 
+#ifdef MOZ_B2G
+/* static */
+bool
+Navigator::HasMobileIdSupport(JSContext* aCx, JSObject* aGlobal)
+{
+  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
+  if (!win) {
+    return false;
+  }
+
+  nsIDocument* doc = win->GetExtantDoc();
+  if (!doc) {
+    return false;
+  }
+
+  nsIPrincipal* principal = doc->NodePrincipal();
+
+  nsCOMPtr<nsIPermissionManager> permMgr = services::GetPermissionManager();
+  NS_ENSURE_TRUE(permMgr, false);
+
+  uint32_t permission = nsIPermissionManager::UNKNOWN_ACTION;
+  permMgr->TestPermissionFromPrincipal(principal, "mobileid", &permission);
+  return permission != nsIPermissionManager::UNKNOWN_ACTION;
+}
+#endif
 
 /* static */
 already_AddRefed<nsPIDOMWindow>

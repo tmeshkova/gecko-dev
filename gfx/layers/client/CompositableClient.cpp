@@ -55,6 +55,22 @@ public:
   uint64_t mAsyncID;
 };
 
+void
+RemoveTextureFromCompositableTracker::ReleaseTextureClient()
+{
+  if (mTextureClient &&
+      mTextureClient->GetAllocator() &&
+      !mTextureClient->GetAllocator()->IsImageBridgeChild())
+  {
+    TextureClientReleaseTask* task = new TextureClientReleaseTask(mTextureClient);
+    RefPtr<ISurfaceAllocator> allocator = mTextureClient->GetAllocator();
+    mTextureClient = nullptr;
+    allocator->GetMessageLoop()->PostTask(FROM_HERE, task);
+  } else {
+    mTextureClient = nullptr;
+  }
+}
+
 /* static */ void
 CompositableClient::TransactionCompleteted(PCompositableChild* aActor, uint64_t aTransactionId)
 {
@@ -194,6 +210,9 @@ CompositableClient::CreateTextureClientForDrawing(SurfaceFormat aFormat,
 bool
 CompositableClient::AddTextureClient(TextureClient* aClient)
 {
+  if(!aClient || !aClient->IsAllocated()) {
+    return false;
+  }
   return aClient->InitIPDLActor(mForwarder);
 }
 

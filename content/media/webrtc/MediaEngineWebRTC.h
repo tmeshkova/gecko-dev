@@ -104,6 +104,7 @@ public:
     , mMonitor("WebRTCCamera.Monitor")
     , mWidth(0)
     , mHeight(0)
+    , mHasDirectListeners(false)
     , mInitDone(false)
     , mInSnapshotMode(false)
     , mSnapshotPath(nullptr)
@@ -131,6 +132,7 @@ public:
     , mMonitor("WebRTCCamera.Monitor")
     , mWidth(0)
     , mHeight(0)
+    , mHasDirectListeners(false)
     , mInitDone(false)
     , mInSnapshotMode(false)
     , mSnapshotPath(nullptr) {
@@ -149,6 +151,7 @@ public:
   virtual nsresult Deallocate();
   virtual nsresult Start(SourceMediaStream*, TrackID);
   virtual nsresult Stop(SourceMediaStream*, TrackID);
+  virtual void SetDirectListeners(bool aHasListeners);
   virtual nsresult Snapshot(uint32_t aDuration, nsIDOMFile** aFile);
   virtual nsresult Config(bool aEchoOn, uint32_t aEcho,
                           bool aAgcOn, uint32_t aAGC,
@@ -244,6 +247,7 @@ private:
   int mWidth, mHeight;
   nsRefPtr<layers::Image> mImage;
   nsRefPtr<layers::ImageContainer> mImageContainer;
+  bool mHasDirectListeners;
 
   nsTArray<SourceMediaStream *> mSources; // When this goes empty, we shut down HW
 
@@ -265,10 +269,11 @@ class MediaEngineWebRTCAudioSource : public MediaEngineAudioSource,
                                      public webrtc::VoEMediaProcess
 {
 public:
-  MediaEngineWebRTCAudioSource(webrtc::VoiceEngine* aVoiceEnginePtr, int aIndex,
-    const char* name, const char* uuid)
+  MediaEngineWebRTCAudioSource(nsIThread *aThread, webrtc::VoiceEngine* aVoiceEnginePtr,
+                               int aIndex, const char* name, const char* uuid)
     : mVoiceEngine(aVoiceEnginePtr)
     , mMonitor("WebRTCMic.Monitor")
+    , mThread(aThread)
     , mCapIndex(aIndex)
     , mChannel(-1)
     , mInitDone(false)
@@ -296,6 +301,7 @@ public:
   virtual nsresult Deallocate();
   virtual nsresult Start(SourceMediaStream*, TrackID);
   virtual nsresult Stop(SourceMediaStream*, TrackID);
+  virtual void SetDirectListeners(bool aHasDirectListeners) {};
   virtual nsresult Snapshot(uint32_t aDuration, nsIDOMFile** aFile);
   virtual nsresult Config(bool aEchoOn, uint32_t aEcho,
                           bool aAgcOn, uint32_t aAGC,
@@ -338,6 +344,7 @@ private:
   // mSources[] is accessed from webrtc threads.
   Monitor mMonitor;
   nsTArray<SourceMediaStream *> mSources; // When this goes empty, we shut down HW
+  nsCOMPtr<nsIThread> mThread;
 
   int mCapIndex;
   int mChannel;
@@ -379,6 +386,8 @@ private:
     // XXX
     gFarendObserver = nullptr;
   }
+
+  nsCOMPtr<nsIThread> mThread;
 
   Mutex mMutex;
   // protected with mMutex:

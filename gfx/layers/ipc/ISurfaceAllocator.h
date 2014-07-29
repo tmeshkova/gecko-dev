@@ -86,7 +86,9 @@ class ISurfaceAllocator : public AtomicRefCountedWithFinalize<ISurfaceAllocator>
 {
 public:
   MOZ_DECLARE_REFCOUNTED_TYPENAME(ISurfaceAllocator)
-  ISurfaceAllocator() {}
+  ISurfaceAllocator()
+    : mDefaultMessageLoop(MessageLoop::current())
+  {}
 
   void Finalize();
 
@@ -161,8 +163,17 @@ public:
 
   void DeallocGrallocBuffer(MaybeMagicGrallocBufferHandle* aHandle);
 
+  void DropGrallocBuffer(MaybeMagicGrallocBufferHandle* aHandle);
+
   virtual bool IPCOpen() const { return true; }
   virtual bool IsSameProcess() const = 0;
+
+  virtual bool IsImageBridgeChild() const { return false; }
+
+  virtual MessageLoop * GetMessageLoop() const
+  {
+    return mDefaultMessageLoop;
+  }
 
   // Returns true if aSurface wraps a Shmem.
   static bool IsShmem(SurfaceDescriptor* aSurface);
@@ -177,6 +188,8 @@ protected:
 
   // This is used to implement an extremely simple & naive heap allocator.
   std::vector<mozilla::ipc::Shmem> mUsedShmems;
+
+  MessageLoop* mDefaultMessageLoop;
 
   friend class AtomicRefCountedWithFinalize<ISurfaceAllocator>;
 };

@@ -356,6 +356,30 @@ class NewObjectCache
     }
 };
 
+class RegExpObject;
+
+// One slot cache for speeding up RegExp.test() executions, by stripping
+// unnecessary leading or trailing .* from the RegExp.
+struct RegExpTestCache
+{
+    RegExpObject *key;
+    RegExpObject *value;
+
+    RegExpTestCache()
+      : key(nullptr), value(nullptr)
+    {}
+
+    void purge() {
+        key = nullptr;
+        value = nullptr;
+    }
+
+    void fill(RegExpObject *key, RegExpObject *value) {
+        this->key = key;
+        this->value = value;
+    }
+};
+
 /*
  * A FreeOp can do one thing: free memory. For convenience, it has delete_
  * convenience methods that also call destructors.
@@ -607,10 +631,21 @@ class PerThreadData : public PerThreadDataFriendFields
         {
             JS_ASSERT(!pt->runtime_);
             pt->runtime_ = rt;
+#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+            // The simulator has a pointer to its SimulatorRuntime, but helper threads
+            // don't have a simulator as they don't run JIT code so this pointer need not
+            // be updated. All the paths that the helper threads use access the
+            // SimulatorRuntime via the PerThreadData.
+            JS_ASSERT(!pt->simulator_);
+#endif
         }
 
         ~AutoEnterRuntime() {
             pt->runtime_ = nullptr;
+#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+            // Check that helper threads have not run JIT code and/or added a simulator.
+            JS_ASSERT(!pt->simulator_);
+#endif
         }
     };
 
@@ -1097,6 +1132,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::SourceDataCache sourceDataCache;
     js::EvalCache       evalCache;
     js::LazyScriptCache lazyScriptCache;
+    js::RegExpTestCache regExpTestCache;
 
     js::DateTimeInfo    dateTimeInfo;
 
@@ -1253,7 +1289,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     JSRuntime(JSRuntime *parentRuntime);
     ~JSRuntime();
 
-    bool init(uint32_t maxbytes);
+    bool init(uint32_t maxbytes, uint32_t maxNurseryBytes);
 
     JSRuntime *thisFromCtor() { return this; }
 

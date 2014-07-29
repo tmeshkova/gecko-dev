@@ -165,7 +165,7 @@ add_task(function* test_cache() {
   Assert.equal(list.length, 0, "Experiment list should be empty.");
   checkExperimentSerializations(experiments._experiments.values());
 
-  yield experiments.uninit();
+  yield promiseRestartManager();
   experiments = new Experiments.Experiments(gPolicy);
 
   yield experiments._run();
@@ -178,7 +178,7 @@ add_task(function* test_cache() {
   now = futureDate(startDates[0], 5 * MS_IN_ONE_DAY);
   defineNow(gPolicy, now);
 
-  yield experiments.uninit();
+  yield promiseRestartManager();
   experiments = new Experiments.Experiments(gPolicy);
   yield experiments._run();
 
@@ -190,12 +190,19 @@ add_task(function* test_cache() {
   checkExperimentListsEqual(experimentListData.slice(1), list);
   checkExperimentSerializations(experiments._experiments.values());
 
+  let branch = yield experiments.getExperimentBranch(EXPERIMENT1_ID);
+  Assert.strictEqual(branch, null);
+
+  yield experiments.setExperimentBranch(EXPERIMENT1_ID, "testbranch");
+  branch = yield experiments.getExperimentBranch(EXPERIMENT1_ID);
+  Assert.strictEqual(branch, "testbranch");
+
   // Re-init, clock set for experiment 1 to stop.
 
   now = futureDate(now, 20 * MS_IN_ONE_DAY);
   defineNow(gPolicy, now);
 
-  yield experiments.uninit();
+  yield promiseRestartManager();
   experiments = new Experiments.Experiments(gPolicy);
   yield experiments._run();
 
@@ -207,12 +214,15 @@ add_task(function* test_cache() {
   checkExperimentListsEqual(experimentListData.slice(1), list);
   checkExperimentSerializations(experiments._experiments.values());
 
+  branch = yield experiments.getExperimentBranch(EXPERIMENT1_ID);
+  Assert.strictEqual(branch, "testbranch");
+
   // Re-init, clock set for experiment 2 to start.
 
   now = futureDate(startDates[1], 20 * MS_IN_ONE_DAY);
   defineNow(gPolicy, now);
 
-  yield experiments.uninit();
+  yield promiseRestartManager();
   experiments = new Experiments.Experiments(gPolicy);
   yield experiments._run();
 
@@ -229,7 +239,7 @@ add_task(function* test_cache() {
   now = futureDate(now, 20 * MS_IN_ONE_DAY);
   defineNow(gPolicy, now);
 
-  yield experiments.uninit();
+  yield promiseRestartManager();
   experiments = new Experiments.Experiments(gPolicy);
   yield experiments._run();
 
@@ -244,6 +254,6 @@ add_task(function* test_cache() {
   // Cleanup.
 
   yield experiments._toggleExperimentsEnabled(false);
-  yield experiments.uninit();
+  yield promiseRestartManager();
   yield removeCacheFile();
 });

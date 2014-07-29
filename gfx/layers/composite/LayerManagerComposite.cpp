@@ -247,6 +247,9 @@ LayerManagerComposite::EndTransaction(DrawThebesLayerCallback aCallback,
 
     Render();
     mGeometryChanged = false;
+  } else {
+    // Modified layer tree
+    mGeometryChanged = true;
   }
 
   mCompositor->ClearTargetContext();
@@ -399,6 +402,8 @@ LayerManagerComposite::Render()
       }
     }
     mCompositor->EndFrameForExternalComposition(mWorldMatrix);
+    // Reset the invalid region as compositing is done
+    mInvalidRegion.SetEmpty();
     return;
   }
 
@@ -629,10 +634,11 @@ LayerManagerComposite::ComputeRenderIntegrity()
   }
 
   const FrameMetrics& rootMetrics = root->AsContainerLayer()->GetFrameMetrics();
-  nsIntRect screenRect(rootMetrics.mCompositionBounds.x,
-                       rootMetrics.mCompositionBounds.y,
-                       rootMetrics.mCompositionBounds.width,
-                       rootMetrics.mCompositionBounds.height);
+  ParentLayerIntRect bounds = RoundedToInt(rootMetrics.mCompositionBounds);
+  nsIntRect screenRect(bounds.x,
+                       bounds.y,
+                       bounds.width,
+                       bounds.height);
 
   float lowPrecisionMultiplier = 1.0f;
   float highPrecisionMultiplier = 1.0f;

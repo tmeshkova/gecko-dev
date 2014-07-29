@@ -9,7 +9,10 @@ function handleRequest(request, response) {
   let params = request.queryString.split("&");
   let status = params.filter((s) => s.contains("sts="))[0].split("=")[1];
 
-  Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer).initWithCallback(() => {
+  let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+  timer.initWithCallback(() => {
+    // to avoid garbage collection
+    timer = null;
     switch (status) {
       case "100":
         response.setStatusLine(request.httpVersion, 101, "Switching Protocols");
@@ -27,6 +30,11 @@ function handleRequest(request, response) {
         response.setStatusLine(request.httpVersion, 501, "Not Implemented");
         break;
     }
+
+    response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("Expires", "0");
+
     response.setHeader("Content-Type", "text/plain; charset=utf-8", false);
     response.write("Hello status code " + status + "!");
     response.finish();

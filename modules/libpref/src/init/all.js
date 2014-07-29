@@ -260,11 +260,9 @@ pref("media.navigator.video.default_minfps",10);
 
 pref("media.webrtc.debug.trace_mask", 0);
 pref("media.webrtc.debug.multi_log", false);
-#if defined(ANDROID) || defined(XP_WIN)
+pref("media.webrtc.debug.aec_log_dir", "");
 pref("media.webrtc.debug.log_file", "");
-#else
-pref("media.webrtc.debug.log_file", "/tmp/WebRTC.log");
-#endif
+pref("media.webrtc.debug.aec_dump_max_size", 4194304); // 4MB
 
 #ifdef MOZ_WIDGET_GONK
 pref("media.navigator.video.default_width",320);
@@ -274,6 +272,7 @@ pref("media.peerconnection.video.enabled", true);
 pref("media.navigator.video.max_fs", 1200); // 640x480 == 1200mb
 pref("media.navigator.video.max_fr", 30);
 pref("media.peerconnection.video.h264_enabled", false);
+pref("media.getusermedia.aec", 4);
 #else
 pref("media.navigator.video.default_width",0);  // adaptive default
 pref("media.navigator.video.default_height",0); // adaptive default
@@ -281,6 +280,7 @@ pref("media.peerconnection.enabled", true);
 pref("media.peerconnection.video.enabled", true);
 pref("media.navigator.video.max_fs", 0); // unrestricted
 pref("media.navigator.video.max_fr", 0); // unrestricted
+pref("media.getusermedia.aec", 1);
 #endif
 pref("media.peerconnection.video.min_bitrate", 200);
 pref("media.peerconnection.video.start_bitrate", 300);
@@ -300,7 +300,6 @@ pref("media.peerconnection.identity.timeout", 10000);
 // setting (for Xxx = Ec, Agc, or Ns).  Defaults are all set to kXxxDefault here.
 pref("media.peerconnection.turn.disable", false);
 pref("media.getusermedia.aec_enabled", true);
-pref("media.getusermedia.aec", 1);
 pref("media.getusermedia.agc_enabled", false);
 pref("media.getusermedia.agc", 1);
 pref("media.getusermedia.noise_enabled", true);
@@ -807,7 +806,7 @@ pref("dom.sysmsg.enabled", false);
 // Enable pre-installed applications.
 pref("dom.webapps.useCurrentProfile", false);
 
-pref("dom.cycle_collector.incremental", true);
+pref("dom.cycle_collector.incremental", false);
 
 pref("dom.window_experimental_bindings", true);
 
@@ -979,7 +978,7 @@ pref("network.http.default-socket-type", "");
 // the packet is lost or delayed on the route.
 pref("network.http.keep-alive.timeout", 115);
 
-// Timeout connections if an initial response is not received after 10 mins.
+// Timeout connections if an initial response is not received after 5 mins.
 pref("network.http.response.timeout", 300);
 
 // Limit the absolute number of http connections.
@@ -1404,6 +1403,8 @@ pref("network.predictor.preserve", 80); // percentage of predictor data to keep 
 
 // Allow insecure NTLMv1 when needed.
 pref("network.negotiate-auth.allow-insecure-ntlm-v1", false);
+// Allow insecure NTLMv1 for HTTPS protected sites by default.
+pref("network.negotiate-auth.allow-insecure-ntlm-v1-https", true);
 
 // This list controls which URIs can use the negotiate-auth protocol.  This
 // list should be limited to the servers you know you'll need to login to.
@@ -1956,7 +1957,7 @@ pref("layout.css.overflow-clip-box.enabled", false);
 pref("layout.css.grid.enabled", false);
 
 // Is support for CSS box-decoration-break enabled?
-pref("layout.css.box-decoration-break.enabled", false);
+pref("layout.css.box-decoration-break.enabled", true);
 
 // pref for which side vertical scrollbars should be on
 // 0 = end-side in UI direction
@@ -3792,8 +3793,8 @@ pref("layers.async-video.enabled",false);
 #endif
 
 #ifdef XP_WIN
-pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.async-video.enabled", true);
+pref("layers.offmainthreadcomposition.enabled", false);
+pref("layers.async-video.enabled", false);
 #endif
 
 #ifdef MOZ_X11
@@ -4231,3 +4232,11 @@ pref("beacon.enabled", true);
 // Camera prefs
 pref("camera.control.autofocus_moving_callback.enabled", true);
 pref("camera.control.face_detection.enabled", true);
+#ifdef MOZ_WIDGET_GONK
+// Empirically, this is the value returned by hal::GetTotalSystemMemory()
+// when Flame's memory is limited to 512MiB. If the camera stack determines
+// it is running on a low memory platform, features that can be reliably
+// supported will be disabled. This threshold can be adjusted to suit other
+// platforms; and set to 0 to disable the low-memory check altogether.
+pref("camera.control.low_memory_thresholdMB", 404);
+#endif

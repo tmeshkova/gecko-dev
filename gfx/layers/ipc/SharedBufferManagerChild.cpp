@@ -37,7 +37,6 @@ SharedBufferManagerChild::SharedBufferManagerChild()
   : mBufferMutex("BufferMonitor")
 #endif
 {
-
 }
 
 static bool
@@ -154,8 +153,9 @@ bool
 SharedBufferManagerChild::StartUpOnThread(base::Thread* aThread)
 {
   NS_ABORT_IF_FALSE(aThread, "SharedBufferManager needs a thread.");
-  if (sSharedBufferManagerChildSingleton != nullptr)
+  if (sSharedBufferManagerChildSingleton != nullptr) {
     return false;
+  }
 
   sSharedBufferManagerChildThread = aThread;
   if (!aThread->IsRunning()) {
@@ -317,31 +317,55 @@ SharedBufferManagerChild::DeallocGrallocBufferNow(const mozilla::layers::MaybeMa
 #endif
 }
 
-bool SharedBufferManagerChild::RecvDropGrallocBuffer(const mozilla::layers::MaybeMagicGrallocBufferHandle& handle)
+void
+SharedBufferManagerChild::DropGrallocBuffer(const mozilla::layers::MaybeMagicGrallocBufferHandle& aHandle)
 {
 #ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
-  NS_ASSERTION(handle.type() == mozilla::layers::MaybeMagicGrallocBufferHandle::TGrallocBufferRef, "shouldn't go this way");
-  int bufferKey = handle.get_GrallocBufferRef().mKey;
+  int64_t bufferKey = -1;
+  if (aHandle.type() == mozilla::layers::MaybeMagicGrallocBufferHandle::TMagicGrallocBufferHandle) {
+    bufferKey = aHandle.get_MagicGrallocBufferHandle().mRef.mKey;
+  } else if (aHandle.type() == mozilla::layers::MaybeMagicGrallocBufferHandle::TGrallocBufferRef) {
+    bufferKey = aHandle.get_GrallocBufferRef().mKey;
+  } else {
+    return;
+  }
 
   {
     MutexAutoLock lock(mBufferMutex);
-    NS_ASSERTION(mBuffers.count(bufferKey) != 0, "Not my buffer");
     mBuffers.erase(bufferKey);
   }
 #endif
+}
+
+bool SharedBufferManagerChild::RecvDropGrallocBuffer(const mozilla::layers::MaybeMagicGrallocBufferHandle& aHandle)
+{
+  DropGrallocBuffer(aHandle);
   return true;
 }
 
 #ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
 android::sp<android::GraphicBuffer>
-SharedBufferManagerChild::GetGraphicBuffer(int key)
+SharedBufferManagerChild::GetGraphicBuffer(int64_t key)
 {
   MutexAutoLock lock(mBufferMutex);
-  if (mBuffers.count(key) == 0)
+  if (mBuffers.count(key) == 0) {
+    printf_stderr("SharedBufferManagerChild::GetGraphicBuffer -- invalid key");
     return nullptr;
+  }
   return mBuffers[key];
 }
 #endif
+
+bool
+SharedBufferManagerChild::IsValidKey(int64_t key)
+{
+#ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
+  if (mBuffers.count(key) != 1) {
+    return false;
+  }
+#endif
+  return true;
+}
 
 } /* namespace layers */
 } /* namespace mozilla */

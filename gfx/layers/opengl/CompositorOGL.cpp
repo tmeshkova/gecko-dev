@@ -49,6 +49,10 @@
 #include "TexturePoolOGL.h"
 #endif
 
+#ifdef XP_MACOSX
+#include "nsCocoaFeatures.h"
+#endif
+
 #include "GeckoProfiler.h"
 
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
@@ -801,6 +805,17 @@ CompositorOGL::CreateFBOWithTexture(const IntRect& aRect, bool aCopyFromSource,
                                     GLuint aSourceFrameBuffer,
                                     GLuint *aFBO, GLuint *aTexture)
 {
+  // we're about to create a framebuffer backed by textures to use as an intermediate
+  // surface. What to do if its size (as given by aRect) would exceed the
+  // maximum texture size supported by the GL? The present code chooses the compromise
+  // of just clamping the framebuffer's size to the max supported size.
+  // This gives us a lower resolution rendering of the intermediate surface (children layers).
+  // See bug 827170 for a discussion.
+  IntRect clampedRect = aRect;
+  int32_t maxTexSize = GetMaxTextureSize();
+  clampedRect.width = std::min(clampedRect.width, maxTexSize);
+  clampedRect.height = std::min(clampedRect.height, maxTexSize);
+
   GLuint tex, fbo;
 
   mGLContext->fActiveTexture(LOCAL_GL_TEXTURE0);
@@ -829,25 +844,25 @@ CompositorOGL::CreateFBOWithTexture(const IntRect& aRect, bool aCopyFromSource,
       mGLContext->fCopyTexImage2D(mFBOTextureTarget,
                                   0,
                                   LOCAL_GL_RGBA,
-                                  aRect.x, FlipY(aRect.y + aRect.height),
-                                  aRect.width, aRect.height,
+                                  clampedRect.x, FlipY(clampedRect.y + clampedRect.height),
+                                  clampedRect.width, clampedRect.height,
                                   0);
     } else {
       // Curses, incompatible formats.  Take a slow path.
 
       // RGBA
-      size_t bufferSize = aRect.width * aRect.height * 4;
+      size_t bufferSize = clampedRect.width * clampedRect.height * 4;
       nsAutoArrayPtr<uint8_t> buf(new uint8_t[bufferSize]);
 
-      mGLContext->fReadPixels(aRect.x, aRect.y,
-                              aRect.width, aRect.height,
+      mGLContext->fReadPixels(clampedRect.x, clampedRect.y,
+                              clampedRect.width, clampedRect.height,
                               LOCAL_GL_RGBA,
                               LOCAL_GL_UNSIGNED_BYTE,
                               buf);
       mGLContext->fTexImage2D(mFBOTextureTarget,
                               0,
                               LOCAL_GL_RGBA,
-                              aRect.width, aRect.height,
+                              clampedRect.width, clampedRect.height,
                               0,
                               LOCAL_GL_RGBA,
                               LOCAL_GL_UNSIGNED_BYTE,
@@ -864,7 +879,7 @@ CompositorOGL::CreateFBOWithTexture(const IntRect& aRect, bool aCopyFromSource,
     mGLContext->fTexImage2D(mFBOTextureTarget,
                             0,
                             LOCAL_GL_RGBA,
-                            aRect.width, aRect.height,
+                            clampedRect.width, clampedRect.height,
                             0,
                             LOCAL_GL_RGBA,
                             LOCAL_GL_UNSIGNED_BYTE,
@@ -1008,6 +1023,9 @@ CompositorOGL::DrawQuad(const Rect& aRect,
 
   IntRect intClipRect;
   aClipRect.ToIntRect(&intClipRect);
+  if (!mTarget) {
+    intClipRect.MoveBy(mRenderOffset.x, mRenderOffset.y);
+  }
 
   gl()->fScissor(intClipRect.x, FlipY(intClipRect.y + intClipRect.height),
                  intClipRect.width, intClipRect.height);
@@ -1247,6 +1265,19 @@ CompositorOGL::DrawQuad(const Rect& aRect,
       // Pass 2.
       gl()->fBlendFuncSeparate(LOCAL_GL_ONE, LOCAL_GL_ONE,
                                LOCAL_GL_ONE, LOCAL_GL_ONE);
+
+#ifdef XP_MACOSX
+      if (gl()->WorkAroundDriverBugs() &&
+          gl()->Vendor() == GLVendor::NVIDIA &&
+          !nsCocoaFeatures::OnMavericksOrLater()) {
+        // Bug 987497: With some GPUs the nvidia driver on 10.8 and below
+        // won't pick up the TexturePass2 uniform change below if we don't do
+        // something to force it. Re-activating the shader seems to be one way
+        // of achieving that.
+        program->Activate();
+      }
+#endif
+
       program->SetTexturePass2(true);
       BindAndDrawQuadWithTextureRect(program,
                                      aRect,

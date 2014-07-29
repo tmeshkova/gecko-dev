@@ -1524,8 +1524,9 @@ var BrowserApp = {
         let url = data.url;
         let flags;
 
-        if (/^[0-9]+$/.test(url)) {
-          // If the query is a number, force a search (see bug 993705; workaround for bug 693808).
+        if (!data.engine && /^[0-9]+$/.test(url)) {
+          // If the query is a number and we're not using a search engine,
+          // force a search (see bug 993705; workaround for bug 693808).
           url = URIFixup.keywordToURI(url).spec;
         } else {
           flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP |
@@ -4130,6 +4131,13 @@ Tab.prototype = {
     if (!sameDocument) {
       // XXX This code assumes that this is the earliest hook we have at which
       // browser.contentDocument is changed to the new document we're loading
+
+      // We have a new browser and a new window, so the old browserWidth and
+      // browserHeight are no longer valid.  We need to force-set the browser
+      // size to ensure it sets the CSS viewport size before the document
+      // has a chance to check it.
+      this.setBrowserSize(kDefaultCSSViewportWidth, kDefaultCSSViewportHeight, true);
+
       this.contentDocumentIsDisplayed = false;
       this.hasTouchListener = false;
     } else {
@@ -4433,9 +4441,11 @@ Tab.prototype = {
     });
   },
 
-  setBrowserSize: function(aWidth, aHeight) {
-    if (fuzzyEquals(this.browserWidth, aWidth) && fuzzyEquals(this.browserHeight, aHeight)) {
-      return;
+  setBrowserSize: function(aWidth, aHeight, aForce) {
+    if (!aForce) {
+      if (fuzzyEquals(this.browserWidth, aWidth) && fuzzyEquals(this.browserHeight, aHeight)) {
+        return;
+      }
     }
 
     this.browserWidth = aWidth;
@@ -6796,6 +6806,7 @@ var SearchEngines = {
       icon: "drawable://ab_add_search_engine",
       selector: filter,
       action: function(aElement) {
+        UITelemetry.addEvent("action.1", "actionbar", null, "add_search_engine");
         SearchEngines.addEngine(aElement);
       }
     });
@@ -7586,6 +7597,13 @@ let Reader = {
         let url = aData;
         this.removeArticleFromCache(url, function(success) {
           this.log("Reader:Remove success=" + success + ", url=" + url);
+
+          if (success) {
+            sendMessageToJava({
+              type: "Reader:Removed",
+              url: url
+            });
+          }
         }.bind(this));
         break;
       }

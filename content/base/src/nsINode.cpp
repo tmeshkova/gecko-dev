@@ -91,6 +91,7 @@
 #include "nsUnicharUtils.h"
 #include "nsXBLBinding.h"
 #include "nsXBLPrototypeBinding.h"
+#include "mozilla/Preferences.h"
 #include "prprf.h"
 #include "xpcpublic.h"
 #include "nsCSSRuleProcessor.h"
@@ -1477,8 +1478,10 @@ static nsresult
 CheckForOutdatedParent(nsINode* aParent, nsINode* aNode)
 {
   if (JSObject* existingObjUnrooted = aNode->GetWrapper()) {
+    JSRuntime* runtime = JS_GetObjectRuntime(existingObjUnrooted);
+    JS::Rooted<JSObject*> existingObj(runtime, existingObjUnrooted);
+
     AutoJSContext cx;
-    JS::Rooted<JSObject*> existingObj(cx, existingObjUnrooted);
     nsIGlobalObject* global = aParent->OwnerDoc()->GetScopeObject();
     MOZ_ASSERT(global);
 
@@ -2735,4 +2738,11 @@ EventTarget::DispatchEvent(Event& aEvent,
   bool result = false;
   aRv = DispatchEvent(&aEvent, &result);
   return result;
+}
+
+bool
+nsINode::HasBoxQuadsSupport(JSContext* aCx, JSObject* /* unused */)
+{
+  return xpc::AccessCheck::isChrome(js::GetContextCompartment(aCx)) ||
+         Preferences::GetBool("layout.css.getBoxQuads.enabled");
 }

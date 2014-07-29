@@ -82,6 +82,7 @@ user_pref("urlclassifier.updateinterval", 172800);
 // Point the url-classifier to the local testing server for fast failures
 user_pref("browser.safebrowsing.gethashURL", "http://%(server)s/safebrowsing-dummy/gethash");
 user_pref("browser.safebrowsing.updateURL", "http://%(server)s/safebrowsing-dummy/update");
+user_pref("browser.safebrowsing.appRepURL", "http://%(server)s/safebrowsing-dummy/update");
 // Point update checks to the local testing server for fast failures
 user_pref("extensions.update.url", "http://%(server)s/extensions-dummy/updateURL");
 user_pref("extensions.update.background.url", "http://%(server)s/extensions-dummy/updateBackgroundURL");
@@ -200,3 +201,7 @@ user_pref('identity.fxaccounts.auth.uri', 'https://%(server)s/fxa-dummy/');
 
 // Enable logging of APZ test data (see bug 961289).
 user_pref('apz.test.logging_enabled', true);
+
+// Make sure Translation won't hit the network.
+user_pref("browser.translation.bing.authURL", "http://%(server)s/browser/browser/components/translation/test/bing.sjs");
+user_pref("browser.translation.bing.translateArrayURL", "http://%(server)s/browser/browser/components/translation/test/bing.sjs");

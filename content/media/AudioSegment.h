@@ -131,6 +131,8 @@ struct AudioChunk {
   }
   int ChannelCount() const { return mChannelData.Length(); }
 
+  bool IsMuted() const { return mVolume == 0.0f; }
+
   size_t SizeOfExcludingThisIfUnshared(MallocSizeOf aMallocSizeOf) const
   {
     return SizeOfExcludingThis(aMallocSizeOf, true);
@@ -223,7 +225,9 @@ public:
     }
   }
 
-  void ResampleChunks(SpeexResamplerState* aResampler);
+  void ResampleChunks(SpeexResamplerState* aResampler,
+                      uint32_t aInRate,
+                      uint32_t aOutRate);
 
   void AppendFrames(already_AddRefed<ThreadSharedObject> aBuffer,
                     const nsTArray<const float*>& aChannelData,
@@ -283,6 +287,15 @@ public:
       }
     }
     return 0;
+  }
+
+  bool IsNull() {
+    for (ChunkIterator ci(*this); !ci.IsEnded(); ci.Next()) {
+      if (!ci->IsNull()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   static Type StaticType() { return AUDIO; }
