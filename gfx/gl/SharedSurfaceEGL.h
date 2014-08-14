@@ -75,7 +75,7 @@ public:
     // Implementation-specific functions below:
     // Returns texture and target
     void AcquireConsumerTexture(GLContext* consGL, GLuint* out_texture, GLuint* out_target);
-    virtual void CleanupSurface();
+    EGLImage GetPlatformImage();
 };
 
 

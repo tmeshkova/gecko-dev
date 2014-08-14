@@ -23,6 +23,7 @@ class nsString;
 [ref] native nsIntRect(nsIntRect);
 [ref] native InputData(mozilla::InputData);
 [ptr] native EmbedLiteRenderTarget(mozilla::embedlite::EmbedLiteRenderTarget);
+[ptr] native PlatformImage(void);
 [ptr] native buffer(unsigned char);
 
 [scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
@@ -62,6 +63,5 @@ interface EmbedLiteViewIface
     void ViewAPIDestroyed();
     void GetUniqueID(out uint32_t aId);
     void GetPendingTexture(in EmbedLiteRenderTarget aContextWrapper, out int32_t aTextureID, out int32_t aTextureTarget, out int32_t aWidth, out int32_t aHeight);
-    void SuspendRendering(in EmbedLiteRenderTarget aContextWrapper);
-    void ResumeRendering();
+    void GetPlatformImage(out PlatformImage aImage, out int32_t aWidth, out int32_t aHeight);
 };

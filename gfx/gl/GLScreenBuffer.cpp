@@ -381,11 +381,6 @@ GLScreenBuffer::Morph(SurfaceFactory* newFactory, SurfaceStreamType streamType)
     mStream = newStream;
 }
 
-void GLScreenBuffer::CleanupBuffers()
-{
-    mStream->CleanupSurfaces();
-}
-
 bool
 GLScreenBuffer::Attach(SharedSurface* surf, const gfx::IntSize& size)
 {

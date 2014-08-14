@@ -235,38 +235,26 @@ void EmbedLiteCompositorParent::SetClipping(const gfxRect& aClipRect)
   gfxUtils::GfxRectToIntRect(aClipRect, &mActiveClipping);
 }
 
-void EmbedLiteCompositorParent::SuspendRendering()
+void* EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
 {
-  if (!CompositorParent::IsInCompositorThread()) {
-    CancelableTask *pauseTask = NewRunnableMethod(this,
-                                                  &EmbedLiteCompositorParent::SuspendRendering);
-    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
-    return;
-  }
-
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, );
+  NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context && context->IsOffscreen(), );
+  NS_ENSURE_TRUE(context && context->IsOffscreen(), nullptr);
 
-  GLScreenBuffer* screen = context->Screen();
-  if (screen) {
-    screen->CleanupBuffers();
-  }
-}
+  SharedSurface* sharedSurf = context->RequestFrame();
+  NS_ENSURE_TRUE(sharedSurf, nullptr);
 
-void EmbedLiteCompositorParent::ResumeRendering()
-{
-  if (!CompositorParent::IsInCompositorThread()) {
-    CancelableTask *pauseTask = NewRunnableMethod(this,
-                                                  &EmbedLiteCompositorParent::ResumeRendering);
-    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
+  *width = sharedSurf->mSize.width;
+  *height = sharedSurf->mSize.height;
+
+  if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
+    SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
+    return eglImageSurf->GetPlatformImage();
   }
 
-  PrepareOffscreen();
-  mInitialPaintCount = 0;
-  ScheduleRenderOnCompositorThread();
+  return nullptr;
 }
 
 } // namespace embedlite

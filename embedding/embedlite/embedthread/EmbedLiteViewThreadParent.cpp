@@ -772,20 +772,10 @@ EmbedLiteViewThreadParent::GetUniqueID(uint32_t *aId)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SuspendRendering(EmbedLiteRenderTarget* target)
+NS_IMETHODIMP EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
 {
   NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
-  mCompositor->SuspendRendering();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::ResumeRendering()
-{
-  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
-  mCompositor->ResumeRendering();
+  *aImage = mCompositor->GetPlatformImage(width, height);
   return NS_OK;
 }
 

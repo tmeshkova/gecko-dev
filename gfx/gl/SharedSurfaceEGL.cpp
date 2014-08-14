@@ -105,20 +105,6 @@ SharedSurface_EGLImage::~SharedSurface_EGLImage()
     }
 }
 
-void SharedSurface_EGLImage::CleanupSurface()
-{
-    MutexAutoLock lock(mMutex);
-    if (mCurConsGL != nullptr) {
-        mCurConsGL->MakeCurrent();
-        if (mConsTex) {
-            MOZ_ASSERT(mGarbageBin);
-            mGarbageBin->Trash(mConsTex);
-            mConsTex = 0;
-        }
-        mCurConsGL = nullptr;
-    }
-}
-
 void
 SharedSurface_EGLImage::Fence()
 {
@@ -205,6 +191,12 @@ SharedSurface_EGLImage::AcquireConsumerTexture(GLContext* consGL, GLuint* out_te
     *out_target = LOCAL_GL_TEXTURE_EXTERNAL;
 }
 
+EGLImage
+SharedSurface_EGLImage::GetPlatformImage()
+{
+    MutexAutoLock lock(mMutex);
+    return (EGLImage)mImage;
+}
 
 SurfaceFactory_EGLImage*
 SurfaceFactory_EGLImage::Create(GLContext* prodGL,

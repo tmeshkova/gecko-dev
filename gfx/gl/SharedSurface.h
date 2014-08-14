@@ -73,8 +73,6 @@ public:
     // Unlocking is harmless if we're already unlocked.
     void UnlockProd();
 
-    virtual void CleanupSurface() {}
-
 protected:
     virtual void LockProdImpl() = 0;
     virtual void UnlockProdImpl() = 0;
