@@ -41,7 +41,9 @@ protected:
     GLLibraryEGL* const mEGL;
     const GLFormats mFormats;
     GLuint mProdTex;
-    EGLImage mImage;
+public:
+    const EGLImage mImage;
+protected:
     GLContext* mCurConsGL;
     GLuint mConsTex;
     nsRefPtr<TextureGarbageBin> mGarbageBin;
@@ -75,7 +77,6 @@ public:
     // Implementation-specific functions below:
     // Returns texture and target
     void AcquireConsumerTexture(GLContext* consGL, GLuint* out_texture, GLuint* out_target);
-    EGLImage GetPlatformImage();
 };
 
 

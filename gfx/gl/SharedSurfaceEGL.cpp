@@ -85,7 +85,6 @@ SharedSurface_EGLImage::SharedSurface_EGLImage(GLContext* gl,
 SharedSurface_EGLImage::~SharedSurface_EGLImage()
 {
     mEGL->fDestroyImage(Display(), mImage);
-    mImage = 0;
 
     mGL->MakeCurrent();
     mGL->fDeleteTextures(1, &mProdTex);
@@ -189,13 +188,6 @@ SharedSurface_EGLImage::AcquireConsumerTexture(GLContext* consGL, GLuint* out_te
     MOZ_ASSERT(consGL == mCurConsGL);
     *out_texture = mConsTex;
     *out_target = LOCAL_GL_TEXTURE_EXTERNAL;
-}
-
-EGLImage
-SharedSurface_EGLImage::GetPlatformImage()
-{
-    MutexAutoLock lock(mMutex);
-    return (EGLImage)mImage;
 }
 
 SurfaceFactory_EGLImage*

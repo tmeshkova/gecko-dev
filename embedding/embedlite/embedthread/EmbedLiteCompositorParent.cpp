@@ -251,7 +251,7 @@ void* EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
 
   if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
-    return eglImageSurf->GetPlatformImage();
+    return eglImageSurf->mImage;
   }
 
   return nullptr;
