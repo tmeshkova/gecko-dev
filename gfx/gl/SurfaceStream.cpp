@@ -158,8 +158,6 @@ SurfaceStream::RecycleScraps(SurfaceFactory* factory)
     }
 }
 
-
-
 SurfaceStream::~SurfaceStream()
 {
     Delete(mProducer);

@@ -414,5 +414,13 @@ EmbedLiteView::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* te
   return mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height, textureTarget);
 }
 
+void* EmbedLiteView::GetPlatformImage(int* width, int* height)
+{
+  NS_ENSURE_TRUE(mViewImpl, nullptr);
+  void* aImage;
+  mViewImpl->GetPlatformImage(&aImage, width, height);
+  return aImage;
+}
+
 } // namespace embedlite
 } // namespace mozilla

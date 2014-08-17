@@ -94,7 +94,7 @@ EmbedLiteCompositorParent::PrepareOffscreen()
         SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
                                           screen->PreserveBuffer());
       SurfaceFactory_GL* factory = nullptr;
-      if (context->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
+      if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
         factory = SurfaceFactory_EGLImage::Create(context, screen->Caps());
       } else {
@@ -233,6 +233,28 @@ void EmbedLiteCompositorParent::SetWorldTransform(gfx::Matrix aMatrix)
 void EmbedLiteCompositorParent::SetClipping(const gfxRect& aClipRect)
 {
   gfxUtils::GfxRectToIntRect(aClipRect, &mActiveClipping);
+}
+
+void* EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
+{
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
+
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context && context->IsOffscreen(), nullptr);
+
+  SharedSurface* sharedSurf = context->RequestFrame();
+  NS_ENSURE_TRUE(sharedSurf, nullptr);
+
+  *width = sharedSurf->Size().width;
+  *height = sharedSurf->Size().height;
+
+  if (sharedSurf->Type() == SharedSurfaceType::EGLImageShare) {
+    SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
+    return eglImageSurf->mImage;
+  }
+
+  return nullptr;
 }
 
 } // namespace embedlite
