@@ -735,7 +735,7 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
   bool prevIsComposition = mIMEComposing;
   bool StartComposite = !prevIsComposition && commit.IsEmpty() && !preEdit.IsEmpty();
   bool UpdateComposite = prevIsComposition && commit.IsEmpty() && !preEdit.IsEmpty();
-  bool EndComposite = prevIsComposition && !commit.IsEmpty() && preEdit.IsEmpty();
+  bool EndComposite = prevIsComposition && preEdit.IsEmpty();
   mIMEComposing = UpdateComposite || StartComposite;
   nsString pushStr = preEdit.IsEmpty() ? commit : preEdit;
   if (!commit.IsEmpty() && !EndComposite) {
@@ -748,18 +748,30 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
     mHelper->DispatchWidgetEvent(event);
   }
 
-  if (StartComposite || UpdateComposite) {
-    WidgetCompositionEvent event(true, NS_COMPOSITION_UPDATE, widget);
-    InitEvent(event, nullptr);
-    event.data = pushStr;
-    mHelper->DispatchWidgetEvent(event);
-  }
-
   if (StartComposite || UpdateComposite || EndComposite) {
+    WidgetCompositionEvent updateEvent(true, NS_COMPOSITION_UPDATE, widget);
+    InitEvent(updateEvent, nullptr);
+    updateEvent.data = pushStr;
+    mHelper->DispatchWidgetEvent(updateEvent);
+
     WidgetTextEvent event(true, NS_TEXT_TEXT, widget);
     InitEvent(event, nullptr);
     event.theText = pushStr;
     mHelper->DispatchWidgetEvent(event);
+
+    nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+    if (!ps) {
+      return false;
+    }
+    nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
+    nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
+
+    InternalEditorInputEvent inputEvent(true, NS_EDITOR_INPUT, widget);
+    inputEvent.time = static_cast<uint64_t>(PR_Now() / 1000);
+    inputEvent.mIsComposing = mIMEComposing;
+    nsEventStatus status = nsEventStatus_eIgnore;
+    nsresult rv =
+      ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
   }
 
   if (EndComposite) {
