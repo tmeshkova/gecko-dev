@@ -48,8 +48,7 @@ var MockServices = (function () {
         dbId: aDetails.dbId || undefined,
         dir: aDetails.dir || undefined,
         tag: aDetails.tag || undefined,
-        timestamp: aDetails.timestamp || undefined,
-        data: aDetails.data || undefined
+        timestamp: aDetails.timestamp || undefined
       };
       this.showAlertNotification(aImageUrl, aTitle, aText, true, "", listener, aDetails.id);
     },

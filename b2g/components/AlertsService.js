@@ -68,7 +68,7 @@ AlertsService.prototype = {
   // nsIAlertsService
   showAlertNotification: function(aImageUrl, aTitle, aText, aTextClickable,
                                   aCookie, aAlertListener, aName, aBidi,
-                                  aLang, aDataStr) {
+                                  aLang) {
     cpmm.sendAsyncMessage(kMessageAlertNotificationSend, {
       imageURL: aImageUrl,
       title: aTitle,
@@ -78,8 +78,7 @@ AlertsService.prototype = {
       listener: aAlertListener,
       id: aName,
       dir: aBidi,
-      lang: aLang,
-      dataStr: aDataStr
+      lang: aLang
     });
   },
 
@@ -95,7 +94,6 @@ AlertsService.prototype = {
     let uid = (aDetails.id == "") ?
           "app-notif-" + uuidGenerator.generateUUID() : aDetails.id;
 
-    let dataObj = this.deserializeStructuredClone(aDetails.data);
     this._listeners[uid] = {
       observer: aAlertListener,
       title: aTitle,
@@ -107,8 +105,7 @@ AlertsService.prototype = {
       dbId: aDetails.dbId || undefined,
       dir: aDetails.dir || undefined,
       tag: aDetails.tag || undefined,
-      timestamp: aDetails.timestamp || undefined,
-      dataObj: dataObj || undefined
+      timestamp: aDetails.timestamp || undefined
     };
 
     cpmm.sendAsyncMessage(kMessageAppNotificationSend, {
@@ -149,8 +146,7 @@ AlertsService.prototype = {
             id: listener.id,
             tag: listener.tag,
             dbId: listener.dbId,
-            timestamp: listener.timestamp,
-            data: listener.dataObj || undefined,
+            timestamp: listener.timestamp
           },
           Services.io.newURI(data.target, null, null),
           Services.io.newURI(listener.manifestURL, null, null)
@@ -165,30 +161,6 @@ AlertsService.prototype = {
       }
       delete this._listeners[data.uid];
     }
-  },
-
-  deserializeStructuredClone: function(dataString) {
-    if (!dataString) {
-      return null;
-    }
-    let scContainer = Cc["@mozilla.org/docshell/structured-clone-container;1"].
-      createInstance(Ci.nsIStructuredCloneContainer);
-
-    // The maximum supported structured-clone serialization format version
-    // as defined in "js/public/StructuredClone.h"
-    let JS_STRUCTURED_CLONE_VERSION = 4;
-    scContainer.initFromBase64(dataString, JS_STRUCTURED_CLONE_VERSION);
-    let dataObj = scContainer.deserializeToVariant();
-
-    // We have to check whether dataObj contains DOM objects (supported by
-    // nsIStructuredCloneContainer, but not by Cu.cloneInto), e.g. ImageData.
-    // After the structured clone callback systems will be unified, we'll not
-    // have to perform this check anymore.
-    try {
-      let data = Cu.cloneInto(dataObj, {});
-    } catch(e) { dataObj = null; }
-
-    return dataObj;
   }
 };
 

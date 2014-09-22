@@ -202,7 +202,6 @@ OSXNotificationCenter::ShowAlertNotification(const nsAString & aImageUrl, const 
                                              const nsAString & aAlertName,
                                              const nsAString & aBidi,
                                              const nsAString & aLang,
-                                             const nsAString & aData,
                                              nsIPrincipal * aPrincipal)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
