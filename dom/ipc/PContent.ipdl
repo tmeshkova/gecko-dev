@@ -532,6 +532,7 @@ parent:
                           nsString name,
                           nsString bidi,
                           nsString lang,
+                          nsString data,
                           Principal principal);
 
     CloseAlert(nsString name, Principal principal);

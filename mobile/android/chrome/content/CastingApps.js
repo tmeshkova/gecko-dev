@@ -378,6 +378,10 @@ var CastingApps = {
       }
     });
 
+    if (items.length == 0) {
+      return;
+    }
+
     let prompt = new Prompt({
       title: Strings.browser.GetStringFromName("casting.prompt")
     }).setSingleChoiceItems(items).show(function(data) {
@@ -458,8 +462,11 @@ var CastingApps = {
     }
 
     this.session.remoteMedia.shutdown();
-    this.session.app.stop();
+    this._shutdown();
+  },
 
+  _shutdown: function() {
+    this.session.app.stop();
     let video = this.session.videoRef.get();
     if (video) {
       this._sendEventToVideo(video, { active: false });
@@ -487,6 +494,7 @@ var CastingApps = {
 
   onRemoteMediaStop: function(aRemoteMedia) {
     sendMessageToJava({ type: "Casting:Stopped" });
+    this._shutdown();
   },
 
   onRemoteMediaStatus: function(aRemoteMedia) {

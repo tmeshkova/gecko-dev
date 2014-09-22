@@ -16,6 +16,7 @@ browser.jar:
         skin/classic/browser/aboutCertError_sectionCollapsed.png
         skin/classic/browser/aboutCertError_sectionCollapsed-rtl.png
         skin/classic/browser/aboutCertError_sectionExpanded.png
+        skin/classic/browser/aboutNetError.css                       (../shared/aboutNetError.css)
         skin/classic/browser/aboutSocialError.css
 #ifdef MOZ_SERVICES_SYNC
         skin/classic/browser/aboutSyncTabs.css
@@ -138,8 +139,7 @@ browser.jar:
         skin/classic/browser/feeds/subscribe.css                     (feeds/subscribe.css)
         skin/classic/browser/feeds/subscribe-ui.css                  (feeds/subscribe-ui.css)
 *       skin/classic/browser/newtab/newTab.css                       (newtab/newTab.css)
-        skin/classic/browser/newtab/controls.png                     (../shared/newtab/controls.png)
-        skin/classic/browser/newtab/controls@2x.png                  (../shared/newtab/controls@2x.png)
+        skin/classic/browser/newtab/controls.svg                     (../shared/newtab/controls.svg)
         skin/classic/browser/places/places.css                       (places/places.css)
 *       skin/classic/browser/places/organizer.css                    (places/organizer.css)
         skin/classic/browser/places/bookmark.png                     (places/bookmark.png)
@@ -427,6 +427,7 @@ browser.jar:
         skin/classic/aero/browser/aboutCertError_sectionCollapsed.png
         skin/classic/aero/browser/aboutCertError_sectionCollapsed-rtl.png
         skin/classic/aero/browser/aboutCertError_sectionExpanded.png
+        skin/classic/aero/browser/aboutNetError.css                   (../shared/aboutNetError.css)
         skin/classic/aero/browser/aboutSocialError.css
 #ifdef MOZ_SERVICES_SYNC
         skin/classic/aero/browser/aboutSyncTabs.css
@@ -556,8 +557,7 @@ browser.jar:
         skin/classic/aero/browser/feeds/subscribe.css                (feeds/subscribe.css)
         skin/classic/aero/browser/feeds/subscribe-ui.css             (feeds/subscribe-ui.css)
 *       skin/classic/aero/browser/newtab/newTab.css                  (newtab/newTab.css)
-        skin/classic/aero/browser/newtab/controls.png                (../shared/newtab/controls.png)
-        skin/classic/aero/browser/newtab/controls@2x.png             (../shared/newtab/controls@2x.png)
+        skin/classic/aero/browser/newtab/controls.svg                (../shared/newtab/controls.svg)
 *       skin/classic/aero/browser/places/places.css                  (places/places-aero.css)
 *       skin/classic/aero/browser/places/organizer.css               (places/organizer-aero.css)
         skin/classic/aero/browser/places/bookmark.png                (places/bookmark-aero.png)

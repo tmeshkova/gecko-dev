@@ -436,6 +436,13 @@ var gPopupBlockerObserver = {
       // Hide the icon in the location bar (if the location bar exists)
       if (gURLBar)
         this._reportButton.hidden = true;
+
+      // Hide the notification box (if it's visible).
+      var notificationBox = gBrowser.getNotificationBox();
+      var notification = notificationBox.getNotificationWithValue("popup-blocked");
+      if (notification) {
+        notificationBox.removeNotification(notification, false);
+      }
       return;
     }
 
@@ -771,6 +778,9 @@ function gKeywordURIFixup(fixupInfo, topic, data) {
     return;
   }
 
+  if (!docshellRef.document)
+    return;
+
   // ... from which we can deduce the browser
   let browser = gBrowser.getBrowserForDocument(docshellRef.document);
   if (!browser)
@@ -795,6 +805,17 @@ function gKeywordURIFixup(fixupInfo, topic, data) {
   let hostName = alternativeURI.host;
   // and the ascii-only host for the pref:
   let asciiHost = alternativeURI.asciiHost;
+  // Normalize out a single trailing dot - NB: not using endsWith/lastIndexOf
+  // because we need to be sure this last dot is the *only* dot, too.
+  // More generally, this is used for the pref and should stay in sync with
+  // the code in nsDefaultURIFixup::KeywordURIFixup .
+  if (asciiHost.indexOf('.') == asciiHost.length - 1) {
+    asciiHost = asciiHost.slice(0, -1);
+  }
+
+  // Ignore number-only things entirely (no decimal IPs for you!)
+  if (/^\d+$/.test(asciiHost))
+    return;
 
   let onLookupComplete = (request, record, status) => {
     let browser = weakBrowser.get();
@@ -823,8 +844,11 @@ function gKeywordURIFixup(fixupInfo, topic, data) {
         label: yesMessage,
         accessKey: gNavigatorBundle.getString("keywordURIFixup.goTo.accesskey"),
         callback: function() {
-          let pref = "browser.fixup.domainwhitelist." + asciiHost;
-          Services.prefs.setBoolPref(pref, true);
+          // Do not set this preference while in private browsing.
+          if (!PrivateBrowsingUtils.isWindowPrivate(window)) {
+            let pref = "browser.fixup.domainwhitelist." + asciiHost;
+            Services.prefs.setBoolPref(pref, true);
+          }
           openUILinkIn(alternativeURI.spec, "current");
         }
       },
@@ -7455,9 +7479,17 @@ let ToolbarIconColor = {
     toolbarSelector += ":not([type=menubar])";
 #endif
 
+    // The getComputedStyle calls and setting the brighttext are separated in
+    // two loops to avoid flushing layout and making it dirty repeatedly.
+
+    let luminances = new Map;
     for (let toolbar of document.querySelectorAll(toolbarSelector)) {
       let [r, g, b] = parseRGB(getComputedStyle(toolbar).color);
       let luminance = 0.2125 * r + 0.7154 * g + 0.0721 * b;
+      luminances.set(toolbar, luminance);
+    }
+
+    for (let [toolbar, luminance] of luminances) {
       if (luminance <= 110)
         toolbar.removeAttribute("brighttext");
       else

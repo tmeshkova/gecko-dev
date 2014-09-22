@@ -92,6 +92,9 @@ function Tester(aTests, aDumper, aCallback) {
   this._scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/MemoryStats.js", simpleTestScope);
   this._scriptLoader.loadSubScript("chrome://mochikit/content/chrome-harness.js", simpleTestScope);
   this.SimpleTest = simpleTestScope.SimpleTest;
+
+  this.SimpleTest.harnessParameters = gConfig;
+
   this.MemoryStats = simpleTestScope.MemoryStats;
   this.Task = Task;
   this.Task.Debugging.maintainStack = true;
@@ -483,6 +486,10 @@ Tester.prototype = {
           TabView.uninit();
         }
 
+        // Simulate memory pressure so that we're forced to free more resources
+        // and thus get rid of more false leaks like already terminated workers.
+        Services.obs.notifyObservers(null, "memory-pressure", "heap-minimize");
+
         // Schedule GC and CC runs before finishing in order to detect
         // DOM windows leaked by our tests or the tested code. Note that we
         // use a shrinking GC so that the JS engine will discard JIT code and
@@ -681,7 +688,7 @@ Tester.prototype = {
           return;
         }
 
-        self.currentTest.addResult(new testResult(false, "Test timed out", "", false));
+        self.currentTest.addResult(new testResult(false, "Test timed out", null, false));
         self.currentTest.timedOut = true;
         self.currentTest.scope.__waitTimer = null;
         self.nextTest();
@@ -699,7 +706,8 @@ Tester.prototype = {
 };
 
 function testResult(aCondition, aName, aDiag, aIsTodo, aStack) {
-  this.msg = aName || "";
+  this.name = aName;
+  this.msg = "";
 
   this.info = false;
   this.pass = !!aCondition;
@@ -718,9 +726,9 @@ function testResult(aCondition, aName, aDiag, aIsTodo, aStack) {
     if (aDiag) {
       if (typeof aDiag == "object" && "fileName" in aDiag) {
         // we have an exception - print filename and linenumber information
-        this.msg += " at " + aDiag.fileName + ":" + aDiag.lineNumber;
+        this.msg += "at " + aDiag.fileName + ":" + aDiag.lineNumber + " - ";
       }
-      this.msg += " - " + aDiag;
+      this.msg += String(aDiag);
     }
     if (aStack) {
       this.msg += "\nStack trace:\n";

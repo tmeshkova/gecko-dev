@@ -18,7 +18,6 @@ registerCleanupFunction(function() {
   Services.prefs.clearUserPref("network.cookie.lifetimePolicy");
   Services.prefs.clearUserPref("browser.rights.override");
   Services.prefs.clearUserPref("browser.rights." + gRightsVersion + ".shown");
-  Services.prefs.clearUserPref("browser.aboutHomeSnippets.updateUrl");
 });
 
 let gTests = [
@@ -97,7 +96,9 @@ let gTests = [
   setup: function () { },
   run: function () {
     // Skip this test on Linux.
-    if (navigator.platform.indexOf("Linux") == 0) { return; }
+    if (navigator.platform.indexOf("Linux") == 0) {
+      return Promise.resolve();
+    }
 
     try {
       let cm = Cc["@mozilla.org/categorymanager;1"].getService(Ci.nsICategoryManager);
@@ -214,7 +215,7 @@ let gTests = [
   {
     let doc = gBrowser.selectedTab.linkedBrowser.contentDocument;
     let rightsData = AboutHomeUtils.knowYourRightsData;
-    
+
     ok(!rightsData, "AboutHomeUtils.knowYourRightsData should be FALSE");
 
     let snippetsElt = doc.getElementById("snippets");
@@ -372,6 +373,53 @@ let gTests = [
   }
 },
 
+{
+  // See browser_searchSuggestionUI.js for comprehensive content search
+  // suggestion UI tests.
+  desc: "Search suggestion smoke test",
+  setup: function() {},
+  run: function()
+  {
+    return Task.spawn(function* () {
+      // Add a test engine that provides suggestions and switch to it.
+      let engine = yield promiseNewEngine("searchSuggestionEngine.xml");
+      let promise = promiseBrowserAttributes(gBrowser.selectedTab);
+      Services.search.currentEngine = engine;
+      yield promise;
+
+      // Avoid intermittent failures.
+      gBrowser.contentWindow.wrappedJSObject.gSearchSuggestionController.remoteTimeout = 5000;
+
+      // Type an X in the search input.
+      let input = gBrowser.contentDocument.getElementById("searchText");
+      input.focus();
+      EventUtils.synthesizeKey("x", {});
+
+      // Wait for the search suggestions to become visible.
+      let table =
+        gBrowser.contentDocument.getElementById("searchSuggestionTable");
+      let deferred = Promise.defer();
+      let observer = new MutationObserver(() => {
+        if (input.getAttribute("aria-expanded") == "true") {
+          observer.disconnect();
+          ok(!table.hidden, "Search suggestion table unhidden");
+          deferred.resolve();
+        }
+      });
+      observer.observe(input, {
+        attributes: true,
+        attributeFilter: ["aria-expanded"],
+      });
+      yield deferred.promise;
+
+      // Empty the search input, causing the suggestions to be hidden.
+      EventUtils.synthesizeKey("a", { accelKey: true });
+      EventUtils.synthesizeKey("VK_DELETE", {});
+      ok(table.hidden, "Search suggestion table hidden");
+    });
+  }
+},
+
 ];
 
 function test()
@@ -383,9 +431,6 @@ function test()
   Task.spawn(function () {
     for (let test of gTests) {
       info(test.desc);
-
-      // Make sure we don't try to load snippets from the network.
-      Services.prefs.setCharPref("browser.aboutHomeSnippets.updateUrl", "nonexistent://test");
 
       if (test.beforeRun)
         yield test.beforeRun();
@@ -467,7 +512,7 @@ function promiseBrowserAttributes(aTab)
   let observer = new MutationObserver(function (mutations) {
     for (let mutation of mutations) {
       info("Got attribute mutation: " + mutation.attributeName +
-                                    " from " + mutation.oldValue); 
+                                    " from " + mutation.oldValue);
       // Now we just have to wait for the last attribute.
       if (mutation.attributeName == "searchEngineName") {
         info("Remove attributes observer");
@@ -546,4 +591,22 @@ function waitForLoad(cb) {
 
     cb();
   }, true);
+}
+
+function promiseNewEngine(basename) {
+  info("Waiting for engine to be added: " + basename);
+  let addDeferred = Promise.defer();
+  let url = getRootDirectory(gTestPath) + basename;
+  Services.search.addEngine(url, Ci.nsISearchEngine.TYPE_MOZSEARCH, "", false, {
+    onSuccess: function (engine) {
+      info("Search engine added: " + basename);
+      registerCleanupFunction(() => Services.search.removeEngine(engine));
+      addDeferred.resolve(engine);
+    },
+    onError: function (errCode) {
+      ok(false, "addEngine failed with error code " + errCode);
+      addDeferred.reject();
+    },
+  });
+  return addDeferred.promise;
 }

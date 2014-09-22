@@ -95,6 +95,17 @@ enum TelemetryAlgorithm {
     return NS_ERROR_DOM_UNKNOWN_ERR; \
   }
 
+// Safety check for algorithms that use keys, suitable for constructors
+#define CHECK_KEY_ALGORITHM(keyAlg, algName) \
+  { \
+    nsString keyAlgName; \
+    keyAlg->GetName(keyAlgName); \
+    if (!keyAlgName.EqualsLiteral(algName)) { \
+      mEarlyRv = NS_ERROR_DOM_INVALID_ACCESS_ERR; \
+      return; \
+    } \
+  }
+
 class ClearException
 {
 public:
@@ -387,6 +398,8 @@ public:
     // Cache parameters depending on the specific algorithm
     TelemetryAlgorithm telemetryAlg;
     if (algName.EqualsLiteral(WEBCRYPTO_ALG_AES_CBC)) {
+      CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_AES_CBC);
+
       mMechanism = CKM_AES_CBC_PAD;
       telemetryAlg = TA_AES_CBC;
       AesCbcParams params;
@@ -402,6 +415,8 @@ public:
         return;
       }
     } else if (algName.EqualsLiteral(WEBCRYPTO_ALG_AES_CTR)) {
+      CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_AES_CTR);
+
       mMechanism = CKM_AES_CTR;
       telemetryAlg = TA_AES_CTR;
       AesCtrParams params;
@@ -420,6 +435,8 @@ public:
 
       mCounterLength = params.mLength.Value();
     } else if (algName.EqualsLiteral(WEBCRYPTO_ALG_AES_GCM)) {
+      CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_AES_GCM);
+
       mMechanism = CKM_AES_GCM;
       telemetryAlg = TA_AES_GCM;
       AesGcmParams params;
@@ -567,6 +584,8 @@ public:
   void Init(JSContext* aCx, const ObjectOrString& aAlgorithm,
             CryptoKey& aKey, bool aEncrypt)
   {
+    CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_AES_KW);
+
     nsString algName;
     mEarlyRv = GetAlgorithmName(aCx, aAlgorithm, algName);
     if (NS_FAILED(mEarlyRv)) {
@@ -694,6 +713,8 @@ public:
 
     Telemetry::Accumulate(Telemetry::WEBCRYPTO_ALG, TA_RSAES_PKCS1);
 
+    CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_RSAES_PKCS1);
+
     if (mEncrypt) {
       if (!mPubKey) {
         mEarlyRv = NS_ERROR_DOM_INVALID_ACCESS_ERR;
@@ -788,6 +809,8 @@ public:
             CryptoKey& aKey, bool aEncrypt)
   {
     Telemetry::Accumulate(Telemetry::WEBCRYPTO_ALG, TA_RSA_OAEP);
+
+    CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_RSA_OAEP);
 
     if (mEncrypt) {
       if (!mPubKey) {
@@ -913,6 +936,8 @@ public:
     , mSymKey(aKey.GetSymKey())
     , mSign(aSign)
   {
+    CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_HMAC);
+
     ATTEMPT_BUFFER_INIT(mData, aData);
     if (!aSign) {
       ATTEMPT_BUFFER_INIT(mSignature, aSignature);
@@ -1019,6 +1044,8 @@ public:
     , mVerified(false)
   {
     Telemetry::Accumulate(Telemetry::WEBCRYPTO_ALG, TA_RSASSA_PKCS1);
+
+    CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_RSASSA_PKCS1);
 
     ATTEMPT_BUFFER_INIT(mData, aData);
     if (!aSign) {
@@ -2085,6 +2112,8 @@ public:
   void Init(JSContext* aCx, const ObjectOrString& aAlgorithm, CryptoKey& aKey,
             uint32_t aLength)
   {
+    CHECK_KEY_ALGORITHM(aKey.Algorithm(), WEBCRYPTO_ALG_PBKDF2);
+
     // Check that we got a symmetric key
     if (mSymKey.Length() == 0) {
       mEarlyRv = NS_ERROR_DOM_INVALID_ACCESS_ERR;
@@ -2218,15 +2247,6 @@ private:
   }
 };
 
-static bool
-JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
-{
-  nsAString* result = static_cast<nsAString*>(aData);
-  result->Append(static_cast<const char16_t*>(aBuf),
-                 static_cast<uint32_t>(aLen));
-  return true;
-}
-
 template<class KeyEncryptTask>
 class WrapKeyTask : public ExportKeyTask
 {
@@ -2250,30 +2270,11 @@ private:
   nsRefPtr<KeyEncryptTask> mTask;
   bool mResolved;
 
-  static bool StringifyJWK(const JsonWebKey& aJwk, nsAString& aRetVal)
-  {
-    // XXX: This should move into DictionaryBase and Codegen.py,
-    //      in the same way as ParseJSON is split out. (Bug 1038399)
-    // We use AutoSafeJSContext even though the exact compartment
-    // doesn't matter (since we're making an XPCOM string)
-    MOZ_ASSERT(NS_IsMainThread());
-    AutoSafeJSContext cx;
-    JS::Rooted<JS::Value> obj(cx);
-    bool ok = ToJSValue(cx, aJwk, &obj);
-    if (!ok) {
-      JS_ClearPendingException(cx);
-      return false;
-    }
-
-    return JS_Stringify(cx, &obj, JS::NullPtr(), JS::NullHandleValue,
-                        JSONCreator, &aRetVal);
-  }
-
   virtual nsresult AfterCrypto() MOZ_OVERRIDE {
     // If wrapping JWK, stringify the JSON
     if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_JWK)) {
       nsAutoString json;
-      if (!StringifyJWK(mJwk, json)) {
+      if (!mJwk.ToJSON(json)) {
         return NS_ERROR_DOM_OPERATION_ERR;
       }
 

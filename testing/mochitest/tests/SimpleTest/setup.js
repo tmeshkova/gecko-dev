@@ -135,10 +135,13 @@ if (params.dumpDMDAfterTest) {
   TestRunner.dumpDMDAfterTest = true;
 }
 
+if (params.interactiveDebugger) {
+  TestRunner.structuredLogger.interactiveDebugger = true;
+}
+
 // Log things to the console if appropriate.
 TestRunner.logger.addListener("dumpListener", consoleLevel + "", function(msg) {
-  var data = formatLogMessage(msg);
-  dump(data);
+  dump(msg.info.join(' ') + "\n");
 });
 
 var gTestList = [];
@@ -173,6 +176,7 @@ RunSet.runtests = function(e) {
       my_tests[i] = tmp;
     }
   }
+  TestRunner.setParameterInfo(params);
   TestRunner.runTests(my_tests);
 }
 

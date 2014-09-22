@@ -212,10 +212,8 @@ MediaEngineWebRTC::EnumerateVideoDevices(MediaSourceType aMediaSource,
   }
 
   for (int i = 0; i < num; i++) {
-    const unsigned int kMaxDeviceNameLength = 128; // XXX FIX!
-    const unsigned int kMaxUniqueIdLength = 256;
-    char deviceName[kMaxDeviceNameLength];
-    char uniqueId[kMaxUniqueIdLength];
+    char deviceName[MediaEngineSource::kMaxDeviceNameLength];
+    char uniqueId[MediaEngineSource::kMaxUniqueIdLength];
 
     // paranoia
     deviceName[0] = '\0';
@@ -233,10 +231,12 @@ MediaEngineWebRTC::EnumerateVideoDevices(MediaSourceType aMediaSource,
     LOG(("  Capture Device Index %d, Name %s", i, deviceName));
 
     webrtc::CaptureCapability cap;
-    int numCaps = ptrViECapture->NumberOfCapabilities(uniqueId, kMaxUniqueIdLength);
+    int numCaps = ptrViECapture->NumberOfCapabilities(uniqueId,
+                                                      MediaEngineSource::kMaxUniqueIdLength);
     LOG(("Number of Capabilities %d", numCaps));
     for (int j = 0; j < numCaps; j++) {
-      if (ptrViECapture->GetCaptureCapability(uniqueId, kMaxUniqueIdLength,
+      if (ptrViECapture->GetCaptureCapability(uniqueId,
+                                              MediaEngineSource::kMaxUniqueIdLength,
                                               j, cap ) != 0 ) {
         break;
       }
@@ -254,7 +254,8 @@ MediaEngineWebRTC::EnumerateVideoDevices(MediaSourceType aMediaSource,
     nsRefPtr<MediaEngineWebRTCVideoSource> vSource;
     NS_ConvertUTF8toUTF16 uuid(uniqueId);
     if (mVideoSources.Get(uuid, getter_AddRefs(vSource))) {
-      // We've already seen this device, just append.
+      // We've already seen this device, just refresh and append.
+      vSource->Refresh(i);
       aVSources->AppendElement(vSource.get());
     } else {
       vSource = new MediaEngineWebRTCVideoSource(videoEngine, i, aMediaSource);
@@ -368,21 +369,27 @@ MediaEngineWebRTC::Shutdown()
   MutexAutoLock lock(mMutex);
 
   // Clear callbacks before we go away since the engines may outlive us
+  mVideoSources.Clear();
+  mAudioSources.Clear();
   if (mVideoEngine) {
-    mVideoSources.Clear();
     mVideoEngine->SetTraceCallback(nullptr);
     webrtc::VideoEngine::Delete(mVideoEngine);
   }
 
   if (mScreenEngine) {
+    mScreenEngine->SetTraceCallback(nullptr);
     webrtc::VideoEngine::Delete(mScreenEngine);
   }
+  if (mWinEngine) {
+    mWinEngine->SetTraceCallback(nullptr);
+    webrtc::VideoEngine::Delete(mWinEngine);
+  }
   if (mAppEngine) {
+    mAppEngine->SetTraceCallback(nullptr);
     webrtc::VideoEngine::Delete(mAppEngine);
   }
 
   if (mVoiceEngine) {
-    mAudioSources.Clear();
     mVoiceEngine->SetTraceCallback(nullptr);
     webrtc::VoiceEngine::Delete(mVoiceEngine);
   }
@@ -390,6 +397,7 @@ MediaEngineWebRTC::Shutdown()
   mVideoEngine = nullptr;
   mVoiceEngine = nullptr;
   mScreenEngine = nullptr;
+  mWinEngine = nullptr;
   mAppEngine = nullptr;
 
   if (mThread) {

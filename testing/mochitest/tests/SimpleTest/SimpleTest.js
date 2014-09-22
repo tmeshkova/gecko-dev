@@ -23,8 +23,13 @@ var parentRunner = null;
 // the primary window.  In single test runs, if there is no parent and there
 // is no opener then it is the primary window.
 var isSingleTestRun = (parent == window && !opener)
-var isPrimaryTestWindow = !!parent.TestRunner || isSingleTestRun;
-
+try {
+  var isPrimaryTestWindow = !!parent.TestRunner || isSingleTestRun;
+} catch(e) {
+  dump("TEST-UNEXPECTED-FAIL, Exception caught: " + e.message +
+                ", at: " + e.fileName + " (" + e.lineNumber +
+                "), location: " + window.location.href + "\n");
+}
 // Finds the TestRunner for this test run and the SpecialPowers object (in
 // case it is not defined) from a parent/opener window.
 //
@@ -49,6 +54,10 @@ var isPrimaryTestWindow = !!parent.TestRunner || isSingleTestRun;
             window.SpecialPowers = w.SpecialPowers;
         }
         w = ancestor(w);
+    }
+
+    if (parentRunner) {
+        SimpleTest.harnessParameters = parentRunner.getParameterInfo();
     }
 })();
 
@@ -362,7 +371,8 @@ SimpleTest._logResult = function (test, passInfo, failInfo) {
                                                  result.expected,
                                                  diagnostic);
     } else if (typeof dump === "function") {
-        var debugMsg = [url, result.message, diagnostic].join(' | ');
+        var diagMessage = test.name + (test.diag ? " - " + test.diag : "");
+        var debugMsg = [result.message, url, diagMessage].join(' | ');
         dump(debugMsg + "\n");
     } else {
         // Non-Mozilla browser?  Just do nothing.
@@ -370,7 +380,7 @@ SimpleTest._logResult = function (test, passInfo, failInfo) {
 };
 
 SimpleTest.info = function(name, message) {
-    var log = name + ' | ' + message;
+    var log = message ? name + ' | ' + message : name;
     if (parentRunner) {
         parentRunner.structuredLogger.info(log);
     } else {
@@ -840,7 +850,9 @@ SimpleTest.finish = function() {
         if (parentRunner) {
             /* We're running in an iframe, and the parent has a TestRunner */
             parentRunner.testFinished(SimpleTest._tests);
-        } else {
+        }
+
+        if (!parentRunner || parentRunner.showTestReport) {
             SpecialPowers.flushAllAppsLaunchable();
             SpecialPowers.flushPermissions(function () {
               SpecialPowers.flushPrefEnv(function() {

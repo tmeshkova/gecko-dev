@@ -78,6 +78,19 @@ this.webrtcUI = {
     let PopupNotifications = browserWindow.PopupNotifications;
     let notif = PopupNotifications.getNotification("webRTC-sharing" + aType,
                                                    aActiveStream.browser);
+#ifdef XP_MACOSX
+    if (!Services.focus.activeWindow) {
+      browserWindow.addEventListener("activate", function onActivate() {
+        browserWindow.removeEventListener("activate", onActivate);
+        Services.tm.mainThread.dispatch(function() {
+          notif.reshow();
+        }, Ci.nsIThread.DISPATCH_NORMAL);
+      });
+      Cc["@mozilla.org/widget/macdocksupport;1"].getService(Ci.nsIMacDockSupport)
+        .activateApplication(true);
+      return;
+    }
+#endif
     notif.reshow();
   },
 
@@ -577,7 +590,7 @@ function updateIndicators() {
     else if (window.value && !webrtcUI.showScreenSharingIndicator)
       webrtcUI.showScreenSharingIndicator = "Window";
 
-    showBrowserSpecificIndicator(getBrowserForWindow(contentWindow));
+    updateBrowserSpecificIndicator(getBrowserForWindow(contentWindow));
   }
 
   if (webrtcUI.showGlobalIndicator) {
@@ -591,7 +604,7 @@ function updateIndicators() {
   }
 }
 
-function showBrowserSpecificIndicator(aBrowser) {
+function updateBrowserSpecificIndicator(aBrowser) {
   let camera = {}, microphone = {}, screen = {}, window = {};
   MediaManagerService.mediaCaptureWindowState(aBrowser.contentWindow,
                                               camera, microphone, screen, window);
@@ -602,9 +615,6 @@ function showBrowserSpecificIndicator(aBrowser) {
     captureState = "Camera";
   } else if (microphone.value) {
     captureState = "Microphone";
-  } else if (!screen.value && !window.value) {
-    Cu.reportError("showBrowserSpecificIndicator: got neither video nor audio access");
-    return;
   }
 
   let chromeWin = aBrowser.ownerDocument.defaultView;
@@ -634,14 +644,6 @@ function showBrowserSpecificIndicator(aBrowser) {
         perms.remove(uri.host, "microphone");
 
       Services.obs.notifyObservers(null, "getUserMedia:revoke", windowId);
-
-      // Performing an action from a notification removes it, but if the page
-      // uses screensharing and a device, we may have another notification to remove.
-      let outerWindowID = Services.wm.getCurrentInnerWindowWithId(windowId)
-                                     .QueryInterface(Ci.nsIInterfaceRequestor)
-                                     .getInterface(Ci.nsIDOMWindowUtils)
-                                     .outerWindowID;
-      removeBrowserSpecificIndicator(null, null, outerWindowID);
     }
   }];
   let options = {
@@ -663,10 +665,15 @@ function showBrowserSpecificIndicator(aBrowser) {
     chromeWin.PopupNotifications.show(aBrowser, "webRTC-sharingDevices", message,
                                       anchorId, mainAction, secondaryActions, options);
   }
+  else {
+    removeBrowserNotification(aBrowser,"webRTC-sharingDevices");
+  }
 
   // Now handle the screen sharing indicator.
-  if (!screen.value && !window.value)
+  if (!screen.value && !window.value) {
+    removeBrowserNotification(aBrowser,"webRTC-sharingScreen");
     return;
+  }
 
   options = {
     hideNotNow: true,
@@ -679,6 +686,13 @@ function showBrowserSpecificIndicator(aBrowser) {
       return aTopic == "swapping";
     }
   };
+  secondaryActions = [{
+    label: stringBundle.getString("getUserMedia.stopSharing.label"),
+    accessKey: stringBundle.getString("getUserMedia.stopSharing.accesskey"),
+    callback: function () {
+      Services.obs.notifyObservers(null, "getUserMedia:revoke", "screen:" + windowId);
+    }
+  }];
   // If we are sharing both a window and the screen, show 'Screen'.
   let stringId = "getUserMedia.sharing" + (screen.value ? "Screen" : "Window") + ".message";
   chromeWin.PopupNotifications.show(aBrowser, "webRTC-sharingScreen",
@@ -687,15 +701,17 @@ function showBrowserSpecificIndicator(aBrowser) {
                                     mainAction, secondaryActions, options);
 }
 
+function removeBrowserNotification(aBrowser, aNotificationId) {
+  let win = aBrowser.ownerDocument.defaultView;
+  let notification =
+    win.PopupNotifications.getNotification(aNotificationId, aBrowser);
+  if (notification)
+    win.PopupNotifications.remove(notification);
+}
+
 function removeBrowserSpecificIndicator(aSubject, aTopic, aData) {
   let browser = getBrowserForWindowId(aData);
-  let PopupNotifications = browser.ownerDocument.defaultView.PopupNotifications;
-  if (!PopupNotifications)
-    return;
-
-  for (let notifId of ["webRTC-sharingDevices", "webRTC-sharingScreen"]) {
-    let notification = PopupNotifications.getNotification(notifId, browser);
-    if (notification)
-      PopupNotifications.remove(notification);
-  }
+  // If the tab has already been closed, ignore the notification.
+  if (browser.contentWindow)
+    updateBrowserSpecificIndicator(browser);
 }

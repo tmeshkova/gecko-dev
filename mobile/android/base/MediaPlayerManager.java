@@ -5,6 +5,7 @@
 package org.mozilla.gecko;
 
 import org.mozilla.gecko.util.EventCallback;
+import org.mozilla.gecko.mozglue.JNITarget;
 import org.mozilla.gecko.util.NativeEventListener;
 import org.mozilla.gecko.util.NativeJSObject;
 
@@ -20,6 +21,8 @@ import android.support.v7.media.MediaRouter.RouteInfo;
 import android.util.Log;
 
 import java.util.HashMap;
+import java.util.Map;
+import java.util.Iterator;
 
 /* Wraper for different MediaRouter types supproted by Android. i.e. Chromecast, Miracast, etc. */
 interface GeckoMediaPlayer {
@@ -36,7 +39,7 @@ interface GeckoMediaPlayer {
  * from Gecko to the correct caster based on the id of the display
  */
 class MediaPlayerManager implements NativeEventListener,
-                                      GeckoAppShell.AppStateListener {
+                                    GeckoAppShell.AppStateListener {
     private static final String LOGTAG = "GeckoMediaPlayerManager";
 
     private static final boolean SHOW_DEBUG = false;
@@ -55,12 +58,14 @@ class MediaPlayerManager implements NativeEventListener,
 
     private final Context context;
     private final MediaRouter mediaRouter;
-    private final HashMap<String, GeckoMediaPlayer> displays = new HashMap<String, GeckoMediaPlayer>();
+    private final Map<String, GeckoMediaPlayer> displays = new HashMap<String, GeckoMediaPlayer>();
     private static MediaPlayerManager instance;
 
+    @JNITarget
     public static void init(Context context) {
         if (instance != null) {
             debug("MediaPlayerManager initialized twice");
+            return;
         }
 
         instance = new MediaPlayerManager(context);
@@ -84,6 +89,7 @@ class MediaPlayerManager implements NativeEventListener,
                                                                         "MediaPlayer:End");
     }
 
+    @JNITarget
     public static void onDestroy() {
         if (instance == null) {
             return;
@@ -110,9 +116,17 @@ class MediaPlayerManager implements NativeEventListener,
         if ("MediaPlayer:Get".equals(event)) {
             final JSONObject result = new JSONObject();
             final JSONArray disps = new JSONArray();
-            for (GeckoMediaPlayer disp : displays.values()) {
+
+            final Iterator<GeckoMediaPlayer> items = displays.values().iterator();
+            while (items.hasNext()) {
+                GeckoMediaPlayer disp = items.next();
                 try {
-                    disps.put(disp.toJSON());
+                    JSONObject json = disp.toJSON();
+                    if (json == null) {
+                        items.remove();
+                    } else {
+                        disps.put(json);
+                    }
                 } catch(Exception ex) {
                     // This may happen if the device isn't a real Chromecast,
                     // for example Firefly casting devices.

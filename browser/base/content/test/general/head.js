@@ -151,6 +151,37 @@ function whenNewWindowLoaded(aOptions, aCallback) {
   }, false);
 }
 
+function promiseWindowClosed(win) {
+  let deferred = Promise.defer();
+  win.addEventListener("unload", function onunload() {
+    win.removeEventListener("unload", onunload);
+    deferred.resolve();
+  });
+  win.close();
+  return deferred.promise;
+}
+
+function promiseOpenAndLoadWindow(aOptions, aWaitForDelayedStartup=false) {
+  let deferred = Promise.defer();
+  let win = OpenBrowserWindow(aOptions);
+  if (aWaitForDelayedStartup) {
+    Services.obs.addObserver(function onDS(aSubject, aTopic, aData) {
+      if (aSubject != win) {
+        return;
+      }
+      Services.obs.removeObserver(onDS, "browser-delayed-startup-finished");
+      deferred.resolve(win);
+    }, "browser-delayed-startup-finished", false);
+
+  } else {
+    win.addEventListener("load", function onLoad() {
+      win.removeEventListener("load", onLoad);
+      deferred.resolve(win);
+    });
+  }
+  return deferred.promise;
+}
+
 /**
  * Waits for all pending async statements on the default connection, before
  * proceeding with aCallback.
@@ -337,7 +368,7 @@ function promiseClearHistory() {
  *        The URL of the document that is expected to load.
  * @return promise
  */
-function waitForDocLoadAndStopIt(aExpectedURL) {
+function waitForDocLoadAndStopIt(aExpectedURL, aBrowser=gBrowser) {
   let deferred = Promise.defer();
   let progressListener = {
     onStateChange: function (webProgress, req, flags, status) {
@@ -350,12 +381,12 @@ function waitForDocLoadAndStopIt(aExpectedURL) {
         is(req.originalURI.spec, aExpectedURL,
            "waitForDocLoadAndStopIt: The expected URL was loaded");
         req.cancel(Components.results.NS_ERROR_FAILURE);
-        gBrowser.removeProgressListener(progressListener);
+        aBrowser.removeProgressListener(progressListener);
         deferred.resolve();
       }
     },
   };
-  gBrowser.addProgressListener(progressListener);
+  aBrowser.addProgressListener(progressListener);
   info("waitForDocLoadAndStopIt: Waiting for URL: " + aExpectedURL);
   return deferred.promise;
 }
@@ -515,5 +546,34 @@ function promiseTabLoadEvent(tab, url, eventType="load")
 function assertWebRTCIndicatorStatus(expected) {
   let ui = Cu.import("resource:///modules/webrtcUI.jsm", {}).webrtcUI;
   let msg = "WebRTC indicator " + (expected ? "visible" : "hidden");
-  is(ui.showGlobalIndicator, expected, msg);
+  is(ui.showGlobalIndicator, !!expected, msg);
+
+  let expectVideo = false, expectAudio = false, expectScreen = false;
+  if (expected) {
+    if (expected.video)
+      expectVideo = true;
+    if (expected.audio)
+      expectAudio = true;
+    if (expected.screen)
+      expectScreen = true;
+  }
+  is(ui.showCameraIndicator, expectVideo, "camera global indicator as expected");
+  is(ui.showMicrophoneIndicator, expectAudio, "microphone global indicator as expected");
+  is(ui.showScreenSharingIndicator, expectScreen, "screen global indicator as expected");
+
+  if (!("nsISystemStatusBar" in Ci)) {
+    let indicator = Services.wm.getEnumerator("Browser:WebRTCGlobalIndicator");
+    let hasWindow = indicator.hasMoreElements();
+    is(hasWindow, !!expected, "popup " + msg);
+    if (hasWindow) {
+      let docElt = indicator.getNext().document.documentElement;
+      for (let item of ["video", "audio", "screen"]) {
+        let expectedValue = (expected && expected[item]) ? "true" : "";
+        is(docElt.getAttribute("sharing" + item), expectedValue,
+           item + " global indicator attribute as expected");
+      }
+
+      ok(!indicator.hasMoreElements(), "only one global indicator window");
+    }
+  }
 }

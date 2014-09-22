@@ -255,7 +255,9 @@ bool MediaDecoderStateMachine::HasFutureAudio() {
   //    we've completely decoded all audio (but not finished playing it yet
   //    as per 1).
   return !mAudioCompleted &&
-         (AudioDecodedUsecs() > LOW_AUDIO_USECS * mPlaybackRate || AudioQueue().IsFinished());
+         (AudioDecodedUsecs() >
+            mLowAudioThresholdUsecs * mPlaybackRate ||
+          AudioQueue().IsFinished());
 }
 
 bool MediaDecoderStateMachine::HaveNextFrameData() {
@@ -1516,17 +1518,16 @@ MediaDecoderStateMachine::EnqueueDecodeMetadataTask()
       mDispatchedDecodeMetadataTask) {
     return NS_OK;
   }
+
+  mDispatchedDecodeMetadataTask = true;
   RefPtr<nsIRunnable> task(
     NS_NewRunnableMethod(this, &MediaDecoderStateMachine::CallDecodeMetadata));
   nsresult rv = mDecodeTaskQueue->Dispatch(task);
-  if (NS_SUCCEEDED(rv)) {
-    mDispatchedDecodeMetadataTask = true;
-  } else {
+  if (NS_FAILED(rv)) {
     NS_WARNING("Dispatch ReadMetadata task failed.");
-    return rv;
+    mDispatchedDecodeMetadataTask = false;
   }
-
-  return NS_OK;
+  return rv;
 }
 
 void
@@ -1840,7 +1841,6 @@ void
 MediaDecoderStateMachine::CallDecodeMetadata()
 {
   ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-  AutoSetOnScopeExit<bool> unsetOnExit(mDispatchedDecodeMetadataTask, false);
   if (mState != DECODER_STATE_DECODING_METADATA) {
     return;
   }
@@ -1872,6 +1872,7 @@ nsresult MediaDecoderStateMachine::DecodeMetadata()
       // change state to DECODER_STATE_WAIT_FOR_RESOURCES
       StartWaitForResources();
       // affect values only if ReadMetadata succeeds
+      mDispatchedDecodeMetadataTask = false;
       return NS_OK;
     }
   }
@@ -1994,6 +1995,7 @@ MediaDecoderStateMachine::FinishDecodeMetadata()
     StartPlayback();
   }
 
+  mDispatchedDecodeMetadataTask = false;
   return NS_OK;
 }
 
@@ -2688,8 +2690,27 @@ nsresult
 MediaDecoderStateMachine::DropVideoUpToSeekTarget(VideoData* aSample)
 {
   nsAutoPtr<VideoData> video(aSample);
-
+  MOZ_ASSERT(video);
+  DECODER_LOG(PR_LOG_DEBUG,
+              "DropVideoUpToSeekTarget() frame [%lld, %lld] dup=%d",
+              video->mTime, video->GetEndTime(), video->mDuplicate);
   const int64_t target = mCurrentSeekTarget.mTime;
+
+  // Duplicate handling: if we're dropping frames up the seek target, we must
+  // be wary of Theora duplicate frames. They don't have an image, so if the
+  // target frame is in a run of duplicates, we won't have an image to draw
+  // after the seek. So store the last frame encountered while dropping, and
+  // copy its Image forward onto duplicate frames, so that every frame has
+  // an Image.
+  if (video->mDuplicate &&
+      mFirstVideoFrameAfterSeek &&
+      !mFirstVideoFrameAfterSeek->mDuplicate) {
+    VideoData* temp =
+      VideoData::ShallowCopyUpdateTimestampAndDuration(mFirstVideoFrameAfterSeek,
+                                                       video->mTime,
+                                                       video->mDuration);
+    video = temp;
+  }
 
   // If the frame end time is less than the seek target, we won't want
   // to display this frame after the seek, so discard it.

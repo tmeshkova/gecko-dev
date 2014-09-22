@@ -117,6 +117,9 @@ SessionStore.prototype = {
         }
 
         Services.obs.notifyObservers(null, "sessionstore-state-purge-complete", "");
+        if (this._notifyClosedTabs) {
+          this._sendClosedTabsToJava(Services.wm.getMostRecentWindow("navigator:browser"));
+        }
         break;
       case "timer-callback":
         // Timer call back for delayed saving
@@ -453,7 +456,7 @@ SessionStore.prototype = {
     // indicate that there is no private data
     sendMessageToJava({
       type: "PrivateBrowsing:Data",
-      session: (privateData.windows[0].tabs.length > 0) ? JSON.stringify(privateData) : null
+      session: (privateData.windows.length > 0 && privateData.windows[0].tabs.length > 0) ? JSON.stringify(privateData) : null
     });
 
     this._lastSaveTime = Date.now();
@@ -1014,7 +1017,18 @@ SessionStore.prototype = {
       Cu.reportError("SessionStore: " + e);
       notifyObservers("fail");
     }
+  },
+
+  removeWindow: function ss_removeWindow(aWindow) {
+    if (!aWindow || !aWindow.__SSID || !this._windows[aWindow.__SSID])
+      return;
+
+    delete this._windows[aWindow.__SSID];
+    delete aWindow.__SSID;
+
+    this.saveState();
   }
+
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([SessionStore]);

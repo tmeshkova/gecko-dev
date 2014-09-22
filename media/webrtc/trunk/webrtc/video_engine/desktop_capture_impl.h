@@ -22,6 +22,7 @@
 #include "webrtc/modules/video_capture/video_capture_config.h"
 #include "webrtc/modules/desktop_capture/shared_memory.h"
 #include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/system_wrappers/interface/event_wrapper.h"
 #include "webrtc/modules/desktop_capture/mouse_cursor_shape.h"
 #include "webrtc/modules/desktop_capture/desktop_device_info.h"
 #include "webrtc/modules/desktop_capture/desktop_and_cursor_composer.h"
@@ -43,6 +44,7 @@ public:
   virtual ~ScreenDeviceInfoImpl(void);
 
   int32_t Init();
+  int32_t Refresh();
 
   virtual uint32_t NumberOfDevices();
   virtual int32_t GetDeviceName(uint32_t deviceNumber,
@@ -80,6 +82,7 @@ public:
   virtual ~AppDeviceInfoImpl(void);
 
   int32_t Init();
+  int32_t Refresh();
 
   virtual uint32_t NumberOfDevices();
   virtual int32_t GetDeviceName(uint32_t deviceNumber,
@@ -116,6 +119,7 @@ public:
   virtual ~WindowDeviceInfoImpl(void) {};
 
   int32_t Init();
+  int32_t Refresh();
 
   virtual uint32_t NumberOfDevices();
   virtual int32_t GetDeviceName(uint32_t deviceNumber,
@@ -214,6 +218,8 @@ protected:
   int32_t DeliverCapturedFrame(I420VideoFrame& captureFrame,
                                int64_t capture_time);
 
+  static const uint32_t kMaxDesktopCaptureCpuUsage = 50; // maximum CPU usage in %
+
   int32_t _id; // Module ID
   char* _deviceUniqueId; // current Device unique name;
   CriticalSectionWrapper& _apiCs;
@@ -229,7 +235,7 @@ private:
   TickTime _lastProcessTime; // last time the module process function was called.
   TickTime _lastFrameRateCallbackTime; // last time the frame rate callback function was called.
   bool _frameRateCallBack; // true if EnableFrameRateCallback
-  bool _noPictureAlarmCallBack; //true if EnableNoPictureAlarm
+  bool _noPictureAlarmCallBack; // true if EnableNoPictureAlarm
   VideoCaptureAlarm _captureAlarm; // current value of the noPictureAlarm
 
   int32_t _setCaptureDelay; // The currently used capture delay
@@ -258,6 +264,7 @@ public:
 
 private:
   scoped_ptr<DesktopAndCursorComposer> desktop_capturer_cursor_composer_;
+  EventWrapper& time_event_;
   ThreadWrapper&  capturer_thread_;
 };
 

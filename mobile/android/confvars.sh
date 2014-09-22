@@ -5,7 +5,7 @@
 MOZ_APP_BASENAME=Fennec
 MOZ_APP_VENDOR=Mozilla
 
-MOZ_APP_VERSION=33.0a2
+MOZ_APP_VERSION=33.0
 MOZ_APP_UA_NAME=Firefox
 
 MOZ_BRANDING_DIRECTORY=mobile/android/branding/unofficial
@@ -70,7 +70,7 @@ MOZ_LOCALE_SWITCHER=1
 MOZ_DEVICES=1
 
 # Enable second screen using native Android libraries
-MOZ_NATIVE_DEVICES=
+MOZ_NATIVE_DEVICES=1
 
 # Mark as WebGL conformant
 MOZ_WEBGL_CONFORMANT=1

@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GMPParent.h"
+#include "prlog.h"
 #include "nsComponentManagerUtils.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIInputStream.h"
@@ -26,6 +27,26 @@ using CrashReporter::GetIDFromMinidump;
 #endif
 
 namespace mozilla {
+
+#ifdef LOG
+#undef LOG
+#endif
+
+#ifdef PR_LOGGING
+extern PRLogModuleInfo* GetGMPLog();
+
+#define LOGD(msg) PR_LOG(GetGMPLog(), PR_LOG_DEBUG, msg)
+#define LOG(level, msg) PR_LOG(GetGMPLog(), (level), msg)
+#else
+#define LOGD(msg)
+#define LOG(level, msg)
+#endif
+
+#ifdef __CLASS__
+#undef __CLASS__
+#endif
+#define __CLASS__ "GMPParent"
+
 namespace gmp {
 
 GMPParent::GMPParent()
@@ -66,14 +87,23 @@ GMPParent::Init(GeckoMediaPluginService *aService, nsIFile* aPluginDir)
   mService = aService;
   mDirectory = aPluginDir;
 
-  nsAutoString leafname;
-  nsresult rv = aPluginDir->GetLeafName(leafname);
+  // aPluginDir is <profile-dir>/<gmp-plugin-id>/<version>
+  // where <gmp-plugin-id> should be gmp-gmpopenh264
+  nsCOMPtr<nsIFile> parent;
+  nsresult rv = aPluginDir->GetParent(getter_AddRefs(parent));
   if (NS_FAILED(rv)) {
     return rv;
   }
+  nsAutoString parentLeafName;
+  rv = parent->GetLeafName(parentLeafName);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  LOGD(("%s::%s: %p for %s", __CLASS__, __FUNCTION__, this, 
+       NS_LossyConvertUTF16toASCII(parentLeafName).get()));
 
-  MOZ_ASSERT(leafname.Length() > 4);
-  mName = Substring(leafname, 4);
+  MOZ_ASSERT(parentLeafName.Length() > 4);
+  mName = Substring(parentLeafName, 4);
 
   return ReadGMPMetaData();
 }
@@ -93,13 +123,14 @@ GMPParent::LoadProcess()
   MOZ_ASSERT(GMPThread() == NS_GetCurrentThread());
   MOZ_ASSERT(mState == GMPStateNotLoaded);
 
-  nsAutoCString path;
-  if (NS_FAILED(mDirectory->GetNativePath(path))) {
+  nsAutoString path;
+  if (NS_FAILED(mDirectory->GetPath(path))) {
     return NS_ERROR_FAILURE;
   }
+  LOGD(("%s::%s: %p for %s", __CLASS__, __FUNCTION__, this, path.get()));
 
   if (!mProcess) {
-    mProcess = new GMPProcessParent(path.get());
+    mProcess = new GMPProcessParent(NS_ConvertUTF16toUTF8(path).get());
     if (!mProcess->Launch(30 * 1000)) {
       mProcess->Delete();
       mProcess = nullptr;
@@ -136,6 +167,7 @@ GMPParent::CloseIfUnused()
 void
 GMPParent::CloseActive(bool aDieWhenUnloaded)
 {
+  LOGD(("%s::%s: %p state %d", __CLASS__, __FUNCTION__, this, mState));
   if (aDieWhenUnloaded) {
     mDeleteProcessOnlyOnUnload = true; // don't allow this to go back...
   }
@@ -162,6 +194,7 @@ GMPParent::CloseActive(bool aDieWhenUnloaded)
 void
 GMPParent::Shutdown()
 {
+  LOGD(("%s::%s: %p", __CLASS__, __FUNCTION__, this));
   MOZ_ASSERT(GMPThread() == NS_GetCurrentThread());
 
   if (mAbnormalShutdownInProgress) {
@@ -187,6 +220,7 @@ GMPParent::Shutdown()
 void
 GMPParent::DeleteProcess()
 {
+  LOGD(("%s::%s: %p", __CLASS__, __FUNCTION__, this));
   // Don't Close() twice!
   // Probably remove when bug 1043671 is resolved
   MOZ_ASSERT(mState == GMPStateClosing);
@@ -385,10 +419,10 @@ GMPNotifyObservers(nsAString& aData)
   }
 }
 #endif
-
 void
 GMPParent::ActorDestroy(ActorDestroyReason aWhy)
 {
+  LOGD(("%s::%s: %p (%d)", __CLASS__, __FUNCTION__, this, (int) aWhy));
 #ifdef MOZ_CRASHREPORTER
   if (AbnormalShutdown == aWhy) {
     nsString dumpID;

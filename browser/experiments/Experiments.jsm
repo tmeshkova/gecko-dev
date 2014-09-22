@@ -75,6 +75,9 @@ const PREF_TELEMETRY_ENABLED    = "enabled";
 const URI_EXTENSION_STRINGS     = "chrome://mozapps/locale/extensions/extensions.properties";
 const STRING_TYPE_NAME          = "type.%ID%.name";
 
+const CACHE_WRITE_RETRY_DELAY_SEC = 60 * 3;
+const MANIFEST_FETCH_TIMEOUT_MSEC = 60 * 3 * 1000; // 3 minutes
+
 const TELEMETRY_LOG = {
   // log(key, [kind, experimentId, details])
   ACTIVATION_KEY: "EXPERIMENT_ACTIVATION",
@@ -342,9 +345,18 @@ function AlreadyShutdownError(message="already shut down") {
   this.message = message;
   this.stack = error.stack;
 }
-
 AlreadyShutdownError.prototype = Object.create(Error.prototype);
 AlreadyShutdownError.prototype.constructor = AlreadyShutdownError;
+
+function CacheWriteError(message="Error writing cache file") {
+  Error.call(this, message);
+  let error = new Error();
+  this.name = "CacheWriteError";
+  this.message = message;
+  this.stack = error.stack;
+}
+CacheWriteError.prototype = Object.create(Error.prototype);
+CacheWriteError.prototype.constructor = CacheWriteError;
 
 /**
  * Manages the experiments and provides an interface to control them.
@@ -398,6 +410,7 @@ Experiments.Experiments = function (policy=new Experiments.Policy()) {
   this._timer = null;
 
   this._shutdown = false;
+  this._networkRequest = null;
 
   // We need to tell when we first evaluated the experiments to fire an
   // experiments-changed notification when we only loaded completed experiments.
@@ -478,6 +491,14 @@ Experiments.Experiments.prototype = {
 
     this._shutdown = true;
     if (this._mainTask) {
+      if (this._networkRequest) {
+	try {
+	  this._log.trace("Aborting pending network request: " + this._networkRequest);
+	  this._networkRequest.abort();
+	} catch (e) {
+	  // pass
+	}
+      }
       try {
         this._log.trace("uninit: waiting on _mainTask");
         yield this._mainTask;
@@ -701,6 +722,7 @@ Experiments.Experiments.prototype = {
       throw new Error("Experiment not found");
     }
     e.branch = String(branchstr);
+    this._log.trace("setExperimentBranch(" + id + ", " + e.branch + ") _dirty=" + this._dirty);
     this._dirty = true;
     Services.obs.notifyObservers(null, EXPERIMENTS_CHANGED_TOPIC, null);
     yield this._run();
@@ -777,6 +799,8 @@ Experiments.Experiments.prototype = {
       this._mainTask = Task.spawn(function*() {
         try {
           yield this._main();
+	} catch (e if e instanceof CacheWriteError) {
+	  // In this case we want to reschedule
         } catch (e) {
           this._log.error("_main caught error: " + e);
           return;
@@ -812,7 +836,7 @@ Experiments.Experiments.prototype = {
       // If somebody called .updateManifest() or disableExperiment()
       // while we were running, go again right now.
     }
-    while (this._refresh || this._terminateReason);
+    while (this._refresh || this._terminateReason || this._dirty);
   },
 
   _loadManifest: function*() {
@@ -949,18 +973,24 @@ Experiments.Experiments.prototype = {
       return Promise.reject(new Error("Experiments - Error opening XHR for " + url));
     }
 
+    this._networkRequest = xhr;
     let deferred = Promise.defer();
 
     let log = this._log;
-    xhr.onerror = function (e) {
-      log.error("httpGetRequest::onError() - Error making request to " + url + ": " + e.error);
-      deferred.reject(new Error("Experiments - XHR error for " + url + " - " + e.error));
+    let errorhandler = (evt) => {
+      log.error("httpGetRequest::onError() - Error making request to " + url + ": " + evt.type);
+      deferred.reject(new Error("Experiments - XHR error for " + url + " - " + evt.type));
+      this._networkRequest = null;
     };
+    xhr.onerror = errorhandler;
+    xhr.ontimeout = errorhandler;
+    xhr.onabort = errorhandler;
 
-    xhr.onload = function (event) {
+    xhr.onload = (event) => {
       if (xhr.status !== 200 && xhr.state !== 0) {
         log.error("httpGetRequest::onLoad() - Request to " + url + " returned status " + xhr.status);
         deferred.reject(new Error("Experiments - XHR status for " + url + " is " + xhr.status));
+	this._networkRequest = null;
         return;
       }
 
@@ -979,12 +1009,14 @@ Experiments.Experiments.prototype = {
       }
 
       deferred.resolve(xhr.responseText);
+      this._networkRequest = null;
     };
 
     if (xhr.channel instanceof Ci.nsISupportsPriority) {
       xhr.channel.priority = Ci.nsISupportsPriority.PRIORITY_LOWEST;
     }
 
+    xhr.timeout = MANIFEST_FETCH_TIMEOUT_MSEC;
     xhr.send(null);
     return deferred.promise;
   },
@@ -1002,16 +1034,24 @@ Experiments.Experiments.prototype = {
   _saveToCache: function* () {
     this._log.trace("_saveToCache");
     let path = this._cacheFilePath;
-    let textData = JSON.stringify({
-      version: CACHE_VERSION,
-      data: [e[1].toJSON() for (e of this._experiments.entries())],
-    });
-
-    let encoder = new TextEncoder();
-    let data = encoder.encode(textData);
-    let options = { tmpPath: path + ".tmp", compression: "lz4" };
-    yield OS.File.writeAtomic(path, data, options);
     this._dirty = false;
+    try {
+      let textData = JSON.stringify({
+        version: CACHE_VERSION,
+        data: [e[1].toJSON() for (e of this._experiments.entries())],
+      });
+
+      let encoder = new TextEncoder();
+      let data = encoder.encode(textData);
+      let options = { tmpPath: path + ".tmp", compression: "lz4" };
+      yield OS.File.writeAtomic(path, data, options);
+    } catch (e) {
+      // We failed to write the cache, it's still dirty.
+      this._dirty = true;
+      this._log.error("_saveToCache failed and caught error: " + e);
+      throw new CacheWriteError();
+    }
+
     this._log.debug("_saveToCache saved to " + path);
   },
 
@@ -1324,6 +1364,10 @@ Experiments.Experiments.prototype = {
 
     let time = null;
     let now = this._policy.now().getTime();
+    if (this._dirty) {
+      // If we failed to write the cache, we should try again periodically
+      time = now + 1000 * CACHE_WRITE_RETRY_DELAY_SEC;
+    }
 
     for (let [id, experiment] of this._experiments) {
       let scheduleTime = experiment.getScheduleTime();

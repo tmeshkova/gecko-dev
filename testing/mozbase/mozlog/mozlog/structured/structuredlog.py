@@ -4,10 +4,12 @@
 
 from __future__ import unicode_literals
 
-from collections import defaultdict
 from multiprocessing import current_process
 from threading import current_thread, Lock
+import json
 import time
+
+from logtypes import Unicode, TestId, Status, SubStatus, Dict, List, log_action, convertor_registry
 
 """Structured Logging for recording test results.
 
@@ -84,39 +86,68 @@ log_levels = dict((k.upper(), v) for v, k in
                   enumerate(["critical", "error", "warning", "info", "debug"]))
 
 
+class LoggerState(object):
+    def __init__(self):
+        self.handlers = []
+        self.running_tests = set()
+        self.suite_started = False
+
 class StructuredLogger(object):
     _lock = Lock()
-    _handlers = defaultdict(list)
+    _logger_states = {}
     """Create a structured logger with the given name
 
     :param name: The name of the logger.
+    :param component: A subcomponent that the logger belongs to (typically a library name)
     """
 
     def __init__(self, name, component=None):
         self.name = name
         self.component = component
 
+        with self._lock:
+            if name not in self._logger_states:
+                self._logger_states[name] = LoggerState()
+
+    @property
+    def _state(self):
+        return self._logger_states[self.name]
+
     def add_handler(self, handler):
         """Add a handler to the current logger"""
-        self._handlers[self.name].append(handler)
+        self._state.handlers.append(handler)
 
     def remove_handler(self, handler):
         """Remove a handler from the current logger"""
-        for i, candidate_handler in enumerate(self._handlers[self.name][:]):
+        for i, candidate_handler in enumerate(self._state.handlers[:]):
             if candidate_handler == handler:
-                del self._handlers[self.name][i]
+                del self._state.handlers[i]
                 break
 
     @property
     def handlers(self):
         """A list of handlers that will be called when a
         message is logged from this logger"""
-        return self._handlers[self.name]
+        return self._state.handlers
 
-    def log_raw(self, data):
-        if "action" not in data:
+    def log_raw(self, raw_data):
+        if "action" not in raw_data:
             raise ValueError
-        data = self._make_log_data(data['action'], data)
+
+        action = raw_data["action"]
+        converted_data = convertor_registry[action].convert_known(**raw_data)
+        for k, v in raw_data.iteritems():
+            if k not in converted_data:
+                converted_data[k] = v
+
+        data = self._make_log_data(action, converted_data)
+
+        if action in ("test_status", "test_end"):
+            if (data["expected"] == data["status"] or
+                data["status"] == "SKIP" or
+                "expected" not in raw_data):
+                del data["expected"]
+
         self._handle_log(data)
 
     def _log_data(self, action, data=None):
@@ -142,29 +173,58 @@ class StructuredLogger(object):
         all_data.update(data)
         return all_data
 
-    def suite_start(self, tests, run_info=None):
+    @log_action(List("tests", Unicode),
+                Dict("run_info", default=None, optional=True))
+    def suite_start(self, data):
         """Log a suite_start message
 
         :param tests: List of test identifiers that will be run in the suite.
         """
-        data = {"tests": tests}
-        if run_info is not None:
-            data["run_info"] = run_info
+        if self._state.suite_started:
+            self.error("Got second suite_start message before suite_end. Logged with data %s" %
+                       json.dumps(data))
+            return
+
+        self._state.suite_started = True
+
         self._log_data("suite_start", data)
 
-    def suite_end(self):
+    @log_action()
+    def suite_end(self, data):
         """Log a suite_end message"""
+        if not self._state.suite_started:
+            self.error("Got suite_end message before suite_start.")
+            return
+
+        self._state.suite_started = False
+
         self._log_data("suite_end")
 
-    def test_start(self, test):
+    @log_action(TestId("test"))
+    def test_start(self, data):
         """Log a test_start message
 
         :param test: Identifier of the test that will run.
         """
-        self._log_data("test_start", {"test": test})
+        if not self._state.suite_started:
+            self.error("Got test_start message before suite_start for test %s" %
+                       data["test"])
+            return
+        if data["test"] in self._state.running_tests:
+            self.error("test_start for %s logged while in progress." %
+                       data["test"])
+            return
+        self._state.running_tests.add(data["test"])
+        self._log_data("test_start", data)
 
-    def test_status(self, test, subtest, status, expected="PASS", message=None,
-                    stack=None, extra=None):
+    @log_action(TestId("test"),
+                Unicode("subtest"),
+                SubStatus("status"),
+                SubStatus("expected", default="PASS"),
+                Unicode("message", default=None, optional=True),
+                Unicode("stack", default=None, optional=True),
+                Dict("extra", default=None, optional=True))
+    def test_status(self, data):
         """
         Log a test_status message indicating a subtest result. Tests that
         do not have subtests are not expected to produce test_status messages.
@@ -177,23 +237,25 @@ class StructuredLogger(object):
         :param stack: a stack trace encountered during test execution.
         :param extra: suite-specific data associated with the test result.
         """
-        if status.upper() not in ["PASS", "FAIL", "TIMEOUT", "NOTRUN", "ASSERT"]:
-            raise ValueError("Unrecognised status %s" % status)
-        data = {"test": test,
-                "subtest": subtest,
-                "status": status.upper()}
-        if message is not None:
-            data["message"] = message
-        if expected != data["status"]:
-            data["expected"] = expected
-        if stack is not None:
-            data["stack"] = stack
-        if extra is not None:
-            data["extra"] = extra
+
+        if (data["expected"] == data["status"] or
+            data["status"] == "SKIP"):
+            del data["expected"]
+
+        if data["test"] not in self._state.running_tests:
+            self.error("test_status for %s logged while not in progress. "
+                       "Logged with data: %s" % (data["test"], json.dumps(data)))
+            return
+
         self._log_data("test_status", data)
 
-    def test_end(self, test, status, expected="OK", message=None, stack=None,
-                 extra=None):
+    @log_action(TestId("test"),
+                Status("status"),
+                Status("expected", default="OK"),
+                Unicode("message", default=None, optional=True),
+                Unicode("stack", default=None, optional=True),
+                Dict("extra", default=None, optional=True))
+    def test_end(self, data):
         """
         Log a test_end message indicating that a test completed. For tests
         with subtests this indicates whether the overall test completed without
@@ -207,22 +269,22 @@ class StructuredLogger(object):
         :param stack: a stack trace encountered during test execution.
         :param extra: suite-specific data associated with the test result.
         """
-        if status.upper() not in ["PASS", "FAIL", "OK", "ERROR", "TIMEOUT",
-                                  "CRASH", "ASSERT", "SKIP"]:
-            raise ValueError("Unrecognised status %s" % status)
-        data = {"test": test,
-                "status": status.upper()}
-        if message is not None:
-            data["message"] = message
-        if expected != data["status"] and status != "SKIP":
-            data["expected"] = expected
-        if stack is not None:
-            data["stack"] = stack
-        if extra is not None:
-            data["extra"] = extra
-        self._log_data("test_end", data)
 
-    def process_output(self, process, data, command=None):
+        if (data["expected"] == data["status"] or
+             data["status"] == "SKIP"):
+            del data["expected"]
+
+        if data["test"] not in self._state.running_tests:
+            self.error("test_end for %s logged while not in progress. "
+                       "Logged with data: %s" % (data["test"], json.dumps(data)))
+        else:
+            self._state.running_tests.remove(data["test"])
+            self._log_data("test_end", data)
+
+    @log_action(Unicode("process"),
+                Unicode("data"),
+                Unicode("command", default=None, optional=True))
+    def process_output(self, data):
         """Log output from a managed process.
 
         :param process: A unique identifier for the process producing the output
@@ -231,16 +293,15 @@ class StructuredLogger(object):
         :param command: A string representing the full command line used to start
                         the process.
         """
-        data = {"process": process, "data": data}
-        if command is not None:
-            data["command"] = command
         self._log_data("process_output", data)
 
 
 def _log_func(level_name):
-    def log(self, message):
-        data = {"level": level_name, "message": message}
+    @log_action(Unicode("message"))
+    def log(self, data):
+        data["level"] = level_name
         self._log_data("log", data)
+
     log.__doc__ = """Log a message with level %s
 
 :param message: The string message to log

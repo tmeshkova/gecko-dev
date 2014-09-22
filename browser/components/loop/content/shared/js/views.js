@@ -138,9 +138,9 @@ loop.shared.views = (function(_, OT, l10n) {
 
     render: function() {
       return (
-        React.DOM.button( {className:this._getClasses(),
-                title:this._getTitle(),
-                onClick:this.handleClick})
+        React.DOM.button({className: this._getClasses(), 
+                title: this._getTitle(), 
+                onClick: this.handleClick})
       );
     }
   });
@@ -177,16 +177,16 @@ loop.shared.views = (function(_, OT, l10n) {
 
     render: function() {
       return (
-        React.DOM.ul( {className:"controls"}, 
-          React.DOM.li(null, React.DOM.button( {className:"btn btn-hangup",
-                      onClick:this.handleClickHangup,
-                      title:__("hangup_button_title")})),
-          React.DOM.li(null, MediaControlButton( {action:this.handleToggleVideo,
-                                  enabled:this.props.video.enabled,
-                                  scope:"local", type:"video"} )),
-          React.DOM.li(null, MediaControlButton( {action:this.handleToggleAudio,
-                                  enabled:this.props.audio.enabled,
-                                  scope:"local", type:"audio"} ))
+        React.DOM.ul({className: "controls"}, 
+          React.DOM.li(null, React.DOM.button({className: "btn btn-hangup", 
+                      onClick: this.handleClickHangup, 
+                      title: __("hangup_button_title")})), 
+          React.DOM.li(null, MediaControlButton({action: this.handleToggleVideo, 
+                                  enabled: this.props.video.enabled, 
+                                  scope: "local", type: "video"})), 
+          React.DOM.li(null, MediaControlButton({action: this.handleToggleAudio, 
+                                  enabled: this.props.audio.enabled, 
+                                  scope: "local", type: "audio"}))
         )
       );
     }
@@ -255,13 +255,7 @@ loop.shared.views = (function(_, OT, l10n) {
      */
     _streamCreated: function(event) {
       var incoming = this.getDOMNode().querySelector(".incoming");
-      event.streams.forEach(function(stream) {
-        if (stream.connection.connectionId !==
-            this.props.model.session.connection.connectionId) {
-          this.props.model.session.subscribe(stream, incoming,
-                                             this.publisherConfig);
-        }
-      }, this);
+      this.props.model.subscribe(event.stream, incoming, this.publisherConfig);
     },
 
     /**
@@ -298,7 +292,7 @@ loop.shared.views = (function(_, OT, l10n) {
         });
       }.bind(this));
 
-      this.props.model.session.publish(this.publisher);
+      this.props.model.publish(this.publisher);
     },
 
     /**
@@ -329,14 +323,14 @@ loop.shared.views = (function(_, OT, l10n) {
 
     render: function() {
       return (
-        React.DOM.div( {className:"conversation"}, 
-          ConversationToolbar( {video:this.state.video,
-                               audio:this.state.audio,
-                               publishStream:this.publishStream,
-                               hangup:this.hangup} ),
-          React.DOM.div( {className:"media nested"}, 
-            React.DOM.div( {className:"remote"}, React.DOM.div( {className:"incoming"})),
-            React.DOM.div( {className:"local"}, React.DOM.div( {className:"outgoing"}))
+        React.DOM.div({className: "conversation"}, 
+          ConversationToolbar({video: this.state.video, 
+                               audio: this.state.audio, 
+                               publishStream: this.publishStream, 
+                               hangup: this.hangup}), 
+          React.DOM.div({className: "media nested"}, 
+            React.DOM.div({className: "remote"}, React.DOM.div({className: "incoming"})), 
+            React.DOM.div({className: "local"}, React.DOM.div({className: "outgoing"}))
           )
         )
       );

@@ -24,18 +24,40 @@ DesktopDeviceInfoMac::DesktopDeviceInfoMac() {
 DesktopDeviceInfoMac::~DesktopDeviceInfoMac() {
 }
 
-int32_t DesktopDeviceInfoMac::Init() {
 #if !defined(MULTI_MONITOR_SCREENSHARE)
+int32_t DesktopDeviceInfoMac::MultiMonitorScreenshare()
+{
   DesktopDisplayDevice *pDesktopDeviceInfo = new DesktopDisplayDevice;
-  if(pDesktopDeviceInfo) {
-    pDesktopDeviceInfo->setScreenId(0);
+  if (pDesktopDeviceInfo) {
+    pDesktopDeviceInfo->setScreenId(CGMainDisplayID());
     pDesktopDeviceInfo->setDeviceName("Primary Monitor");
-    pDesktopDeviceInfo->setUniqueIdName("\\screen\\monitor#1");
+
+    char idStr[64];
+    snprintf(idStr, sizeof(idStr), "%ld", pDesktopDeviceInfo->getScreenId());
+    pDesktopDeviceInfo->setUniqueIdName(idStr);
     desktop_display_list_[pDesktopDeviceInfo->getScreenId()] = pDesktopDeviceInfo;
   }
+  return 0;
+}
+#endif
+
+int32_t DesktopDeviceInfoMac::Init() {
+#if !defined(MULTI_MONITOR_SCREENSHARE)
+  MultiMonitorScreenshare();
 #endif
 
   initializeWindowList();
+
+  return 0;
+}
+
+int32_t DesktopDeviceInfoMac::Refresh() {
+#if !defined(MULTI_MONITOR_SCREENSHARE)
+  desktop_display_list_.clear();
+  MultiMonitorScreenshare();
+#endif
+
+  RefreshWindowList();
 
   return 0;
 }

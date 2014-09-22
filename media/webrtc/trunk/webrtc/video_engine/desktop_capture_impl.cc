@@ -42,6 +42,11 @@ int32_t ScreenDeviceInfoImpl::Init() {
   return 0;
 }
 
+int32_t ScreenDeviceInfoImpl::Refresh() {
+  desktop_device_info_->Refresh();
+  return 0;
+}
+
 uint32_t ScreenDeviceInfoImpl::NumberOfDevices() {
   return desktop_device_info_->getDisplayDeviceCount();
 }
@@ -130,6 +135,11 @@ AppDeviceInfoImpl::~AppDeviceInfoImpl(void) {
 
 int32_t AppDeviceInfoImpl::Init() {
   desktop_device_info_.reset(DesktopDeviceInfoImpl::Create());
+  return 0;
+}
+
+int32_t AppDeviceInfoImpl::Refresh() {
+  desktop_device_info_->Refresh();
   return 0;
 }
 
@@ -225,6 +235,11 @@ VideoCaptureModule* DesktopCaptureImpl::Create(const int32_t id,
 
 int32_t WindowDeviceInfoImpl::Init() {
   desktop_device_info_.reset(DesktopDeviceInfoImpl::Create());
+  return 0;
+}
+
+int32_t WindowDeviceInfoImpl::Refresh() {
+  desktop_device_info_->Refresh();
   return 0;
 }
 
@@ -359,16 +374,21 @@ int32_t DesktopCaptureImpl::Init(const char* uniqueId,
     MouseCursorMonitor * pMouseCursorMonitor = MouseCursorMonitor::CreateForScreen(webrtc::DesktopCaptureOptions::CreateDefault(), webrtc::kFullDesktopScreenId);
     desktop_capturer_cursor_composer_.reset(new DesktopAndCursorComposer(pAppCapturer, pMouseCursorMonitor));
   } else if (type == Screen) {
-    ScreenCapturer *pScreenCapturer = ScreenCapturer::Create();
+
+    DesktopCaptureOptions options = DesktopCaptureOptions::CreateDefault();
+    // Leave desktop effects enabled during WebRTC captures.
+    options.set_disable_effects(false);
+
+    ScreenCapturer *pScreenCapturer = ScreenCapturer::Create(options);
     if (!pScreenCapturer) {
       return -1;
     }
 
-    ScreenId screenid = webrtc::kFullDesktopScreenId;
+    ScreenId screenid = atoi(uniqueId);
     pScreenCapturer->SelectScreen(screenid);
     pScreenCapturer->SetMouseShapeObserver(this);
 
-    MouseCursorMonitor * pMouseCursorMonitor = MouseCursorMonitor::CreateForScreen(webrtc::DesktopCaptureOptions::CreateDefault(), screenid);
+    MouseCursorMonitor * pMouseCursorMonitor = MouseCursorMonitor::CreateForScreen(options, screenid);
     desktop_capturer_cursor_composer_.reset(new DesktopAndCursorComposer(pScreenCapturer, pMouseCursorMonitor));
   } else if (type == Window) {
     WindowCapturer *pWindowCapturer = WindowCapturer::Create();
@@ -379,6 +399,7 @@ int32_t DesktopCaptureImpl::Init(const char* uniqueId,
     std::string idStr(uniqueId);
     const std::string prefix("\\win\\");
     if (idStr.substr(0, prefix.size()) != prefix) {
+      delete pWindowCapturer;
       // invalid id
       return -1;
     }
@@ -461,7 +482,12 @@ DesktopCaptureImpl::DesktopCaptureImpl(const int32_t id)
   delta_ntp_internal_ms_(
                          Clock::GetRealTimeClock()->CurrentNtpInMilliseconds() -
                          TickTime::MillisecondTimestamp()),
+  time_event_(*EventWrapper::Create()),
+#if defined(_WIN32)
+  capturer_thread_(*ThreadWrapper::CreateUIThread(Run, this, kHighPriority, "ScreenCaptureThread")) {
+#else
   capturer_thread_(*ThreadWrapper::CreateThread(Run, this, kHighPriority, "ScreenCaptureThread")) {
+#endif
   _requestedCapability.width = kDefaultWidth;
   _requestedCapability.height = kDefaultHeight;
   _requestedCapability.maxFPS = 30;
@@ -471,7 +497,9 @@ DesktopCaptureImpl::DesktopCaptureImpl(const int32_t id)
 }
 
 DesktopCaptureImpl::~DesktopCaptureImpl() {
+  time_event_.Set();
   capturer_thread_.Stop();
+  delete &time_event_;
   delete &capturer_thread_;
 
   DeRegisterCaptureDataCallback();
@@ -744,6 +772,12 @@ int32_t DesktopCaptureImpl::StartCapture(const VideoCaptureCapability& capabilit
   desktop_capturer_cursor_composer_->Start(this);
   unsigned int t_id =0;
   capturer_thread_.Start(t_id);
+
+#if defined(_WIN32)
+  uint32_t maxFPSNeeded = 1000/_requestedCapability.maxFPS;
+  capturer_thread_.RequestCallbackTimer(maxFPSNeeded);
+#endif
+
   return 0;
 }
 
@@ -783,7 +817,21 @@ void DesktopCaptureImpl::process() {
   DesktopRect desktop_rect;
   DesktopRegion desktop_region;
 
+#if !defined(_WIN32)
+  TickTime startProcessTime = TickTime::Now();
+#endif
+
   desktop_capturer_cursor_composer_->Capture(DesktopRegion());
+
+#if !defined(_WIN32)
+  const uint32_t processTime =
+      (uint32_t)(TickTime::Now() - startProcessTime).Milliseconds();
+  // Use at most x% CPU or limit framerate
+  const uint32_t maxFPSNeeded = 1000/_requestedCapability.maxFPS;
+  const float sleepTimeFactor = (100.0f / kMaxDesktopCaptureCpuUsage) - 1.0f;
+  const uint32_t sleepTime = sleepTimeFactor * processTime;
+  time_event_.Wait(std::max<uint32_t>(maxFPSNeeded, sleepTime));
+#endif
 }
 
 void DesktopCaptureImpl::OnCursorShapeChanged(MouseCursorShape* cursor_shape) {
