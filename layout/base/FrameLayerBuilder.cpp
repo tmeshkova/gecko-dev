@@ -1489,11 +1489,6 @@ ContainerState::CreateOrRecycleThebesLayer(const nsIFrame* aAnimatedGeometryRoot
       if (!FuzzyEqual(data->mXScale, mParameters.mXScale, 0.00001f) ||
           !FuzzyEqual(data->mYScale, mParameters.mYScale, 0.00001f) ||
           data->mAppUnitsPerDevPixel != mAppUnitsPerDevPixel) {
-#ifdef MOZ_DUMP_PAINTING
-      if (nsLayoutUtils::InvalidationDebuggingIsEnabled()) {
-        printf_stderr("Recycled layer %p changed scale\n", layer.get());
-      }
-#endif
         InvalidateEntireThebesLayer(layer, aAnimatedGeometryRoot);
 #if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
         didResetScrollPositionForLayerPixelAlignment = true;
@@ -1998,15 +1993,6 @@ ContainerState::PopThebesLayerData()
     if (userData->mForcedBackgroundColor != backgroundColor) {
       // Invalidate the entire target ThebesLayer since we're changing
       // the background color
-#ifdef MOZ_DUMP_PAINTING
-      if (nsLayoutUtils::InvalidationDebuggingIsEnabled()) {
-        printf_stderr("Forced background color has changed from #%08X to #%08X on layer %p\n",
-                      userData->mForcedBackgroundColor, backgroundColor, data->mLayer);
-        nsAutoCString str;
-        AppendToString(str, data->mLayer->GetValidRegion());
-        printf_stderr("Invalidating layer %p: %s\n", data->mLayer, str.get());
-      }
-#endif
       data->mLayer->InvalidateRegion(data->mLayer->GetValidRegion());
     }
     userData->mForcedBackgroundColor = backgroundColor;

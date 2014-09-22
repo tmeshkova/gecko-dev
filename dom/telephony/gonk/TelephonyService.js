@@ -103,6 +103,8 @@ function TelephonyService() {
   this._listeners = [];
   this._currentCalls = {};
 
+  this._cdmaCallWaitingNumber = null;
+
   // _isActiveCall[clientId][callIndex] shows the active status of the call.
   this._isActiveCall = {};
   this._numActiveCall = 0;
@@ -361,7 +363,9 @@ TelephonyService.prototype = {
       for (let i = 0, indexes = Object.keys(calls); i < indexes.length; ++i) {
         let call = calls[indexes[i]];
         aListener.enumerateCallState(call.clientId, call.callIndex,
-                                     call.state, call.number, call.isOutgoing,
+                                     call.state, call.number,
+                                     call.numberPresentation, call.name,
+                                     call.namePresentation, call.isOutgoing,
                                      call.isEmergency, call.isConference,
                                      call.isSwitchable, call.isMergeable);
       }
@@ -686,6 +690,12 @@ TelephonyService.prototype = {
       duration: duration,
       direction: aCall.isOutgoing ? "outgoing" : "incoming"
     };
+
+    if(this._cdmaCallWaitingNumber != null) {
+      data.secondNumber = this._cdmaCallWaitingNumber;
+      this._cdmaCallWaitingNumber = null;
+    }
+
     gSystemMessenger.broadcastMessage("telephony-call-ended", data);
 
     let manualConfStateChange = false;
@@ -721,6 +731,9 @@ TelephonyService.prototype = {
                                                     aCall.callIndex,
                                                     aCall.state,
                                                     aCall.number,
+                                                    aCall.numberPresentation,
+                                                    aCall.name,
+                                                    aCall.namePresentation,
                                                     aCall.isOutgoing,
                                                     aCall.isEmergency,
                                                     aCall.isConference,
@@ -785,6 +798,13 @@ TelephonyService.prototype = {
       call.isMergeable = aCall.isMergeable != null ?
                          aCall.isMergeable : true;
 
+      call.numberPresentation = aCall.numberPresentation != null ?
+                                aCall.numberPresentation : nsITelephonyService.CALL_PRESENTATION_ALLOWED;
+      call.name = aCall.name != null ?
+                  aCall.name : "";
+      call.namePresentation = aCall.namePresentation != null ?
+                              aCall.namePresentation : nsITelephonyService.CALL_PRESENTATION_ALLOWED;
+
       this._currentCalls[aClientId][aCall.callIndex] = call;
     }
 
@@ -792,6 +812,9 @@ TelephonyService.prototype = {
                                                   call.callIndex,
                                                   call.state,
                                                   call.number,
+                                                  call.numberPresentation,
+                                                  call.name,
+                                                  call.namePresentation,
                                                   call.isOutgoing,
                                                   call.isEmergency,
                                                   call.isConference,
@@ -799,7 +822,7 @@ TelephonyService.prototype = {
                                                   call.isMergeable]);
   },
 
-  notifyCdmaCallWaiting: function(aClientId, aNumber) {
+  notifyCdmaCallWaiting: function(aClientId, aCall) {
     // We need to acquire a CPU wake lock to avoid the system falling into
     // the sleep mode when the RIL handles the incoming call.
     this._acquireCallRingWakeLock();
@@ -810,7 +833,14 @@ TelephonyService.prototype = {
       // call comes after a 3way call.
       this.notifyCallDisconnected(aClientId, call);
     }
-    this._notifyAllListeners("notifyCdmaCallWaiting", [aClientId, aNumber]);
+
+    this._cdmaCallWaitingNumber = aCall.number;
+
+    this._notifyAllListeners("notifyCdmaCallWaiting", [aClientId,
+                                                       aCall.number,
+                                                       aCall.numberPresentation,
+                                                       aCall.name,
+                                                       aCall.namePresentation]);
   },
 
   notifySupplementaryService: function(aClientId, aCallIndex, aNotification) {

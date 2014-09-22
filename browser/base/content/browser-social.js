@@ -69,7 +69,7 @@ SocialUI = {
     Services.prefs.addObserver("social.toast-notifications.enabled", this, false);
 
     gBrowser.addEventListener("ActivateSocialFeature", this._activationEventHandler.bind(this), true, true);
-    PanelUI.panel.addEventListener("popupshown", SocialUI.updateState, true);
+    PanelUI.panel.addEventListener("popupshown", SocialUI.updatePanelState, true);
 
     // menupopups that list social providers. we only populate them when shown,
     // and if it has not been done already.
@@ -103,7 +103,7 @@ SocialUI = {
 
     Services.prefs.removeObserver("social.toast-notifications.enabled", this);
 
-    PanelUI.panel.removeEventListener("popupshown", SocialUI.updateState, true);
+    PanelUI.panel.removeEventListener("popupshown", SocialUI.updatePanelState, true);
     document.getElementById("viewSidebarMenu").removeEventListener("popupshowing", SocialSidebar.populateSidebarMenu, true);
     document.getElementById("social-statusarea-popup").removeEventListener("popupshowing", SocialSidebar.populateSidebarMenu, true);
 
@@ -288,6 +288,14 @@ SocialUI = {
     return Social.providers.length > 0;
   },
 
+  updatePanelState :function(event) {
+    // we only want to update when the panel is initially opened, not during
+    // multiview changes
+    if (event.target != PanelUI.panel)
+      return;
+    SocialUI.updateState();
+  },
+
   // called on tab/urlbar/location changes and after customization. Update
   // anything that is tab specific.
   updateState: function() {
@@ -465,11 +473,12 @@ SocialShare = {
       return;
     this.panel.hidden = false;
     // create and initialize the panel for this window
-    let iframe = document.createElement("iframe");
+    let iframe = document.createElement("browser");
     iframe.setAttribute("type", "content");
     iframe.setAttribute("class", "social-share-frame");
     iframe.setAttribute("context", "contentAreaContextMenu");
     iframe.setAttribute("tooltip", "aHTMLTooltip");
+    iframe.setAttribute("disableglobalhistory", "true");
     iframe.setAttribute("flex", "1");
     panel.appendChild(iframe);
     this.populateProviderMenu();
@@ -579,14 +588,28 @@ SocialShare = {
     }
   },
 
+  _onclick: function() {
+    Services.telemetry.getHistogramById("SOCIAL_PANEL_CLICKS").add(0);
+  },
+  
   onShowing: function() {
     this.anchor.setAttribute("open", "true");
+    this.iframe.addEventListener("click", this._onclick, true);
   },
 
   onHidden: function() {
     this.anchor.removeAttribute("open");
+    this.iframe.removeEventListener("click", this._onclick, true);
     this.iframe.setAttribute("src", "data:text/plain;charset=utf8,");
+    // make sure that the frame is unloaded after it is hidden
+    this.iframe.docShell.createAboutBlankContentViewer(null);
     this.currentShare = null;
+    // share panel use is over, purge any history
+    if (this.iframe.sessionHistory) {
+      let purge = this.iframe.sessionHistory.count;
+      if (purge > 0)
+        this.iframe.sessionHistory.PurgeHistory(purge);
+    }
   },
 
   setErrorMessage: function() {
@@ -693,6 +716,14 @@ SocialShare = {
         iframe.contentDocument.documentElement.dispatchEvent(evt);
       }, true);
     }
+    // if the user switched between share providers we do not want that history
+    // available.
+    if (iframe.sessionHistory) {
+      let purge = iframe.sessionHistory.count;
+      if (purge > 0)
+        iframe.sessionHistory.PurgeHistory(purge);
+    }
+
     // always ensure that origin belongs to the endpoint
     let uri = Services.io.newURI(shareEndpoint, null, null);
     iframe.setAttribute("origin", provider.origin);
@@ -701,10 +732,13 @@ SocialShare = {
     let anchor = document.getAnonymousElementByAttribute(this.anchor, "class", "toolbarbutton-icon");
     this.panel.openPopup(anchor, "bottomcenter topright", 0, 0, false, false);
     Social.setErrorListener(iframe, this.setErrorMessage.bind(this));
+    Services.telemetry.getHistogramById("SOCIAL_TOOLBAR_BUTTONS").add(0);
   }
 };
 
 SocialSidebar = {
+  _openStartTime: 0,
+
   // Whether the sidebar can be shown for this window.
   get canShow() {
     if (!SocialUI.enabled || document.mozFullScreen)
@@ -777,6 +811,11 @@ SocialSidebar = {
       "hidden": broadcaster.hidden,
       "origin": sidebarOrigin
     };
+    if (broadcaster.hidden) {
+      Services.telemetry.getHistogramById("SOCIAL_SIDEBAR_OPEN_DURATION").add(Date.now()  / 1000 - this._openStartTime);
+    } else {
+      this._openStartTime = Date.now() / 1000;
+    }
 
     // Save a global state for users who do not restore state.
     if (broadcaster.hidden)
@@ -874,11 +913,16 @@ SocialSidebar = {
     this._updateCheckedMenuItems(this.opened && this.provider ? this.provider.origin : null);
   },
 
+  _onclick: function() {
+    Services.telemetry.getHistogramById("SOCIAL_PANEL_CLICKS").add(3);
+  },
+
   _loadListener: function SocialSidebar_loadListener() {
     let sbrowser = document.getElementById("social-sidebar-browser");
     sbrowser.removeEventListener("load", SocialSidebar._loadListener, true);
     document.getElementById("social-sidebar-button").removeAttribute("loading");
     SocialSidebar.setSidebarVisibilityState(true);
+    sbrowser.addEventListener("click", SocialSidebar._onclick, true);
   },
 
   unloadSidebar: function SocialSidebar_unloadSidebar() {
@@ -886,6 +930,7 @@ SocialSidebar = {
     if (!sbrowser.hasAttribute("origin"))
       return;
 
+    sbrowser.removeEventListener("click", SocialSidebar._onclick, true);
     sbrowser.stop();
     sbrowser.removeAttribute("origin");
     sbrowser.setAttribute("src", "about:blank");
@@ -986,6 +1031,7 @@ SocialSidebar = {
     else
       SocialSidebar.update();
     this.saveWindowState();
+    Services.telemetry.getHistogramById("SOCIAL_SIDEBAR_STATE").add(true);
   },
 
   hide: function() {
@@ -995,6 +1041,7 @@ SocialSidebar = {
     this.clearProviderMenus();
     SocialSidebar.update();
     this.saveWindowState();
+    Services.telemetry.getHistogramById("SOCIAL_SIDEBAR_STATE").add(false);
   },
 
   toggleSidebar: function SocialSidebar_toggle() {
@@ -1319,6 +1366,10 @@ SocialStatus = {
       notificationFrame.contentDocument.documentElement.dispatchEvent(evt);
     }
 
+    function _onclick() {
+      Services.telemetry.getHistogramById("SOCIAL_PANEL_CLICKS").add(1);
+    }
+
     // we only use a dynamic resizer when we're located the toolbar.
     let dynamicResizer;
     if (!inMenuPanel && notificationFrame.getAttribute("dynamicresizer") == "true") {
@@ -1331,6 +1382,7 @@ SocialStatus = {
         dynamicResizer.stop();
       notificationFrame.docShell.isActive = false;
       dispatchPanelEvent("socialFrameHide");
+      notificationFrame.removeEventListener("click", _onclick, true);
     });
 
     panel.addEventListener(showingEvent, function onpopupshown() {
@@ -1346,6 +1398,7 @@ SocialStatus = {
         if (dynamicResizer)
           dynamicResizer.start(panel, notificationFrame);
         dispatchPanelEvent("socialFrameShow");
+        notificationFrame.addEventListener("click", _onclick, true);
       };
       if (!inMenuPanel)
         aToolbarButton.setAttribute("open", "true");
@@ -1399,13 +1452,6 @@ SocialStatus = {
  */
 SocialMarks = {
   update: function() {
-    // signal each button to update itself
-    let currentButtons = document.querySelectorAll('toolbarbutton[type="socialmark"]');
-    for (let elt of currentButtons)
-      elt.update();
-  },
-
-  updatePanelButtons: function() {
     // querySelectorAll does not work on the menu panel the panel, so we have to
     // do this the hard way.
     let providers = SocialMarks.getProviders();
@@ -1453,7 +1499,7 @@ SocialMarks = {
     for (let cfg of contextMenus) {
       this._populateContextPopup(cfg, providers);
     }
-    this.updatePanelButtons();
+    this.update();
   },
 
   MENU_LIMIT: 3, // adjustable for testing

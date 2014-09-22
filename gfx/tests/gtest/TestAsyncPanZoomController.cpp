@@ -195,7 +195,8 @@ void ApzcPan(AsyncPanZoomController* apzc,
              int aTouchEndY,
              bool expectIgnoredPan = false,
              bool hasTouchListeners = false,
-             nsTArray<uint32_t>* aAllowedTouchBehaviors = nullptr) {
+             nsTArray<uint32_t>* aAllowedTouchBehaviors = nullptr,
+             bool aKeepFingerDown = false) {
 
   const int TIME_BETWEEN_TOUCH_EVENT = 100;
   const int OVERCOME_TOUCH_TOLERANCE = 100;
@@ -255,11 +256,13 @@ void ApzcPan(AsyncPanZoomController* apzc,
   status = apzc->ReceiveInputEvent(mti);
   EXPECT_EQ(touchMoveStatus, status);
 
-  mti =
-    MultiTouchInput(MultiTouchInput::MULTITOUCH_END, aTime, TimeStamp(), 0);
-  aTime += TIME_BETWEEN_TOUCH_EVENT;
-  mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchEndY), ScreenSize(0, 0), 0, 0));
-  status = apzc->ReceiveInputEvent(mti);
+  if (!aKeepFingerDown) {
+    mti =
+      MultiTouchInput(MultiTouchInput::MULTITOUCH_END, aTime, TimeStamp(), 0);
+    aTime += TIME_BETWEEN_TOUCH_EVENT;
+    mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchEndY), ScreenSize(0, 0), 0, 0));
+    status = apzc->ReceiveInputEvent(mti);
+  }
 
   // Since we've explicitly built the overscroll handoff chain before
   // touch-start, we need to explicitly clear it after touch-end.

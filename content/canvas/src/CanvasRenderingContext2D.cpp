@@ -963,6 +963,15 @@ CanvasRenderingContext2D::EnsureTarget()
     }
 
     mTarget->ClearRect(mgfx::Rect(Point(0, 0), Size(mWidth, mHeight)));
+    if (mTarget->GetType() == mgfx::BackendType::CAIRO) {
+      // Cairo doesn't play well with huge clips. When given a very big clip it
+      // will try to allocate big mask surface without taking the target
+      // size into account which can cause OOM. See bug 1034593.
+      // This limits the clip extents to the size of the canvas.
+      // A fix in Cairo would probably be preferable, but requires somewhat
+      // invasive changes.
+      mTarget->PushClipRect(mgfx::Rect(Point(0, 0), Size(mWidth, mHeight)));
+    }
     // Force a full layer transaction since we didn't have a layer before
     // and now we might need one.
     if (mCanvasElement) {
@@ -1050,6 +1059,11 @@ CanvasRenderingContext2D::InitializeWithSurface(nsIDocShell *shell,
     mTarget = sErrorTarget;
   }
 
+  if (mTarget->GetType() == mgfx::BackendType::CAIRO) {
+    // Cf comment in EnsureTarget
+    mTarget->PushClipRect(mgfx::Rect(Point(0, 0), Size(mWidth, mHeight)));
+  }
+
   return NS_OK;
 }
 
@@ -1059,10 +1073,6 @@ CanvasRenderingContext2D::SetIsOpaque(bool isOpaque)
   if (isOpaque != mOpaque) {
     mOpaque = isOpaque;
     ClearTarget();
-  }
-
-  if (mOpaque) {
-    EnsureTarget();
   }
 
   return NS_OK;
@@ -4227,6 +4237,12 @@ CanvasRenderingContext2D::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                          CanvasLayer *aOldLayer,
                                          LayerManager *aManager)
 {
+  if (mOpaque) {
+    // If we're opaque then make sure we have a surface so we paint black
+    // instead of transparent.
+    EnsureTarget();
+  }
+
   // Don't call EnsureTarget() ... if there isn't already a surface, then
   // we have nothing to paint and there is no need to create a surface just
   // to paint nothing. Also, EnsureTarget() can cause creation of a persistent

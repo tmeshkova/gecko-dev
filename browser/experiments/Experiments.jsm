@@ -422,10 +422,9 @@ Experiments.Experiments.prototype = {
 
     gPrefsTelemetry.observe(PREF_TELEMETRY_ENABLED, this._telemetryStatusChanged, this);
 
-    AsyncShutdown.profileBeforeChange.addBlocker("Experiments.jsm shutdown",
-      this.uninit.bind(this),
-      this._getState.bind(this)
-    );
+    AddonManager.shutdown.addBlocker("Experiments.jsm shutdown",
+                                     this.uninit.bind(this),
+                                     this._getState.bind(this));
 
     this._registerWithAddonManager();
 
@@ -547,16 +546,17 @@ Experiments.Experiments.prototype = {
   _unregisterWithAddonManager: function () {
     this._log.trace("Unregistering instance with Addon Manager.");
 
+    this._log.trace("Removing install listener from add-on manager.");
+    AddonManager.removeInstallListener(this);
+    this._log.trace("Removing addon listener from add-on manager.");
+    AddonManager.removeAddonListener(this);
+
     if (gAddonProvider) {
       this._log.trace("Unregistering previous experiment add-on provider.");
       AddonManagerPrivate.unregisterProvider(gAddonProvider);
       gAddonProvider = null;
     }
 
-    this._log.trace("Removing install listener from add-on manager.");
-    AddonManager.removeInstallListener(this);
-    this._log.trace("Removing addon listener from add-on manager.");
-    AddonManager.removeAddonListener(this);
     this._log.trace("Finished unregistering with addon manager.");
   },
 

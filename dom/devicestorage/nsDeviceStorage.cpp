@@ -27,6 +27,7 @@
 #include "mozilla/Scoped.h"
 #include "mozilla/Services.h"
 
+#include "nsArrayUtils.h"
 #include "nsAutoPtr.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIFile.h"
@@ -1649,12 +1650,11 @@ InterfaceToJsval(nsPIDOMWindow* aWindow,
   NS_ENSURE_TRUE(unrootedScopeObj, JS::NullValue());
   JSRuntime *runtime = JS_GetObjectRuntime(unrootedScopeObj);
   JS::Rooted<JS::Value> someJsVal(runtime);
+  JS::Rooted<JSObject*> scopeObj(runtime, unrootedScopeObj);
   nsresult rv;
 
   { // Protect someJsVal from moving GC in ~JSAutoCompartment
     AutoJSContext cx;
-
-    JS::Rooted<JSObject*> scopeObj(cx, unrootedScopeObj);
     JSAutoCompartment ac(cx, scopeObj);
 
     rv = nsContentUtils::WrapNative(cx, aObject, aIID, &someJsVal);
@@ -3254,7 +3254,19 @@ nsDOMDeviceStorage::GetOrderedVolumeNames(
 #ifdef MOZ_WIDGET_GONK
   nsCOMPtr<nsIVolumeService> vs = do_GetService(NS_VOLUMESERVICE_CONTRACTID);
   if (vs) {
-    vs->GetVolumeNames(aVolumeNames);
+    nsCOMPtr<nsIArray> volNames;
+    vs->GetVolumeNames(getter_AddRefs(volNames));
+    uint32_t length = -1;
+    volNames->GetLength(&length);
+    for (uint32_t i = 0; i < length; i++) {
+      nsCOMPtr<nsISupportsString> str = do_QueryElementAt(volNames, i);
+      if (str) {
+        nsAutoString s;
+        if (NS_SUCCEEDED(str->GetData(s)) && !s.IsEmpty()) {
+          aVolumeNames.AppendElement(s);
+        }
+      }
+    }
 
     // If the volume sdcard exists, then we want it to be first.
 

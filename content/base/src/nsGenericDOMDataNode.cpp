@@ -89,7 +89,16 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_BEGIN(nsGenericDOMDataNode)
   return Element::CanSkipThis(tmp);
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsGenericDOMDataNode)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGenericDOMDataNode)
+  if (MOZ_UNLIKELY(cb.WantDebugInfo())) {
+    char name[40];
+    PR_snprintf(name, sizeof(name), "nsGenericDOMDataNode (len=%d)",
+                tmp->mText.GetLength());
+    cb.DescribeRefCountedNode(tmp->mRefCnt.get(), name);
+  } else {
+    NS_IMPL_CYCLE_COLLECTION_DESCRIBE(nsGenericDOMDataNode, tmp->mRefCnt.get())
+  }
+
   // Always need to traverse script objects, so do that before we check
   // if we're uncollectable.
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
@@ -313,9 +322,9 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
     nsNodeUtils::CharacterDataWillChange(this, &info);
   }
 
-  if (NodeType() == nsIDOMNode::TEXT_NODE) {
-    SetDirectionFromChangedTextNode(this, aOffset, aBuffer, aLength, aNotify);
-  }
+  Directionality oldDir = eDir_NotSet;
+  bool dirAffectsAncestor = (NodeType() == nsIDOMNode::TEXT_NODE &&
+                             TextNodeWillChangeDirection(this, &oldDir, aOffset));
 
   if (aOffset == 0 && endOffset == textLength) {
     // Replacing whole text or old text was empty.  Don't bother to check for
@@ -360,6 +369,10 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
     // If we found bidi characters in mText.SetTo() above, indicate that the
     // document contains bidi characters.
     document->SetBidiEnabled();
+  }
+
+  if (dirAffectsAncestor) {
+    TextNodeChangedDirection(this, oldDir, aNotify);
   }
 
   // Notify observers

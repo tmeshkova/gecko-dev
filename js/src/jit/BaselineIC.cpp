@@ -5231,7 +5231,7 @@ ICSetElem_Dense::Compiler::generateStubCode(MacroAssembler &masm)
     masm.storeValue(tmpVal, element);
     regs.add(key);
 #ifdef JSGC_GENERATIONAL
-    {
+    if (cx->runtime()->gc.nursery.exists()) {
         Register r = regs.takeAny();
         GeneralRegisterSet saveRegs;
         emitPostWriteBarrierSlot(masm, obj, tmpVal, r, saveRegs);
@@ -5414,7 +5414,7 @@ ICSetElemDenseAddCompiler::generateStubCode(MacroAssembler &masm)
     masm.storeValue(tmpVal, element);
     regs.add(key);
 #ifdef JSGC_GENERATIONAL
-    {
+    if (cx->runtime()->gc.nursery.exists()) {
         Register r = regs.takeAny();
         GeneralRegisterSet saveRegs;
         emitPostWriteBarrierSlot(masm, obj, tmpVal, r, saveRegs);
@@ -7422,7 +7422,7 @@ ICSetProp_Native::Compiler::generateStubCode(MacroAssembler &masm)
     if (holderReg != objReg)
         regs.add(holderReg);
 #ifdef JSGC_GENERATIONAL
-    {
+    if (cx->runtime()->gc.nursery.exists()) {
         Register scr = regs.takeAny();
         GeneralRegisterSet saveRegs;
         saveRegs.add(R1);
@@ -7544,7 +7544,7 @@ ICSetPropNativeAddCompiler::generateStubCode(MacroAssembler &masm)
         regs.add(holderReg);
 
 #ifdef JSGC_GENERATIONAL
-    {
+    if (cx->runtime()->gc.nursery.exists()) {
         Register scr = regs.takeAny();
         GeneralRegisterSet saveRegs;
         saveRegs.add(R1);
@@ -8250,8 +8250,12 @@ ICCallStubCompiler::guardSpreadCall(MacroAssembler &masm, Register argcReg, Labe
     masm.loadPtr(Address(argcReg, JSObject::offsetOfElements()), argcReg);
     masm.load32(Address(argcReg, ObjectElements::offsetOfLength()), argcReg);
 
-    // Ensure actual argc <= ARGS_LENGTH_MAX
-    masm.branch32(Assembler::Above, argcReg, Imm32(ARGS_LENGTH_MAX), failure);
+    // Limit actual argc to something reasonable (huge number of arguments can
+    // blow the stack limit).
+    static_assert(ICCall_Scripted::MAX_ARGS_SPREAD_LENGTH <= ARGS_LENGTH_MAX,
+                  "maximum arguments length for optimized stub should be <= ARGS_LENGTH_MAX");
+    masm.branch32(Assembler::Above, argcReg, Imm32(ICCall_Scripted::MAX_ARGS_SPREAD_LENGTH),
+                  failure);
 }
 
 void

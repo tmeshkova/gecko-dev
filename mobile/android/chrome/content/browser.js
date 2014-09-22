@@ -296,6 +296,19 @@ var BrowserApp = {
         BrowserApp.deck.removeEventListener("DOMContentLoaded", BrowserApp_delayedStartup, false);
         Services.obs.notifyObservers(window, "browser-delayed-startup-finished", "");
         sendMessageToJava({ type: "Gecko:DelayedStartup" });
+
+        // Queue up some other performance-impacting initializations
+        Services.tm.mainThread.dispatch(function() {
+          // Init LoginManager
+          Cc["@mozilla.org/login-manager;1"].getService(Ci.nsILoginManager);
+        }, Ci.nsIThread.DISPATCH_NORMAL);
+
+#ifdef MOZ_SAFE_BROWSING
+        Services.tm.mainThread.dispatch(function() {
+          // Bug 778855 - Perf regression if we do this here. To be addressed in bug 779008.
+          SafeBrowsing.init();
+        }, Ci.nsIThread.DISPATCH_NORMAL);
+#endif
       } catch(ex) { console.log(ex); }
     }, false);
 
@@ -398,9 +411,6 @@ var BrowserApp = {
     ShumwayUtils.init();
 #endif
 
-    // Init LoginManager
-    Cc["@mozilla.org/login-manager;1"].getService(Ci.nsILoginManager);
-
     let url = null;
     let pinned = false;
     if ("arguments" in window) {
@@ -439,11 +449,6 @@ var BrowserApp = {
 
     // notify java that gecko has loaded
     sendMessageToJava({ type: "Gecko:Ready" });
-
-#ifdef MOZ_SAFE_BROWSING
-    // Bug 778855 - Perf regression if we do this here. To be addressed in bug 779008.
-    setTimeout(function() { SafeBrowsing.init(); }, 5000);
-#endif
   },
 
   get _startupStatus() {
@@ -1637,7 +1642,7 @@ var BrowserApp = {
       case "Passwords:Init": {
         let storage = Cc["@mozilla.org/login-manager/storage/mozStorage;1"].
                       getService(Ci.nsILoginManagerStorage);
-        storage.init();
+        storage.initialize();
         Services.obs.removeObserver(this, "Passwords:Init");
         break;
       }
@@ -4131,6 +4136,13 @@ Tab.prototype = {
     if (!sameDocument) {
       // XXX This code assumes that this is the earliest hook we have at which
       // browser.contentDocument is changed to the new document we're loading
+
+      // We have a new browser and a new window, so the old browserWidth and
+      // browserHeight are no longer valid.  We need to force-set the browser
+      // size to ensure it sets the CSS viewport size before the document
+      // has a chance to check it.
+      this.setBrowserSize(kDefaultCSSViewportWidth, kDefaultCSSViewportHeight, true);
+
       this.contentDocumentIsDisplayed = false;
       this.hasTouchListener = false;
     } else {
@@ -4434,9 +4446,11 @@ Tab.prototype = {
     });
   },
 
-  setBrowserSize: function(aWidth, aHeight) {
-    if (fuzzyEquals(this.browserWidth, aWidth) && fuzzyEquals(this.browserHeight, aHeight)) {
-      return;
+  setBrowserSize: function(aWidth, aHeight, aForce) {
+    if (!aForce) {
+      if (fuzzyEquals(this.browserWidth, aWidth) && fuzzyEquals(this.browserHeight, aHeight)) {
+        return;
+      }
     }
 
     this.browserWidth = aWidth;
@@ -6066,7 +6080,7 @@ var ViewportHandler = {
         let document = target.ownerDocument;
         let browser = BrowserApp.getBrowserForDocument(document);
         let tab = BrowserApp.getTabForBrowser(browser);
-        if (tab)
+        if (tab && tab.contentDocumentIsDisplayed)
           this.updateMetadata(tab, false);
         break;
     }

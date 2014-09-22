@@ -34,6 +34,8 @@ pref("general.warnOnAboutConfig", true);
 // maximum number of dated backups to keep at any time
 pref("browser.bookmarks.max_backups",       5);
 
+// Delete HTTP cache v1 data
+pref("browser.cache.auto_delete_cache_version", 0);
 // Preference for switching the cache backend, can be changed freely at runtime
 // 0 - use the old (Darin's) cache
 // 1 - use the new cache back-end (cache v2)
@@ -1469,7 +1471,7 @@ pref("network.proxy.socks",                 "");
 pref("network.proxy.socks_port",            0);
 pref("network.proxy.socks_version",         5);
 pref("network.proxy.socks_remote_dns",      false);
-pref("network.proxy.proxy_over_tls",        true);
+pref("network.proxy.proxy_over_tls",        false);
 pref("network.proxy.no_proxies_on",         "localhost, 127.0.0.1");
 pref("network.proxy.failover_timeout",      1800); // 30 minutes
 pref("network.online",                      true); //online/offline
@@ -4232,3 +4234,11 @@ pref("beacon.enabled", true);
 // Camera prefs
 pref("camera.control.autofocus_moving_callback.enabled", true);
 pref("camera.control.face_detection.enabled", true);
+#ifdef MOZ_WIDGET_GONK
+// Empirically, this is the value returned by hal::GetTotalSystemMemory()
+// when Flame's memory is limited to 512MiB. If the camera stack determines
+// it is running on a low memory platform, features that can be reliably
+// supported will be disabled. This threshold can be adjusted to suit other
+// platforms; and set to 0 to disable the low-memory check altogether.
+pref("camera.control.low_memory_thresholdMB", 404);
+#endif

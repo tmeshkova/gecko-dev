@@ -3154,6 +3154,7 @@ ContentParent::RecvShowAlertNotification(const nsString& aImageUrl, const nsStri
                                          const nsString& aText, const bool& aTextClickable,
                                          const nsString& aCookie, const nsString& aName,
                                          const nsString& aBidi, const nsString& aLang,
+                                         const nsString& aData,
                                          const IPC::Principal& aPrincipal)
 {
 #ifdef MOZ_CHILD_PERMISSIONS
@@ -3167,7 +3168,8 @@ ContentParent::RecvShowAlertNotification(const nsString& aImageUrl, const nsStri
     nsCOMPtr<nsIAlertsService> sysAlerts(do_GetService(NS_ALERTSERVICE_CONTRACTID));
     if (sysAlerts) {
         sysAlerts->ShowAlertNotification(aImageUrl, aTitle, aText, aTextClickable,
-                                         aCookie, this, aName, aBidi, aLang, aPrincipal);
+                                         aCookie, this, aName, aBidi, aLang,
+                                         aData, aPrincipal);
     }
     return true;
 }

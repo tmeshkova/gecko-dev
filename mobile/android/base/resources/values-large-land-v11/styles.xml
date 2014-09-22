@@ -7,6 +7,7 @@
 
     <style name="TabsList" parent="TabsListBase">
          <item name="android:orientation">vertical</item>
+         <item name="android:scrollbars">vertical</item>
     </style>
 
     <style name="Widget.BookmarkFolderView" parent="Widget.TwoLinePageRow.Title">
@@ -60,7 +61,8 @@
     </style>
 
     <style name="RemoteTabsSection" parent="RemoteTabsSectionBase">
-        <!-- To override the values-land style. -->
+        <item name="android:layout_marginLeft">20dp</item>
+        <item name="android:layout_marginRight">20dp</item>
     </style>
 
     <style name="RemoteTabsItem" parent="RemoteTabsItemBase">
@@ -74,7 +76,7 @@
         <item name="android:paddingRight">6dp</item>
         <item name="android:layout_marginLeft">12dp</item>
         <item name="android:layout_marginRight">12dp</item>
-        <item name="android:textSize">16dp</item>
+        <item name="android:textSize">16sp</item>
     </style>
 
     <style name="RemoteTabsItem.TextAppearance.Header.FXAccounts">

@@ -125,7 +125,7 @@ static bool enableDisassemblyDumps = false;
 static bool printTiming = false;
 static const char *jsCacheDir = nullptr;
 static const char *jsCacheAsmJSPath = nullptr;
-static bool jsCachingEnabled = true;
+static bool jsCachingEnabled = false;
 mozilla::Atomic<bool> jsCacheOpened(false);
 
 static bool
@@ -2887,7 +2887,7 @@ WorkerMain(void *arg)
 {
     WorkerInput *input = (WorkerInput *) arg;
 
-    JSRuntime *rt = JS_NewRuntime(8L * 1024L * 1024L, input->runtime);
+    JSRuntime *rt = JS_NewRuntime(8L * 1024L * 1024L, 2L * 1024L * 1024L, input->runtime);
     if (!rt) {
         js_delete(input);
         return;
@@ -6039,6 +6039,10 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
     int32_t fill = op.getIntOption("arm-asm-nop-fill");
     if (fill >= 0)
         jit::Assembler::NopFill = fill;
+
+    int32_t poolMaxOffset = op.getIntOption("asm-pool-max-offset");
+    if (poolMaxOffset >= 5 && poolMaxOffset <= 1024)
+        jit::Assembler::AsmPoolMaxOffset = poolMaxOffset;
 #endif
 
 #if defined(JS_ARM_SIMULATOR)
@@ -6264,6 +6268,8 @@ main(int argc, char **argv, char **envp)
 #if defined(JS_CODEGEN_ARM)
         || !op.addIntOption('\0', "arm-asm-nop-fill", "SIZE",
                             "Insert the given number of NOP instructions at all possible pool locations.", 0)
+        || !op.addIntOption('\0', "asm-pool-max-offset", "OFFSET",
+                            "The maximum pc relative OFFSET permitted in pool reference instructions.", 1024)
 #endif
 #if defined(JS_ARM_SIMULATOR)
         || !op.addBoolOption('\0', "arm-sim-icache-checks", "Enable icache flush checks in the ARM "
@@ -6275,6 +6281,9 @@ main(int argc, char **argv, char **envp)
                              "simulator.")
         || !op.addIntOption('\0', "mips-sim-stop-at", "NUMBER", "Stop the MIPS simulator after the given "
                             "NUMBER of instructions.", -1)
+#endif
+#ifdef JSGC_GENERATIONAL
+        || !op.addIntOption('\0', "nursery-size", "SIZE-MB", "Set the maximum nursery size in MB", 16)
 #endif
     )
     {
@@ -6336,8 +6345,13 @@ main(int argc, char **argv, char **envp)
     if (!JS_Init())
         return 1;
 
+    size_t nurseryBytes = JS::DefaultNurseryBytes;
+#ifdef JSGC_GENERATIONAL
+    nurseryBytes = op.getIntOption("nursery-size") * 1024L * 1024L;
+#endif
+
     /* Use the same parameters as the browser in xpcjsruntime.cpp. */
-    rt = JS_NewRuntime(32L * 1024L * 1024L);
+    rt = JS_NewRuntime(32L * 1024L * 1024L, nurseryBytes);
     if (!rt)
         return 1;
 

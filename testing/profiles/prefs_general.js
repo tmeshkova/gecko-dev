@@ -82,6 +82,7 @@ user_pref("urlclassifier.updateinterval", 172800);
 // Point the url-classifier to the local testing server for fast failures
 user_pref("browser.safebrowsing.gethashURL", "http://%(server)s/safebrowsing-dummy/gethash");
 user_pref("browser.safebrowsing.updateURL", "http://%(server)s/safebrowsing-dummy/update");
+user_pref("browser.safebrowsing.appRepURL", "http://%(server)s/safebrowsing-dummy/update");
 // Point update checks to the local testing server for fast failures
 user_pref("extensions.update.url", "http://%(server)s/extensions-dummy/updateURL");
 user_pref("extensions.update.background.url", "http://%(server)s/extensions-dummy/updateBackgroundURL");
@@ -178,9 +179,6 @@ user_pref("general.useragent.updates.enabled", false);
 // Disable webapp updates.  Yes, it is supposed to be an integer.
 user_pref("browser.webapps.checkForUpdates", 0);
 
-// Do not turn HTTP cache v2 for our infra tests (some tests are failing)
-user_pref("browser.cache.use_new_backend_temp", false);
-
 // Don't connect to Yahoo! for RSS feed tests.
 // en-US only uses .types.0.uri, but set all of them just to be sure.
 user_pref('browser.contentHandlers.types.0.uri', 'http://test1.example.org/rss?url=%%s')
@@ -204,3 +202,6 @@ user_pref('apz.test.logging_enabled', true);
 // Make sure Translation won't hit the network.
 user_pref("browser.translation.bing.authURL", "http://%(server)s/browser/browser/components/translation/test/bing.sjs");
 user_pref("browser.translation.bing.translateArrayURL", "http://%(server)s/browser/browser/components/translation/test/bing.sjs");
+
+// Make sure we don't try to load snippets from the network.
+user_pref("browser.aboutHomeSnippets.updateUrl", "nonexistent://test");
