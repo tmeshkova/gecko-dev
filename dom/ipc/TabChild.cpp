@@ -131,7 +131,7 @@ TabChildBase::InitializeRootMetrics()
   // Calculate a really simple resolution that we probably won't
   // be keeping, as well as putting the scroll offset back to
   // the top-left of the page.
-  mLastRootMetrics.mViewport = CSSRect(CSSPoint(), kDefaultViewportSize);
+  mLastRootMetrics.SetViewport(CSSRect(CSSPoint(), kDefaultViewportSize));
   mLastRootMetrics.mCompositionBounds = ParentLayerRect(
       ParentLayerPoint(),
       ParentLayerSize(ViewAs<ParentLayerPixel>(mInnerSize, PixelCastJustification::ScreenToParentLayerForRoot)));
@@ -221,7 +221,8 @@ TabChildBase::HandlePossibleViewportChange()
   }
 
   CSSSize oldBrowserSize = mOldViewportSize;
-  mLastRootMetrics.mViewport.SizeTo(viewport);
+  mLastRootMetrics.SetViewport(CSSRect(
+    mLastRootMetrics.GetViewport().TopLeft(), viewport));
   if (oldBrowserSize == CSSSize()) {
     oldBrowserSize = kDefaultViewportSize;
   }
@@ -248,7 +249,7 @@ TabChildBase::HandlePossibleViewportChange()
   }
 
   FrameMetrics metrics(mLastRootMetrics);
-  metrics.mViewport = CSSRect(CSSPoint(), viewport);
+  metrics.SetViewport(CSSRect(CSSPoint(), viewport));
   metrics.mCompositionBounds = ParentLayerRect(
       ParentLayerPoint(),
       ParentLayerSize(ViewAs<ParentLayerPixel>(mInnerSize, PixelCastJustification::ScreenToParentLayerForRoot)));
@@ -443,9 +444,9 @@ TabChildBase::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
     data.AppendPrintf(", \"y\" : %d", NS_lround(newMetrics.GetScrollOffset().y));
     data.AppendLiteral(", \"viewport\" : ");
         data.AppendLiteral("{ \"width\" : ");
-        data.AppendFloat(newMetrics.mViewport.width);
+        data.AppendFloat(newMetrics.GetViewport().width);
         data.AppendLiteral(", \"height\" : ");
-        data.AppendFloat(newMetrics.mViewport.height);
+        data.AppendFloat(newMetrics.GetViewport().height);
         data.AppendLiteral(" }");
     data.AppendLiteral(", \"cssPageRect\" : ");
         data.AppendLiteral("{ \"x\" : ");
