@@ -650,7 +650,8 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget, const nsIntRect* aRect)
 
   mLastCompose = TimeStamp::Now();
 
-  if (!CanComposite()) {
+  if (!CanComposite() ||
+      mLayerManager->GetCompositor()->GetCurrentRenderTarget()) {
     DidComposite();
     return;
   }
