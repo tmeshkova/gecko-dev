@@ -148,6 +148,8 @@ public:
 
   virtual uint32_t GetUniqueID();
   virtual bool GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget = 0);
+  //   GL Rendering setuo
+  virtual void* GetPlatformImage(int* width, int* height);
 
 private:
   friend class EmbedLiteViewThreadParent;

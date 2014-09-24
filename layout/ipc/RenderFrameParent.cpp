@@ -239,7 +239,7 @@ BuildListForLayer(Layer* aLayer,
     // Calculate rect for this layer based on aTransform.
     nsRect bounds;
     {
-      bounds = CSSRect::ToAppUnits(metrics->mViewport);
+      bounds = CSSRect::ToAppUnits(metrics->GetViewport());
       nscoord auPerDevPixel = aSubdocFrame->PresContext()->AppUnitsPerDevPixel();
       ApplyTransform(bounds, tmpTransform, auPerDevPixel);
     }
@@ -431,7 +431,7 @@ BuildViewMap(ViewMap& oldContentViews, ViewMap& newContentViews,
 
     // I don't know what units mViewportSize is in, hence use ToUnknownRect
     // here to mark the current frontier in type info propagation
-    gfx::Rect viewport = metrics.mViewport.ToUnknownRect();
+    gfx::Rect viewport = metrics.GetViewport().ToUnknownRect();
     view->mViewportSize = nsSize(
       NSIntPixelsToAppUnits(viewport.width, auPerDevPixel) * aXScale,
       NSIntPixelsToAppUnits(viewport.height, auPerDevPixel) * aYScale);

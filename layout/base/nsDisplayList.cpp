@@ -647,7 +647,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
 
   nsIPresShell* presShell = presContext->GetPresShell();
   FrameMetrics metrics;
-  metrics.mViewport = CSSRect::FromAppUnits(aViewport);
+  metrics.SetViewport(CSSRect::FromAppUnits(aViewport));
 
   ViewID scrollId = FrameMetrics::NULL_SCROLL_ID;
   nsIContent* content = aScrollFrame ? aScrollFrame->GetContent() : nullptr;
@@ -2199,28 +2199,22 @@ nsDisplayBackgroundImage::GetInsideClipRegion(nsDisplayItem* aItem,
   nscoord radii[8];
   nsRect clipRect;
   bool haveRadii;
-  if (frame->GetType() == nsGkAtoms::canvasFrame) {
-    nsCanvasFrame* canvasFrame = static_cast<nsCanvasFrame*>(frame);
-    haveRadii = false;
-    clipRect = canvasFrame->CanvasArea() + aItem->ToReferenceFrame();
-  } else {
-    switch (aClip) {
-    case NS_STYLE_BG_CLIP_BORDER:
-      haveRadii = frame->GetBorderRadii(radii);
-      clipRect = nsRect(aItem->ToReferenceFrame(), frame->GetSize());
-      break;
-    case NS_STYLE_BG_CLIP_PADDING:
-      haveRadii = frame->GetPaddingBoxBorderRadii(radii);
-      clipRect = frame->GetPaddingRect() - frame->GetPosition() + aItem->ToReferenceFrame();
-      break;
-    case NS_STYLE_BG_CLIP_CONTENT:
-      haveRadii = frame->GetContentBoxBorderRadii(radii);
-      clipRect = frame->GetContentRect() - frame->GetPosition() + aItem->ToReferenceFrame();
-      break;
-    default:
-      NS_NOTREACHED("Unknown clip type");
-      return result;
-    }
+  switch (aClip) {
+  case NS_STYLE_BG_CLIP_BORDER:
+    haveRadii = frame->GetBorderRadii(radii);
+    clipRect = nsRect(aItem->ToReferenceFrame(), frame->GetSize());
+    break;
+  case NS_STYLE_BG_CLIP_PADDING:
+    haveRadii = frame->GetPaddingBoxBorderRadii(radii);
+    clipRect = frame->GetPaddingRect() - frame->GetPosition() + aItem->ToReferenceFrame();
+    break;
+  case NS_STYLE_BG_CLIP_CONTENT:
+    haveRadii = frame->GetContentBoxBorderRadii(radii);
+    clipRect = frame->GetContentRect() - frame->GetPosition() + aItem->ToReferenceFrame();
+    break;
+  default:
+    NS_NOTREACHED("Unknown clip type");
+    return result;
   }
 
   if (haveRadii) {

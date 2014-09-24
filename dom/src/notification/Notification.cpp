@@ -18,10 +18,12 @@
 #include "nsIPermissionManager.h"
 #include "nsIUUIDGenerator.h"
 #include "nsServiceManagerUtils.h"
+#include "nsStructuredCloneContainer.h"
 #include "nsToolkitCompsCID.h"
 #include "nsGlobalWindow.h"
 #include "nsDOMJSUtils.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsIXPConnect.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
 #include "mozilla/Services.h"
 #include "nsContentPermissionHelper.h"
@@ -619,6 +621,7 @@ Notification::ShowInternal()
   }
 #endif
 
+  nsString dataStr;
   // In the case of IPC, the parent process uses the cookie to map to
   // nsIObserver. Thus the cookie must be unique to differentiate observers.
   nsString uniqueCookie = NS_LITERAL_STRING("notification:");
@@ -626,7 +629,7 @@ Notification::ShowInternal()
   alertService->ShowAlertNotification(absoluteUrl, mTitle, mBody, true,
                                       uniqueCookie, observer, mAlertName,
                                       DirectionToString(mDir), mLang,
-                                             GetPrincipal());
+                                      dataStr, GetPrincipal());
 }
 
 void

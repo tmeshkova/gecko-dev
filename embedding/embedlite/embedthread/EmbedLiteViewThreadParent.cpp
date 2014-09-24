@@ -702,6 +702,13 @@ EmbedLiteViewThreadParent::GetUniqueID()
   return mId;
 }
 
+void EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
+{
+  NS_ENSURE_TRUE(mCompositor, );
+  *aImage = mCompositor->GetPlatformImage(width, height);
+  return;
+}
+
 bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* aTextureTarget)
 {
   NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, false);

@@ -59,6 +59,7 @@ public:
   virtual void RemoveMessageListeners(const nsTArray<nsString>&);
 
   virtual bool GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget);
+  virtual void GetPlatformImage(void**, int*, int*);
 
   EmbedLiteCompositorParent* GetCompositor() { return mCompositor.get(); };
 

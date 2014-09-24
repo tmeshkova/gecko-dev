@@ -178,7 +178,6 @@ FrameMetrics TestFrameMetrics() {
   fm.mCompositionBounds = ParentLayerRect(0, 0, 10, 10);
   fm.mCriticalDisplayPort = CSSRect(0, 0, 10, 10);
   fm.mScrollableRect = CSSRect(0, 0, 100, 100);
-  fm.mViewport = CSSRect(0, 0, 10, 10);
 
   return fm;
 }
@@ -424,7 +423,6 @@ void DoPinchTest(bool aUseGestureRecognizer, bool aShouldTriggerPinch,
       : AsyncPanZoomController::DEFAULT_GESTURES);
 
   FrameMetrics fm;
-  fm.mViewport = CSSRect(0, 0, 980, 480);
   fm.mCompositionBounds = ParentLayerRect(200, 200, 100, 200);
   fm.mScrollableRect = CSSRect(0, 0, 980, 1000);
   fm.SetScrollOffset(CSSPoint(300, 300));
@@ -592,7 +590,6 @@ TEST_F(AsyncPanZoomControllerTester, Overzoom) {
   nsRefPtr<TestAsyncPanZoomController> apzc = new TestAsyncPanZoomController(0, mcc);
 
   FrameMetrics fm;
-  fm.mViewport = CSSRect(0, 0, 100, 100);
   fm.mCompositionBounds = ParentLayerRect(0, 0, 100, 100);
   fm.mScrollableRect = CSSRect(0, 0, 125, 150);
   fm.SetScrollOffset(CSSPoint(10, 0));
@@ -673,7 +670,6 @@ TEST_F(AsyncPanZoomControllerTester, ComplexTransform) {
   FrameMetrics metrics;
   metrics.mCompositionBounds = ParentLayerRect(0, 0, 24, 24);
   metrics.mDisplayPort = CSSRect(-1, -1, 6, 6);
-  metrics.mViewport = CSSRect(0, 0, 4, 4);
   metrics.SetScrollOffset(CSSPoint(10, 10));
   metrics.mScrollableRect = CSSRect(0, 0, 50, 50);
   metrics.mCumulativeResolution = LayoutDeviceToLayerScale(2);

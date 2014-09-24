@@ -21,14 +21,20 @@
 /*
  * This macro checks if the stack pointer has exceeded a given limit. If
  * |tolerance| is non-zero, it returns true only if the stack pointer has
- * exceeded the limit by more than |tolerance| bytes.
+ * exceeded the limit by more than |tolerance| bytes. The WITH_INTOLERANCE
+ * versions use a negative tolerance (i.e., the limit is reduced by
+ * |intolerance| bytes).
  */
 #if JS_STACK_GROWTH_DIRECTION > 0
 # define JS_CHECK_STACK_SIZE_WITH_TOLERANCE(limit, sp, tolerance)  \
     ((uintptr_t)(sp) < (limit)+(tolerance))
+# define JS_CHECK_STACK_SIZE_WITH_INTOLERANCE(limit, sp, intolerance)  \
+    ((uintptr_t)(sp) < (limit)-(intolerance))
 #else
 # define JS_CHECK_STACK_SIZE_WITH_TOLERANCE(limit, sp, tolerance)  \
     ((uintptr_t)(sp) > (limit)-(tolerance))
+# define JS_CHECK_STACK_SIZE_WITH_INTOLERANCE(limit, sp, intolerance)  \
+    ((uintptr_t)(sp) > (limit)+(intolerance))
 #endif
 
 #define JS_CHECK_STACK_SIZE(limit, lval) JS_CHECK_STACK_SIZE_WITH_TOLERANCE(limit, lval, 0)
@@ -43,6 +49,10 @@ namespace JS {
 template <class T>
 class Heap;
 } /* namespace JS */
+
+namespace js {
+class JS_FRIEND_API(BaseProxyHandler);
+} /* namespace js */
 
 extern JS_FRIEND_API(void)
 JS_SetGrayGCRootsTracer(JSRuntime *rt, JSTraceDataOp traceOp, void *data);
@@ -842,6 +852,7 @@ GetNativeStackLimit(JSContext *cx)
  * These macros report a stack overflow and run |onerror| if we are close to
  * using up the C stack. The JS_CHECK_CHROME_RECURSION variant gives us a little
  * extra space so that we can ensure that crucial code is able to run.
+ * JS_CHECK_RECURSION_CONSERVATIVE gives us a little less space.
  */
 
 #define JS_CHECK_RECURSION(cx, onerror)                                         \
@@ -882,6 +893,18 @@ GetNativeStackLimit(JSContext *cx)
         if (!JS_CHECK_STACK_SIZE_WITH_TOLERANCE(js::GetNativeStackLimit(cx),    \
                                                 &stackDummy_,                   \
                                                 1024 * sizeof(size_t)))         \
+        {                                                                       \
+            js_ReportOverRecursed(cx);                                          \
+            onerror;                                                            \
+        }                                                                       \
+    JS_END_MACRO
+
+#define JS_CHECK_RECURSION_CONSERVATIVE(cx, onerror)                            \
+    JS_BEGIN_MACRO                                                              \
+        int stackDummy_;                                                        \
+        if (!JS_CHECK_STACK_SIZE_WITH_INTOLERANCE(js::GetNativeStackLimit(cx),  \
+                                                  &stackDummy_,                 \
+                                                  1024 * sizeof(size_t)))       \
         {                                                                       \
             js_ReportOverRecursed(cx);                                          \
             onerror;                                                            \
@@ -2183,6 +2206,33 @@ extern JS_FRIEND_API(bool)
 CheckDefineProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue value,
                     unsigned attrs,
                     JSPropertyOp getter = nullptr, JSStrictPropertyOp setter = nullptr);
+
+/*
+ * Helper function for HTMLDocument and HTMLFormElement.
+ *
+ * These are the only two interfaces that have [OverrideBuiltins], a named
+ * getter, and no named setter. They're implemented as proxies with a custom
+ * getOwnPropertyDescriptor() method. Unfortunately, overriding
+ * getOwnPropertyDescriptor() automatically affects the behavior of set(),
+ * which normally is just common sense but is *not* desired for these two
+ * interfaces.
+ *
+ * The fix is for these two interfaces to override set() to ignore the
+ * getOwnPropertyDescriptor() override.
+ *
+ * SetPropertyIgnoringNamedGetter is exposed to make it easier to override
+ * set() in this way.  It carries out all the steps of BaseProxyHandler::set()
+ * except the initial getOwnPropertyDescriptor()/getPropertyDescriptor() calls.
+ * The caller must supply those results as the 'desc' and 'descIsOwn'
+ * parameters.
+ *
+ * Implemented in jsproxy.cpp.
+ */
+JS_FRIEND_API(bool)
+SetPropertyIgnoringNamedGetter(JSContext *cx, BaseProxyHandler *handler,
+                               JS::HandleObject proxy, JS::HandleObject receiver,
+                               JS::HandleId id, JS::MutableHandle<JSPropertyDescriptor> desc,
+                               bool descIsOwn, bool strict, JS::MutableHandleValue vp);
 
 } /* namespace js */
 

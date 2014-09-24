@@ -117,7 +117,7 @@ AppendToString(nsACString& s, const FrameMetrics& m,
                const char* pfx, const char* sfx)
 {
   s += pfx;
-  AppendToString(s, m.mViewport, "{ viewport=");
+  AppendToString(s, m.GetViewport(), "{ viewport=");
   AppendToString(s, m.mCompositionBounds, " cb=");
   AppendToString(s, m.GetScrollOffset(), " viewportScroll=");
   AppendToString(s, m.mDisplayPort, " displayport=");

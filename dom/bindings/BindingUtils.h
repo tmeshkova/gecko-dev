@@ -1410,6 +1410,7 @@ WrapNativeParent(JSContext* cx, T* p, nsWrapperCache* cache,
   }
   JS::Rooted<JSObject*> rootedParent(cx, parent);
   JS::Rooted<JSObject*> xblScope(cx, xpc::GetXBLScope(cx, rootedParent));
+  NS_ENSURE_TRUE(xblScope, nullptr);
   JSAutoCompartment ac(cx, xblScope);
   if (NS_WARN_IF(!JS_WrapObject(cx, &rootedParent))) {
     return nullptr;
@@ -2705,6 +2706,9 @@ struct CreateGlobalOptions<nsGlobalWindow>
   static void TraceGlobal(JSTracer* aTrc, JSObject* aObj);
   static bool PostCreateGlobal(JSContext* aCx, JS::Handle<JSObject*> aGlobal);
 };
+
+nsresult
+RegisterDOMNames();
 
 template <class T, ProtoGetter GetProto>
 bool

@@ -584,14 +584,15 @@ CompositorOGL::PrepareViewport(const gfx::IntSize& aSize,
   // Matrix to transform (0, 0, aWidth, aHeight) to viewport space (-1.0, 1.0,
   // 2, 2) and flip the contents.
   Matrix viewMatrix;
-  if (mGLContext->IsOffscreen()) {
-    // In case of rendering via GL Offscreen context, disable Y-Flipping
-    viewMatrix.Translate(-1.0, -1.0);
-    viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
-  } else {
-    viewMatrix.Translate(-1.0, 1.0);
-    viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
-    viewMatrix.Scale(1.0f, -1.0f);
+  viewMatrix.Translate(-1.0, 1.0);
+  viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
+  viewMatrix.Scale(1.0f, -1.0f);
+  if (!mTarget) {
+    viewMatrix.Translate(mRenderOffset.x, mRenderOffset.y);
+  }
+
+  if (!mTarget) {
+    viewMatrix.Translate(mRenderOffset.x, mRenderOffset.y);
   }
 
   viewMatrix = aWorldTransform * viewMatrix;
@@ -761,18 +762,8 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   TexturePoolOGL::Fill(gl());
 #endif
 
-  // Make sure the render offset is respected. We ignore this when we have a
-  // target to stop tests failing - this is only used by the Android browser
-  // UI for its dynamic toolbar.
-  IntPoint origin;
-  if (!mTarget) {
-    origin.x = -mRenderOffset.x;
-    origin.y = -mRenderOffset.y;
-  }
-
   mCurrentRenderTarget =
     CompositingRenderTargetOGL::RenderTargetForWindow(this,
-                                                      origin,
                                                       IntSize(width, height),
                                                       aTransform);
   mCurrentRenderTarget->BindRenderTarget();
@@ -1021,11 +1012,12 @@ CompositorOGL::DrawQuad(const Rect& aRect,
 
   MOZ_ASSERT(mFrameInProgress, "frame not started");
 
-  IntRect intClipRect;
-  aClipRect.ToIntRect(&intClipRect);
+  Rect clipRect = aClipRect;
   if (!mTarget) {
-    intClipRect.MoveBy(mRenderOffset.x, mRenderOffset.y);
+    clipRect.MoveBy(mRenderOffset.x, mRenderOffset.y);
   }
+  IntRect intClipRect;
+  clipRect.ToIntRect(&intClipRect);
 
   gl()->fScissor(intClipRect.x, FlipY(intClipRect.y + intClipRect.height),
                  intClipRect.width, intClipRect.height);

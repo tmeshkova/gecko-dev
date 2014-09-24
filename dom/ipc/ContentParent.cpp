@@ -3164,10 +3164,12 @@ ContentParent::RecvShowAlertNotification(const nsString& aImageUrl, const nsStri
     }
 #endif /* MOZ_CHILD_PERMISSIONS */
 
+    nsString aData;
     nsCOMPtr<nsIAlertsService> sysAlerts(do_GetService(NS_ALERTSERVICE_CONTRACTID));
     if (sysAlerts) {
         sysAlerts->ShowAlertNotification(aImageUrl, aTitle, aText, aTextClickable,
-                                         aCookie, this, aName, aBidi, aLang, aPrincipal);
+                                         aCookie, this, aName, aBidi, aLang,
+                                         aData, aPrincipal);
     }
     return true;
 }

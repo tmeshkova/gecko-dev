@@ -228,6 +228,8 @@ TabChildHelper::Observe(nsISupports* aSubject,
     nsCOMPtr<nsIDocument> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
+      mozilla::dom::AutoNoJSAPI nojsapi;
+
       nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
       mContentDocumentIsDisplayed = true;
@@ -244,6 +246,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
         // until we we get an inner size.
         if (HasValidInnerSize()) {
           InitializeRootMetrics();
+
           utils->SetResolution(mLastRootMetrics.mResolution.scale,
                                mLastRootMetrics.mResolution.scale);
           HandlePossibleViewportChange();

@@ -252,6 +252,7 @@ pref("browser.uitour.themeOrigin", "https://addons.mozilla.org/%LOCALE%/firefox/
 pref("browser.uitour.pinnedTabUrl", "https://support.mozilla.org/%LOCALE%/kb/pinned-tabs-keep-favorite-websites-open");
 pref("browser.uitour.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/tour/");
 pref("browser.uitour.whitelist.add.260", "www.mozilla.org,support.mozilla.org");
+pref("browser.uitour.whitelist.add.340", "about:home");
 
 pref("browser.customizemode.tip0.shown", false);
 pref("browser.customizemode.tip0.learnMoreUrl", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/customize");
@@ -808,6 +809,33 @@ pref("plugin.state.f5 ssl vpn plugin", 2);
 pref("plugin.state.f5 sam inspection host plugin", 2);
 #endif
 
+// Roblox Launcher Plugin, bug 1024073
+#ifdef XP_WIN
+pref("plugin.state.nprobloxproxy", 2);
+#endif
+#ifdef XP_MACOSX
+pref("plugin.state.nproblox", 2);
+#endif
+
+// Box Edit, bug 1029654
+#ifdef XP_WIN
+pref("plugin.state.npboxedit", 2);
+#endif
+#ifdef XP_MACOSX
+pref("plugin.state.box edit", 2);
+#endif
+
+// Nexus Personal, bug 1024965
+#ifdef XP_WIN
+pref("plugin.state.np_prsnl", 2);
+#endif
+#ifdef XP_MACOSX
+pref("plugin.state.personalplugin", 2);
+#endif
+#ifdef UNIX_BUT_NOT_MAC
+pref("plugin.state.libplugins", 2);
+#endif
+
 // display door hanger if flash not installed
 pref("plugins.notifyMissingFlash", true);
 
@@ -940,7 +968,11 @@ pref("browser.safebrowsing.reportMalwareURL", "http://%LOCALE%.malware-report.mo
 pref("browser.safebrowsing.reportMalwareErrorURL", "http://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%");
 
 pref("browser.safebrowsing.malware.reportURL", "https://safebrowsing.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
+
+// Turn off remote lookups in beta and stable channel.
+#ifndef RELEASE_BUILD
 pref("browser.safebrowsing.appRepURL", "https://sb-ssl.google.com/safebrowsing/clientreport/download?key=%GOOGLE_API_KEY%");
+#endif
 
 #ifdef MOZILLA_OFFICIAL
 // Normally the "client ID" sent in updates is appinfo.name, but for
@@ -1471,7 +1503,7 @@ pref("browser.newtabpage.rows", 3);
 // number of columns of newtab grid
 pref("browser.newtabpage.columns", 3);
 
-pref("browser.newtabpage.directory.source", "chrome://global/content/directoryLinks.json");
+pref("browser.newtabpage.directory.source", "data:application/json,{}");
 
 // Enable the DOM fullscreen API.
 pref("full-screen-api.enabled", true);
@@ -1572,8 +1604,6 @@ pref("ui.key.menuAccessKeyFocuses", true);
 // Encrypted media extensions.
 pref("media.eme.enabled", false);
 
-// Delete HTTP cache v2 data of users that didn't opt-in manually
-pref("browser.cache.auto_delete_cache_version", 1);
 // Play with different values of the decay time and get telemetry,
 // 0 means to randomize (and persist) the experiment value in users' profiles,
 // -1 means no experiment is run and we use the preferred value for frecency (6h)
@@ -1588,6 +1618,9 @@ pref("browser.translation.ui.show", false);
 pref("experiments.enabled", true);
 pref("experiments.manifest.fetchIntervalSeconds", 86400);
 pref("experiments.manifest.uri", "https://telemetry-experiment.cdn.mozilla.net/manifest/v1/firefox/%VERSION%/%CHANNEL%");
+// Bug 1048793, skip the experiments cert checks as we switched providers and PublicKeyPinningService already provides them.
+pref("experiments.manifest.cert.checkAttributes", false);
+pref("experiments.manifest.cert.requireBuiltin", false);
 pref("experiments.manifest.certs.1.commonName", "*.cdn.mozilla.net");
 pref("experiments.manifest.certs.1.issuerName", "CN=Cybertrust Public SureServer SV CA,O=Cybertrust Inc");
 // Whether experiments are supported by the current application profile.
