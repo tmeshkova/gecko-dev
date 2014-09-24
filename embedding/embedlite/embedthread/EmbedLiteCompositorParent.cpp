@@ -171,7 +171,9 @@ bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
     // Nothing to paint yet, just return silently
     return false;
   }
-  CompositeToTarget(aTarget);
+  IntSize size(aTarget->GetSize());
+  nsIntRect boundRect(0, 0, size.width, size.height);
+  CompositeToTarget(aTarget, &boundRect);
   return true;
 }
 
