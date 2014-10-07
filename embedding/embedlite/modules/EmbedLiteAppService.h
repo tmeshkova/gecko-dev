@@ -19,8 +19,7 @@ class EmbedLiteAppService : public nsIObserver,
                             public nsIEmbedAppService
 {
 public:
-  EmbedLiteAppService();
-  virtual ~EmbedLiteAppService();
+  EmbedLiteAppService(); 
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
@@ -29,6 +28,9 @@ public:
   void RegisterView(uint32_t aId);
   void UnregisterView(uint32_t aId);
   void HandleAsyncMessage(const char* aMessage, const nsString& aData);
+
+protected:
+  virtual ~EmbedLiteAppService();
 
 private:
   friend class EmbedLiteJSON;

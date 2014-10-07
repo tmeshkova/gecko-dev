@@ -17,11 +17,13 @@ class WindowCreator : public nsIWindowCreator2
 {
 public:
   WindowCreator(mozilla::embedlite::EmbedLiteAppThreadChild* aChild);
-  virtual ~WindowCreator();
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIWINDOWCREATOR
   NS_DECL_NSIWINDOWCREATOR2
+
+protected:
+  virtual ~WindowCreator();
 
 private:
   mozilla::embedlite::EmbedLiteAppThreadChild* mChild;

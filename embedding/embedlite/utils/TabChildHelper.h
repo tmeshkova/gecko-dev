@@ -32,7 +32,6 @@ class TabChildHelper : public mozilla::dom::TabChildBase,
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
   TabChildHelper(EmbedLiteViewThreadChild* aView);
-  virtual ~TabChildHelper();
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
@@ -64,6 +63,7 @@ public:
   void ReportSizeUpdate(const gfxSize& aSize);
 
 protected:
+  virtual ~TabChildHelper();
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
   // Sends a simulated mouse event from a touch event for compatibility.
