@@ -18,11 +18,14 @@ class EmbedLiteXulAppInfo : public nsIXULAppInfo
 {
 public:
   EmbedLiteXulAppInfo();
-  virtual ~EmbedLiteXulAppInfo();
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIXULRUNTIME
   NS_DECL_NSIXULAPPINFO
+
+protected:
+  virtual ~EmbedLiteXulAppInfo();
+
 };
 
 

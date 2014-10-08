@@ -1,4 +1,4 @@
-%define greversion 31.0a1
+%define greversion 33.0
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
@@ -60,7 +60,7 @@ Tests and misc files for xulrunner.
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/:$PWD/layout/tools/reftest
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done
@@ -77,16 +77,16 @@ echo "ac_add_options --with-float-abi=toolchain-default" >> mozconfig
 echo "ac_add_options --with-thumb=toolchain-default" >> mozconfig
 %endif
 echo "mk_add_options MOZ_MAKE_FLAGS='-j%jobs'" >> mozconfig
-echo "export CFLAGS=\"\$CFLAGS -fuse-ld=gold \"" >> mozconfig
-echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> mozconfig
-echo "export LD=ld.gold" >> mozconfig
 echo "ac_add_options --disable-tests" >> mozconfig
 echo "ac_add_options --enable-system-hunspell" >> mozconfig
+echo "ac_add_options --enable-gold" >> mozconfig
+echo "ac_add_options --enable-release" >> mozconfig
 echo "ac_add_options --disable-strip" >> mozconfig
 echo "ac_add_options --disable-mochitest" >> mozconfig
 echo "ac_add_options --disable-installer" >> mozconfig
 echo "ac_add_options --disable-javaxpcom" >> mozconfig
 echo "ac_add_options --disable-crashreporter" >> mozconfig
+echo "ac_add_options --disable-startupcache" >> mozconfig
 echo "ac_add_options --without-x" >> mozconfig
 echo "ac_add_options --with-app-name=%{name}" >> mozconfig
 export MOZCONFIG=$PWD/mozconfig
@@ -94,7 +94,7 @@ export MOZCONFIG=$PWD/mozconfig
 
 %install
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/:$PWD/layout/tools/reftest
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done

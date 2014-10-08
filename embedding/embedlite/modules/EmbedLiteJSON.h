@@ -13,10 +13,11 @@ class EmbedLiteJSON : public nsIEmbedLiteJSON
 {
 public:
   EmbedLiteJSON();
-  virtual ~EmbedLiteJSON();
-
   NS_DECL_ISUPPORTS
   NS_DECL_NSIEMBEDLITEJSON
+
+protected:
+  virtual ~EmbedLiteJSON();
 };
 
 #define NS_EMBED_LITE_JSON_CONTRACTID "@mozilla.org/embedlite-json;1"
