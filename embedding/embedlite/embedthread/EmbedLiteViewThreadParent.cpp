@@ -15,25 +15,6 @@
 #include "mozilla/unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZCTreeManager.h"
-#include "EmbedLiteRenderTarget.h"
-
-//#include "GLContext.h"                  // for GLContext
-#include "GLScreenBuffer.h"             // for GLScreenBuffer
-#include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
-#include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
-#include "SurfaceStream.h"              // for SurfaceStream, etc
-#include "SurfaceTypes.h"               // for SurfaceStreamType
-#include "ClientLayerManager.h"         // for ClientLayerManager, etc
-#include "GLUploadHelpers.h"
-#include "gfxPlatform.h"
-
-#include "BasicLayers.h"
-#include "mozilla/layers/LayerManagerComposite.h"
-#include "mozilla/layers/AsyncCompositionManager.h"
-#include "mozilla/layers/LayerTransactionParent.h"
-#include "mozilla/layers/CompositorOGL.h"
-#include "gfxUtils.h"
-
 
 using namespace mozilla::gfx;
 using namespace mozilla::gl;
@@ -780,73 +761,10 @@ NS_IMETHODIMP EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* wi
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* aTextureTarget)
+EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
 {
-  NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, NS_ERROR_FAILURE);
   NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
-
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, NS_ERROR_FAILURE);
-
-  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context && context->IsOffscreen(), NS_ERROR_FAILURE);
-
-  GLContext* consumerContext = aContextWrapper->GetConsumerContext();
-  NS_ENSURE_TRUE(consumerContext && consumerContext->Init(), NS_ERROR_FAILURE);
-
-  SharedSurface* sharedSurf = context->RequestFrame();
-  NS_ENSURE_TRUE(sharedSurf, NS_ERROR_FAILURE);
-
-  DataSourceSurface* toUpload = nullptr;
-  GLuint textureHandle = 0;
-  GLuint textureTarget = 0;
-  if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
-    SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
-    eglImageSurf->AcquireConsumerTexture(consumerContext, &textureHandle, &textureTarget);
-    if (!textureHandle) {
-      NS_WARNING("Failed to get texture handle, fallback to pixels?");
-    }
-  } else if (sharedSurf->mType == SharedSurfaceType::GLTextureShare) {
-    SharedSurface_GLTexture* glTexSurf = SharedSurface_GLTexture::Cast(sharedSurf);
-    textureHandle = glTexSurf->ConsTexture(consumerContext);
-    textureTarget = glTexSurf->ConsTextureTarget();
-    NS_ASSERTION(textureHandle, "Failed to get texture handle, fallback to pixels?");
-  } else if (sharedSurf->mType == SharedSurfaceType::Basic) {
-    toUpload = SharedSurface_Basic::Cast(sharedSurf)->GetData();
-  } else {
-    NS_ERROR("Unhandled Image type");
-  }
-
-  if (toUpload) {
-    // mBounds seems to end up as (0,0,0,0) a lot, so don't use it?
-    nsIntSize size(ThebesIntSize(toUpload->GetSize()));
-    nsIntRect rect(nsIntPoint(0,0), size);
-    nsIntRegion bounds(rect);
-    UploadSurfaceToTexture(consumerContext,
-                           toUpload,
-                           bounds,
-                           mUploadTexture,
-                           true);
-    textureHandle = mUploadTexture;
-    textureTarget = LOCAL_GL_TEXTURE_2D;
-  } else if (textureHandle) {
-    if (consumerContext) {
-      MOZ_ASSERT(consumerContext);
-      if (consumerContext->MakeCurrent()) {
-        consumerContext->fDeleteTextures(1, &mUploadTexture);
-      }
-    }
-  }
-
-  NS_ASSERTION(textureHandle, "Failed to get texture handle from EGLImage, fallback to pixels?");
-
-  *width = sharedSurf->mSize.width;
-  *height = sharedSurf->mSize.height;
-  *textureID = textureHandle;
-  if (aTextureTarget) {
-    *aTextureTarget = textureTarget;
-  }
-
+  *aImage = mCompositor->GetPlatformImage(width, height);
   return NS_OK;
 }
 

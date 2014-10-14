@@ -410,14 +410,8 @@ EmbedLiteView::GetUniqueID()
   return mUniqueID;
 }
 
-bool
-EmbedLiteView::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget)
-{
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return NS_SUCCEEDED(mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height, textureTarget));
-}
-
-void* EmbedLiteView::GetPlatformImage(int* width, int* height)
+void*
+EmbedLiteView::GetPlatformImage(int* width, int* height)
 {
   NS_ENSURE_TRUE(mViewImpl, nullptr);
   void* aImage;
