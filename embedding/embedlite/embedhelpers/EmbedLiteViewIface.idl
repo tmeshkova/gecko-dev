@@ -8,7 +8,6 @@
 %{C++
 #include "mozilla/gfx/Matrix.h"
 #include "gfxRect.h"
-#include "EmbedLiteRenderTarget.h"
 #include "InputData.h"
 %}
 
@@ -22,7 +21,6 @@ class nsString;
 [ref] native nsIntPoint(nsIntPoint);
 [ref] native nsIntRect(nsIntRect);
 [ref] native InputData(mozilla::InputData);
-[ptr] native EmbedLiteRenderTarget(mozilla::embedlite::EmbedLiteRenderTarget);
 [ptr] native PlatformImage(void);
 [ptr] native buffer(unsigned char);
 

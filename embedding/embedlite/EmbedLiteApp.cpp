@@ -23,7 +23,6 @@
 #include "EmbedLiteView.h"
 #include "nsXULAppAPI.h"
 #include "EmbedLiteMessagePump.h"
-#include "EmbedLiteRenderTarget.h"
 
 #include "EmbedLiteCompositorParent.h"
 
@@ -70,12 +69,6 @@ EmbedLiteApp::~EmbedLiteApp()
     free(mProfilePath);
     mProfilePath = nullptr;
   }
-}
-
-EmbedLiteRenderTarget*
-EmbedLiteApp::CreateEmbedLiteRenderTarget(void* aContext, void* aSurface)
-{
-  return new EmbedLiteRenderTarget(aContext, aSurface);
 }
 
 void

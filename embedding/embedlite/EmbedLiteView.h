@@ -18,7 +18,6 @@ namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteView;
-class EmbedLiteRenderTarget;
 
 class EmbedLiteViewListener
 {

@@ -27,7 +27,6 @@ EXPORTS.mozilla.embedlite += [
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
     'EmbedLiteMessagePump.h',
-    'EmbedLiteRenderTarget.h',
     'EmbedLiteView.h',
     'utils/EmbedLog.h',
 ]
@@ -57,7 +56,6 @@ UNIFIED_SOURCES += [
 ]
 
 SOURCES += [
-    'EmbedLiteRenderTarget.cpp',
     'embedthread/EmbedLiteCompositorParent.cpp',
     'embedthread/EmbedLiteViewThreadParent.cpp',
 ]
