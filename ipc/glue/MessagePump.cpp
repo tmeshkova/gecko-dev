@@ -143,7 +143,10 @@ if (did_work && delayed_work_time_.is_null()
 #ifdef MOZ_NUWA_PROCESS
   if (!IsNuwaReady() || !IsNuwaProcess())
 #endif
+  {
     mDelayedWorkTimer->Cancel();
+    mDelayedWorkTimer = nullptr;
+  }
 
   keep_running_ = true;
 }

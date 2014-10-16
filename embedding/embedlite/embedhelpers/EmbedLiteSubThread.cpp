@@ -41,8 +41,8 @@ void EmbedLiteSubThread::Init()
 void EmbedLiteSubThread::CleanUp()
 {
   LOGT();
-  mApp->StopChildThread();
   profiler_shutdown();
+  mApp->StopChildThread();
 }
 
 bool EmbedLiteSubThread::StartEmbedThread()

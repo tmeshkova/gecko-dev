@@ -21,16 +21,12 @@ public:
   virtual ~MyListener() { }
   virtual void Initialized() {
     printf("Embedding initialized\n");
-    mApp->PostTask(&MyListener::StopEmbedding, this);
+    mApp->Stop();
+    printf("Embedding stop finished\n");
   }
   virtual void Destroyed() {
     printf("Embedding  destroyed\n");
-  }
-  static void StopEmbedding(void* aData) {
-    printf("StopEmbedding\n");
-    MyListener* self = static_cast<MyListener*>(aData);
-    self->mApp->Stop();
-    printf("Embedding stop finished\n");
+    qApp->quit();
   }
 
 private:
@@ -53,13 +49,12 @@ int main(int argc, char** argv)
     bool res = mapp->StartWithCustomPump(EmbedLiteApp::EMBED_THREAD, mQtPump->EmbedLoop());
     printf("XUL Symbols loaded: init res:%i\n", res);
     app.exec();
+    delete mQtPump;
     printf("Execution stopped\n");
-    mapp->SetListener(nullptr);
-    printf("Listener is null\n");
     delete listener;
-    printf("Listener destroed\n");
+    printf("Listener destroyed\n");
     delete mapp;
-    printf("App destroed\n");
+    printf("App destroyed\n");
   } else {
     printf("XUL Symbols failed to load\n");
   }
