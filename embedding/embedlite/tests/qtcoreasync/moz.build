@@ -6,20 +6,20 @@
 
 Program('embedLiteCoreInitTestAsync')
 
-GENERATED_SOURCES += [
-    'moc_qmessagepump.cpp',
-]
-
 SOURCES += [
     'embedLiteCoreInitTestAsync.cpp',
-    'qmessagepump.cpp',
 ]
 
 DEFINES['XPCOM_GLUE'] = True
 DISABLE_STL_WRAPPING = True
 
 USE_LIBS += [
+    'qmessagepump',
     'xpcomglue',
+]
+
+LOCAL_INCLUDES += [
+    '../shared',
 ]
 
 OS_LIBS += CONFIG['TK_LIBS']
