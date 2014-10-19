@@ -25,6 +25,7 @@ class EmbedLiteAppThreadChild;
 class EmbedLiteAppThreadParent;
 class EmbedLiteSubThread;
 class EmbedLiteView;
+class PEmbedLiteAppParent;
 class EmbedLiteAppListener
 {
 public:
@@ -148,13 +149,14 @@ private:
   uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const char* uri, const uint32_t& contextFlags, const uint32_t& parentId);
   EmbedLiteAppListener* GetListener();
   MessageLoop* GetUILoop();
+  static void PreDestroy(EmbedLiteApp*);
 
   static EmbedLiteApp* sSingleton;
   EmbedLiteAppListener* mListener;
   EmbedLiteUILoop* mUILoop;
 
   RefPtr<EmbedLiteSubThread> mSubThread;
-  RefPtr<EmbedLiteAppThreadParent> mAppParent;
+  PEmbedLiteAppParent* mAppParent;
   RefPtr<EmbedLiteAppThreadChild> mAppChild;
 
   EmbedType mEmbedType;
