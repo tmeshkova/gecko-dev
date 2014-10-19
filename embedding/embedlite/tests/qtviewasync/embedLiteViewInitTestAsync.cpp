@@ -38,6 +38,17 @@ public:
   }
   virtual void ViewDestroyed() {
     printf("OnViewDestroyed\n");
+    mApp->PostTask(&MyListener::DoDestroyApp, this, 100);
+  }
+  static void DoDestroyApp(void* aData) {
+    MyListener* self = static_cast<MyListener*>(aData);
+    printf("DoDestroyApp\n");
+    self->mApp->Stop();
+  }
+  static void DoDestroyView(void* aData) {
+    MyListener* self = static_cast<MyListener*>(aData);
+    printf("DoDestroyView\n");
+    self->mApp->DestroyView(self->mView);
   }
   virtual void OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward) {
     printf("OnLocationChanged: loc:%s, canBack:%i, canForw:%i\n", aLocation, aCanGoBack, aCanGoForward);
@@ -59,6 +70,7 @@ public:
   }
   virtual void OnFirstPaint(int32_t aX, int32_t aY) {
     printf("OnFirstPaint pos[%i,%i]\n", aX, aY);
+    mApp->PostTask(&MyListener::DoDestroyView, this, 100);
   }
   virtual void OnScrolledAreaChanged(unsigned int aWidth, unsigned int aHeight) {
     printf("OnScrolledAreaChanged: sz[%u,%u]\n", aWidth, aHeight);
