@@ -17,6 +17,8 @@ class EmbedLiteViewIface;
 namespace mozilla {
 namespace embedlite {
 
+class EmbedLiteViewThreadParent;
+class PEmbedLiteViewParent;
 class EmbedLiteView;
 
 class EmbedLiteViewListener
@@ -121,16 +123,6 @@ public:
   virtual bool RenderGL();
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
-  //   GL world transform offset and simple rotation are allowed (orientation change)
-  virtual void SetGLViewTransform(gfxMatrix matrix);
-  //   Setup Clipping on view area, required if view gl area need to be particulary clipped withing target widget area
-  virtual void SetViewClipping(float aX, float aY, float aWidth, float aHeight);
-  //   Setup view opacity for direct GL rendering
-  virtual void SetViewOpacity(float aOpacity);
-
-  // Set Custom transform for compositor layers tree, Fast Scroll/Zoom
-  virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);
-  virtual void ScheduleRender();
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
@@ -152,12 +144,13 @@ public:
 private:
   friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteCompositorParent;
-  void SetImpl(EmbedLiteViewIface*);
+  void SetImpl(EmbedLiteViewThreadParent*);
   EmbedLiteViewIface* GetImpl();
 
   EmbedLiteApp* mApp;
   EmbedLiteViewListener* mListener;
   EmbedLiteViewIface* mViewImpl;
+  PEmbedLiteViewParent* mViewParent;
   uint32_t mUniqueID;
   uint32_t mParent;
 };

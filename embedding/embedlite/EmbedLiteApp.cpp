@@ -245,6 +245,7 @@ EmbedLiteApp::StopChildThread()
   }
 
   mAppChild->Close();
+  delete mAppParent;
   mAppParent = nullptr;
   mAppChild = nullptr;
 

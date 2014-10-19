@@ -27,29 +27,9 @@ class nsString;
 [scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
 interface EmbedLiteViewIface
 {
-    void LoadURL(in string aName);
-    void GoBack();
-    void GoForward();
-    void StopLoad();
-    void Reload(in boolean aHardReload);
-    void LoadFrameScript(in string aURI);
-    void DoSendAsyncMessage([const] in wstring aMessageName,[const] in wstring aMessage);
-    void AddMessageListener(in string aMessageName);
-    void RemoveMessageListener(in string aMessageName);
-    void AddMessageListeners([const] in nsStringTArrayRef aNames);
-    void RemoveMessageListeners([const] in nsStringTArrayRef aNames);
     void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
-    void RenderGL();
-    void SetIsActive(in boolean isActive);
-    void SetIsFocused(in boolean isFocused);
-    void SuspendTimeouts();
-    void ResumeTimeouts();
     void SetViewSize(in int32_t aWidth, in int32_t aHeight);
     void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
-    void SetGLViewTransform(in gfxMatrix aMatrix);
-    void SetViewClipping([const] in gfxRect aClipRect);
-    void SetTransformation(in float aScale, in nsIntPoint aScrollOffset);
-    void ScheduleRender();
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);
     void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
