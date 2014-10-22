@@ -265,6 +265,7 @@ protected:
     static int32_t sContentAccessModifierMask;
 
     static int32_t GetAccessModifierMask(int32_t aItemType);
+    static bool sPrefsAlreadyCached;
   };
 
   /**

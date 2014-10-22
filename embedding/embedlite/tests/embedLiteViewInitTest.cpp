@@ -37,6 +37,8 @@ public:
     printf("DoDestroyApp\n");
     self->mApp->Stop();
   }
+  static void CreateView(void* aData);
+
   EmbedLiteApp* App() { return mApp; }
 
 private:
@@ -117,16 +119,23 @@ private:
   EmbedLiteView* mView;
 };
 
+void MyListener::CreateView(void* aData)
+{
+    MyListener* self = static_cast<MyListener*>(aData);
+    self->viewListeners.push_back(new MyViewListener(self));
+}
+
 void MyListener::Initialized()
 {
   printf("Embedding initialized, let's make view");
+
   int defaultViewCount = 2;
-  const char* viewsCount = getenv("VIEW_COUNT");
+  static const char* viewsCount = getenv("VIEW_COUNT");
   if (viewsCount != nullptr) {
     defaultViewCount = atoi(viewsCount);
   }
   for (int i = 0; i < defaultViewCount; ++i) {
-    viewListeners.push_back(new MyViewListener(this));
+    mApp->PostTask(&MyListener::CreateView, this, 500);
   }
 }
 
