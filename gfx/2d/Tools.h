@@ -133,14 +133,14 @@ struct AlignedArray
     }
 #endif
 
-    moz_free(mStorage);
+    delete [] mStorage;
     mStorage = nullptr;
     mPtr = nullptr;
   }
 
   MOZ_ALWAYS_INLINE void Realloc(size_t aCount, bool aZero = false)
   {
-    moz_free(mStorage);
+    delete [] mStorage;
     CheckedInt32 storageByteCount =
       CheckedInt32(sizeof(T)) * aCount + (alignment - 1);
     if (!storageByteCount.isValid()) {
@@ -152,11 +152,9 @@ struct AlignedArray
     // We don't create an array of T here, since we don't want ctors to be
     // invoked at the wrong places if we realign below.
     if (aZero) {
-      // calloc can be more efficient than new[] for large chunks,
-      // so we use calloc/malloc/free for everything.
-      mStorage = static_cast<uint8_t *>(moz_calloc(1, storageByteCount.value()));
+      mStorage = static_cast<uint8_t *>(calloc(1, storageByteCount.value()));
     } else {
-      mStorage = static_cast<uint8_t *>(moz_malloc(storageByteCount.value()));
+      mStorage = new (std::nothrow) uint8_t[storageByteCount.value()];
     }
     if (!mStorage) {
       mStorage = nullptr;
