@@ -465,7 +465,7 @@ public class BrowserApp extends GeckoApp
 
         final Intent intent = getIntent();
 
-        String args = intent.getStringExtra("args");
+        String args = StringUtils.getStringExtra(intent, "args");
         if (args != null && args.contains(GUEST_BROWSING_ARG)) {
             mProfile = GeckoProfile.createGuestProfile(this);
         } else {
@@ -2344,6 +2344,11 @@ public class BrowserApp extends GeckoApp
 
     @Override
     public void openOptionsMenu() {
+        // Disable menu access (for hardware buttons) when the software menu button is inaccessible.
+        if (mBrowserToolbar.isEditing()) {
+            return;
+        }
+
         if (areTabsShown()) {
             mTabsPanel.showMenu();
             return;

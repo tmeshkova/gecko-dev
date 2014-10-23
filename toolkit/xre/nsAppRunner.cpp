@@ -810,6 +810,16 @@ nsXULAppInfo::GetBrowserTabsRemote(bool* aResult)
   return NS_OK;
 }
 
+static bool gBrowserTabsRemoteAutostart = false;
+static bool gBrowserTabsRemoteAutostartInitialized = false;
+
+NS_IMETHODIMP
+nsXULAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
+{
+  *aResult = BrowserTabsRemoteAutostart();
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 nsXULAppInfo::EnsureContentProcess()
 {
@@ -4423,6 +4433,27 @@ mozilla::BrowserTabsRemote()
   }
 
   return gBrowserTabsRemote;
+}
+
+bool
+mozilla::BrowserTabsRemoteAutostart()
+{
+  if (!gBrowserTabsRemoteAutostartInitialized) {
+    gBrowserTabsRemoteAutostartInitialized = true;
+#if !defined(NIGHTLY_BUILD)
+    // When running tests with 'layers.offmainthreadcomposition.testing.enabled' and autostart
+    // set to true, return enabled.  These tests must be allowed to run remotely.
+    if (Preferences::GetBool("layers.offmainthreadcomposition.testing.enabled", false) &&
+        Preferences::GetBool("browser.tabs.remote.autostart", false)) {
+      gBrowserTabsRemoteAutostart = true;
+    }
+#else
+    gBrowserTabsRemoteAutostart = !gSafeMode &&
+                                  Preferences::GetBool("browser.tabs.remote.autostart", false);
+#endif
+  }
+
+  return gBrowserTabsRemoteAutostart;
 }
 
 void

@@ -22,6 +22,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
 
 do_get_profile();
 
+// Make sure enabled gets set for xpcshell tests that initialize multiple times
+DirectoryLinksProvider._testing = true;
+
 const DIRECTORY_LINKS_FILE = "directoryLinks.json";
 const DIRECTORY_FRECENCY = 1000;
 const kURLData = {"en-US": [{"url":"http://example.com","title":"LocalSource"}]};
@@ -53,11 +56,11 @@ Services.prefs.setBoolPref(kNewtabEnhancedPref, true);
 const kHttpHandlerData = {};
 kHttpHandlerData[kExamplePath] = {"en-US": [{"url":"http://example.com","title":"RemoteSource"}]};
 
-const expectedBodyObject = {locale: DirectoryLinksProvider.locale};
 const BinaryInputStream = CC("@mozilla.org/binaryinputstream;1",
                               "nsIBinaryInputStream",
                               "setInputStream");
 
+let gLastRequestPath;
 function getHttpHandler(path) {
   let code = 200;
   let body = JSON.stringify(kHttpHandlerData[path]);
@@ -65,10 +68,7 @@ function getHttpHandler(path) {
     code = 204;
   }
   return function(aRequest, aResponse) {
-    let bodyStream = new BinaryInputStream(aRequest.bodyInputStream);
-    let bodyObject = JSON.parse(NetUtil.readInputStreamToString(bodyStream, bodyStream.available()));
-    isIdentical(bodyObject, expectedBodyObject);
-
+    gLastRequestPath = aRequest.path;
     aResponse.setStatusLine(null, code);
     aResponse.setHeader("Content-Type", "application/json");
     aResponse.write(body);
@@ -131,7 +131,9 @@ function promiseDirectoryDownloadOnPrefChange(pref, newValue) {
     let observer = new LinksChangeObserver();
     DirectoryLinksProvider.addObserver(observer);
     Services.prefs.setCharPref(pref, newValue);
-    return observer.deferred.promise;
+    return observer.deferred.promise.then(() => {
+      DirectoryLinksProvider.removeObserver(observer);
+    });
   }
   return Promise.resolve();
 }
@@ -296,7 +298,8 @@ add_task(function test_fetchAndCacheLinks_remote() {
   yield DirectoryLinksProvider.init();
   yield cleanJsonFile();
   // this must trigger directory links json download and save it to cache file
-  yield DirectoryLinksProvider._fetchAndCacheLinks(kExampleURL);
+  yield promiseDirectoryDownloadOnPrefChange(kSourceUrlPref, kExampleURL + "%LOCALE%");
+  do_check_eq(gLastRequestPath, kExamplePath + "en-US");
   let data = yield readJsonFile();
   isIdentical(data, kHttpHandlerData[kExamplePath]);
 });
@@ -336,7 +339,8 @@ add_task(function test_fetchAndCacheLinks_unknownHost() {
 add_task(function test_fetchAndCacheLinks_non200Status() {
   yield DirectoryLinksProvider.init();
   yield cleanJsonFile();
-  yield DirectoryLinksProvider._fetchAndCacheLinks(kFailURL);
+  yield promiseDirectoryDownloadOnPrefChange(kSourceUrlPref, kFailURL);
+  do_check_eq(gLastRequestPath, kFailPath);
   let data = yield readJsonFile();
   isIdentical(data, {});
 });
@@ -426,6 +430,21 @@ add_task(function test_DirectoryLinksProvider_getLinks_noLocaleData() {
   yield promiseCleanDirectoryLinksProvider();
 });
 
+add_task(function test_DirectoryLinksProvider_getLinks_badData() {
+  let data = {
+    "en-US": {
+      "en-US": [{url: "http://example.com", title: "US"}],
+    },
+  };
+  let dataURI = 'data:application/json,' + JSON.stringify(data);
+  yield promiseSetupDirectoryLinksProvider({linksURL: dataURI});
+
+  // Make sure we get nothing for incorrectly formatted data
+  let links = yield fetchData();
+  do_check_eq(links.length, 0);
+  yield promiseCleanDirectoryLinksProvider();
+});
+
 add_task(function test_DirectoryLinksProvider_needsDownload() {
   // test timestamping
   DirectoryLinksProvider._lastDownloadMS = 0;
@@ -493,6 +512,7 @@ add_task(function test_DirectoryLinksProvider_fetchDirectoryOnPrefChange() {
   yield promiseDirectoryDownloadOnPrefChange(kSourceUrlPref, kExampleURL);
   // then wait for testObserver to fire and test that json is downloaded
   yield testObserver.deferred.promise;
+  do_check_eq(gLastRequestPath, kExamplePath);
   let data = yield readJsonFile();
   isIdentical(data, kHttpHandlerData[kExamplePath]);
 
@@ -624,16 +644,16 @@ add_task(function test_DirectoryLinksProvider_enabledNotEnabled() {
 
   Services.prefs.setCharPref(kSourceUrlPref, 'data:application/json,' + JSON.stringify({
     "en-US": [{url: "http://example.com/en", title: "US"}],
-    "de-DE": [{url: "http://example.com/de", title: "DE"}],
+    "te-ST": [{url: "http://example.com/test", title: "TEST"}],
   }));
 
   // Pretend we're not en-US to make sure things aren't enabled
-  Services.prefs.setCharPref(kLocalePref, "de-DE");
+  Services.prefs.setCharPref(kLocalePref, "te-ST");
   yield cleanJsonFile();
   yield cleanJsonFile();
   yield DirectoryLinksProvider.init();
 
-  do_check_false(DirectoryLinksProvider.enabled, "de-DE should trigger not enabled")
+  do_check_false(DirectoryLinksProvider.enabled, "te-ST should trigger not enabled")
   do_check_eq(DirectoryLinksProvider._linksURL, "data:application/json,{}", "override links url");
 
   let data = yield readJsonFile();

@@ -367,10 +367,10 @@ pref("media.getusermedia.screensharing.enabled", true);
 #endif
 
 #ifdef RELEASE_BUILD
-pref("media.getusermedia.screensharing.allowed_domains", "");
+pref("media.getusermedia.screensharing.allowed_domains", "webex.com,*.webex.com,collaborate.com,*.collaborate.com");
 #else
 // temporary value, not intended for release - bug 1049087
-pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io");
+pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io,webex.com,*.webex.com,collaborate.com,*.collaborate.com");
 #endif
 
 // TextTrack support
@@ -3849,7 +3849,7 @@ pref("layers.async-video-oop.enabled",true);
 
 #ifdef XP_WIN
 pref("layers.offmainthreadcomposition.enabled", true);
-// XXX - see bug 1009616
+pref("layers.async-video.enabled", true);
 pref("layers.async-video-oop.enabled", false);
 #endif
 

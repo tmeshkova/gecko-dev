@@ -11,16 +11,24 @@ let gIntro = {
 
   _nodeIDSuffixes: [
     "panel",
+    "what",
   ],
 
   _nodes: {},
 
   init: function() {
+    if (!DirectoryLinksProvider.enabled) {
+      return;
+    }
+
     for (let idSuffix of this._nodeIDSuffixes) {
       this._nodes[idSuffix] = document.getElementById("newtab-intro-" + idSuffix);
     }
 
+    this._nodes.what.textContent = newTabString("customize.what");
+
     this._nodes.panel.addEventListener("popupshowing", e => this._setUpPanel());
+    this._nodes.what.addEventListener("click", e => this.showPanel());
   },
 
   showIfNecessary: function() {
@@ -35,11 +43,8 @@ let gIntro = {
   },
 
   showPanel: function() {
-    // Open the customize menu first
-    gCustomize.showPanel().then(nodes => {
-      // Point the panel at the 'what' menu item
-      this._nodes.panel.openPopup(nodes.what);
-    });
+    // Point the panel at the 'what' link
+    this._nodes.panel.openPopup(this._nodes.what);
   },
 
   _setUpPanel: function() {
@@ -49,7 +54,7 @@ let gIntro = {
       this._nodes.panel.appendChild(h1);
       h1.textContent = newTabString("intro.header");
 
-      ['<a href="' + TILES_EXPLAIN_LINK + '">' + newTabString("learn.link") + "</a>",
+      ['<a href="' + TILES_INTRO_LINK + '">' + newTabString("learn.link") + "</a>",
        '<a href="' + TILES_PRIVACY_LINK + '">' + newTabString("privacy.link") + "</a>",
        '<input type="button" class="newtab-customize"/>',
       ].forEach((arg, index) => {

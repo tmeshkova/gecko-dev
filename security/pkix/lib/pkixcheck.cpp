@@ -153,14 +153,17 @@ CheckKeyUsage(EndEntityOrCA endEntityOrCA, const SECItem* encodedKeyUsage,
     }
   }
 
-  if (endEntityOrCA != EndEntityOrCA::MustBeCA) {
-    // RFC 5280 says "The keyCertSign bit is asserted when the subject public
-    // key is used for verifying signatures on public key certificates. If the
-    // keyCertSign bit is asserted, then the cA bit in the basic constraints
-    // extension (Section 4.2.1.9) MUST also be asserted."
-    if ((bits & KeyUsageToBitMask(KeyUsage::keyCertSign)) != 0) {
-      return Result::ERROR_INADEQUATE_KEY_USAGE;
-    }
+  // RFC 5280 says "The keyCertSign bit is asserted when the subject public
+  // key is used for verifying signatures on public key certificates. If the
+  // keyCertSign bit is asserted, then the cA bit in the basic constraints
+  // extension (Section 4.2.1.9) MUST also be asserted."
+  // However, we allow end-entity certificates (i.e. certificates without
+  // basicConstraints.cA set to TRUE) to claim keyCertSign for compatibility
+  // reasons. This does not compromise security because we only allow
+  // certificates with basicConstraints.cA set to TRUE to act as CAs.
+  if (requiredKeyUsageIfPresent == KeyUsage::keyCertSign &&
+      endEntityOrCA != EndEntityOrCA::MustBeCA) {
+    return Result::ERROR_INADEQUATE_KEY_USAGE;
   }
 
   // The padding applies to the last byte, so skip to the last byte.
@@ -301,13 +304,7 @@ static Result
 DecodeBasicConstraints(Input& input, /*out*/ bool& isCA,
                        /*out*/ long& pathLenConstraint)
 {
-  // TODO(bug 989518): cA is by default false. According to DER, default
-  // values must not be explicitly encoded in a SEQUENCE. So, if this
-  // value is present and false, it is an encoding error. However, Go Daddy
-  // has issued many certificates with this improper encoding, so we can't
-  // enforce this yet (hence passing true for allowInvalidExplicitEncoding
-  // to der::OptionalBoolean).
-  if (der::OptionalBoolean(input, true, isCA) != Success) {
+  if (der::OptionalBoolean(input, isCA) != Success) {
     return Result::ERROR_EXTENSION_VALUE_INVALID;
   }
 
