@@ -25,22 +25,10 @@ LIBS += \
     $(MOZ_GTHREAD_LIBS) \
     $(NULL)
 
-LIBS += \
-  ./shared/$(LIB_PREFIX)qmessagepump.$(LIB_SUFFIX)
-  $(NULL)
-
-ifeq (1 ,$(MOZ_X11))
-    LIBS += \
-    -lX11 \
-    $(NULL)
-endif
-
 LOCAL_INCLUDES = \
     $(TK_CFLAGS) \
     $(MOZ_GTHREAD_CFLAGS) \
     $(NULL)
-
-NSDISTMODE = copy
 
 include $(topsrcdir)/config/config.mk
 include $(topsrcdir)/config/rules.mk

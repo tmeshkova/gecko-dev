@@ -119,8 +119,6 @@ public:
   // Render content into custom rgb image (SW Rendering)
   virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth);
 
-  //   GL Rendering setuo
-  virtual bool RenderGL();
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
 
@@ -140,6 +138,9 @@ public:
 
   virtual uint32_t GetUniqueID();
   virtual void* GetPlatformImage(int* width, int* height);
+
+  virtual void SuspendRendering();
+  virtual void ResumeRendering();
 
 private:
   friend class EmbedLiteViewThreadParent;

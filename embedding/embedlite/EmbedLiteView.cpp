@@ -199,13 +199,6 @@ EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int strid
   return NS_SUCCEEDED(mViewImpl->RenderToImage(aData, imgW, imgH, stride, depth));
 }
 
-bool
-EmbedLiteView::RenderGL()
-{
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return NS_SUCCEEDED(mViewImpl->RenderGL());
-}
-
 char*
 EmbedLiteView::GetImageAsURL(int aWidth, int aHeight)
 {

@@ -4,7 +4,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-USE_STATIC_LIBS = True
+LIBRARY_NAME = 'qmessagepump'
+FORCE_STATIC_LIB = True
 
 GENERATED_SOURCES += [
     'moc_qmessagepump.cpp',
@@ -18,14 +19,3 @@ SOURCES += [
     'qmessagepump.cpp',
 ]
 
-Library('qmessagepump')
-
-DEFINES['XPCOM_GLUE'] = True
-DISABLE_STL_WRAPPING = True
-
-USE_LIBS += [
-    'xpcomglue',
-]
-
-OS_LIBS += CONFIG['TK_LIBS']
-CXXFLAGS += CONFIG['TK_CFLAGS']

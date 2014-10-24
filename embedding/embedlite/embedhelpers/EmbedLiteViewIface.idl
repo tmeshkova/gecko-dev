@@ -41,4 +41,6 @@ interface EmbedLiteViewIface
     void ViewAPIDestroyed();
     void GetUniqueID(out uint32_t aId);
     void GetPlatformImage(out PlatformImage aImage, out int32_t aWidth, out int32_t aHeight);
+    void SuspendRendering();
+    void ResumeRendering();
 };

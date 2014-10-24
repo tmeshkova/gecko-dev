@@ -377,16 +377,6 @@ EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int img
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::RenderGL()
-{
-  if (mCompositor) {
-    return mCompositor->RenderGL() ? NS_OK : NS_ERROR_FAILURE;
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteViewThreadParent::SetViewSize(int width, int height)
 {
   LOGT("sz[%i,%i]", width, height);
@@ -411,32 +401,6 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
     mCompositor->SetSurfaceSize(width, height);
   }
   unused << SendSetGLViewSize(mGLViewPortSize);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::ResumeRendering()
-{
-  if (mCompositor) {
-    mCompositor->SetClipping(aClipRect);
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetTransformation(float aScale, nsIntPoint& aScrollOffset)
-{
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::ScheduleRender()
-{
-  if (mCompositor) {
-    mCompositor->ScheduleRenderOnCompositorThread();
-  }
 
   return NS_OK;
 }
@@ -612,7 +576,8 @@ EmbedLiteViewThreadParent::GetUniqueID(uint32_t *aId)
   return NS_OK;
 }
 
-NS_IMETHODIMP EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
 {
   NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
   *aImage = mCompositor->GetPlatformImage(width, height);
@@ -620,10 +585,22 @@ NS_IMETHODIMP EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* wi
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
+EmbedLiteViewThreadParent::ResumeRendering()
 {
-  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
-  *aImage = mCompositor->GetPlatformImage(width, height);
+  if (mCompositor) {
+    mCompositor->ResumeRendering();
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SuspendRendering()
+{
+  if (mCompositor) {
+    mCompositor->SuspendRendering();
+  }
+
   return NS_OK;
 }
 
