@@ -7,7 +7,7 @@
 #define MOZ_VIEW_EMBED_THREAD_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteViewParent.h"
-#include "EmbedLiteViewImplIface.h"
+#include "EmbedLiteViewIface.h"
 #include "GLDefs.h"
 
 namespace mozilla {
@@ -17,53 +17,18 @@ class EmbedLiteView;
 class EmbedLiteCompositorParent;
 class EmbedContentController;
 class EmbedLiteViewThreadParent : public PEmbedLiteViewParent,
-  public EmbedLiteViewImplIface
+                                  public EmbedLiteViewIface
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewThreadParent)
 public:
   EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId);
-  virtual ~EmbedLiteViewThreadParent();
 
-  virtual void LoadURL(const char*);
-  virtual void GoBack();
-  virtual void GoForward();
-  virtual void StopLoad();
-  virtual void Reload(bool hardReload);
-  virtual void SetIsActive(bool);
-  virtual void SetIsFocused(bool);
-  virtual void SuspendTimeouts();
-  virtual void ResumeTimeouts();
-  virtual void LoadFrameScript(const char* aURI);
-  virtual void DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
-  virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth);
-  virtual bool RenderGL();
-  virtual void SetViewSize(int width, int height);
-  virtual void SetGLViewPortSize(int width, int height);
-  virtual void SetGLViewTransform(gfx::Matrix matrix);
-  virtual void SetViewClipping(const gfxRect& aClipRect);
-  virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);
-  virtual void ScheduleRender();
-  virtual void UpdateScrollController();
-  virtual void MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
-  virtual void MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
-  virtual void MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
-  virtual void ReceiveInputEvent(const InputData& aEvent);
-  virtual void TextEvent(const char* composite, const char* preEdit);
-  virtual void SendKeyPress(int,int,int);
-  virtual void SendKeyRelease(int,int,int);
-  virtual void ViewAPIDestroyed();
-  virtual uint32_t GetUniqueID();
-  virtual void AddMessageListener(const char* aMessageName);
-  virtual void RemoveMessageListener(const char* aMessageName);
-  virtual void AddMessageListeners(const nsTArray<nsString>&);
-  virtual void RemoveMessageListeners(const nsTArray<nsString>&);
-
-  virtual bool GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget);
-  virtual void GetPlatformImage(void**, int*, int*);
+  NS_DECL_EMBEDLITEVIEWIFACE
 
   EmbedLiteCompositorParent* GetCompositor() { return mCompositor.get(); };
 
 protected:
+  virtual ~EmbedLiteViewThreadParent();
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
   virtual bool RecvInitialized();
 

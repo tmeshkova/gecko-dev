@@ -1,0 +1,46 @@
+/* -*- Mode: IDL; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+%{C++
+#include "mozilla/gfx/Matrix.h"
+#include "gfxRect.h"
+#include "InputData.h"
+%}
+
+%{C++
+template<class T> class nsTArray;
+class nsString;
+%}
+[ref] native nsStringTArrayRef(nsTArray<nsString>);
+[ref] native gfxMatrix(mozilla::gfx::Matrix);
+[ref] native gfxRect(gfxRect);
+[ref] native nsIntPoint(nsIntPoint);
+[ref] native nsIntRect(nsIntRect);
+[ref] native InputData(mozilla::InputData);
+[ptr] native PlatformImage(void);
+[ptr] native buffer(unsigned char);
+
+[scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
+interface EmbedLiteViewIface
+{
+    void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
+    void SetViewSize(in int32_t aWidth, in int32_t aHeight);
+    void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
+    void ReceiveInputEvent([const] in InputData aEvent);
+    void TextEvent(in string aComposite, in string aPreEdit);
+    void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
+    void SendKeyRelease(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
+    void MousePress(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
+    void MouseRelease(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
+    void MouseMove(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
+    void UpdateScrollController();
+    void ViewAPIDestroyed();
+    void GetUniqueID(out uint32_t aId);
+    void GetPlatformImage(out PlatformImage aImage, out int32_t aWidth, out int32_t aHeight);
+    void SuspendRendering();
+    void ResumeRendering();
+};

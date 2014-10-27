@@ -23,15 +23,13 @@
 #include "nsISSLStatus.h"
 #include "nsIDOMEvent.h"
 #include "nsIDOMHTMLLinkElement.h"
-#include "nsIDOMPopupBlockedEvent.h"
-#include "nsIDOMPageTransitionEvent.h"
 #include "nsIFocusManager.h"
 #include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
 #include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
-#include "mozilla/dom/ScriptSettings.h"
+#include "ScriptSettings.h" // for AutoNoJSAPI
 
 #define MOZ_AFTER_PAINT_LITERAL "MozAfterPaint"
 #define MOZ_scroll "scroll"

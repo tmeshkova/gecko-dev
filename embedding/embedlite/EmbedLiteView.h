@@ -12,12 +12,14 @@
 #include "nsRect.h"
 #include "InputData.h"
 
+class EmbedLiteViewIface;
+
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteViewImplIface;
+class EmbedLiteViewThreadParent;
+class PEmbedLiteViewParent;
 class EmbedLiteView;
-class EmbedLiteRenderTarget;
 
 class EmbedLiteViewListener
 {
@@ -117,20 +119,8 @@ public:
   // Render content into custom rgb image (SW Rendering)
   virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth);
 
-  //   GL Rendering setuo
-  virtual bool RenderGL();
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
-  //   GL world transform offset and simple rotation are allowed (orientation change)
-  virtual void SetGLViewTransform(gfxMatrix matrix);
-  //   Setup Clipping on view area, required if view gl area need to be particulary clipped withing target widget area
-  virtual void SetViewClipping(float aX, float aY, float aWidth, float aHeight);
-  //   Setup view opacity for direct GL rendering
-  virtual void SetViewOpacity(float aOpacity);
-
-  // Set Custom transform for compositor layers tree, Fast Scroll/Zoom
-  virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);
-  virtual void ScheduleRender();
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
@@ -147,19 +137,21 @@ public:
   virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();
-  virtual bool GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget = 0);
-  //   GL Rendering setuo
   virtual void* GetPlatformImage(int* width, int* height);
+
+  virtual void SuspendRendering();
+  virtual void ResumeRendering();
 
 private:
   friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteCompositorParent;
-  void SetImpl(EmbedLiteViewImplIface*);
-  EmbedLiteViewImplIface* GetImpl();
+  void SetImpl(EmbedLiteViewThreadParent*);
+  EmbedLiteViewIface* GetImpl();
 
   EmbedLiteApp* mApp;
   EmbedLiteViewListener* mListener;
-  EmbedLiteViewImplIface* mViewImpl;
+  EmbedLiteViewIface* mViewImpl;
+  PEmbedLiteViewParent* mViewParent;
   uint32_t mUniqueID;
   uint32_t mParent;
 };

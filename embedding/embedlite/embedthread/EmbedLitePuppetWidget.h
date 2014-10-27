@@ -36,8 +36,7 @@ class EmbedLitePuppetWidget : public nsBaseWidget,
 
 public:
   EmbedLitePuppetWidget(EmbedLiteViewThreadChild* aEmbed, uint32_t& aId);
-  virtual ~EmbedLitePuppetWidget();
-
+  
   NS_DECL_ISUPPORTS_INHERITED
 
   NS_IMETHOD Create(nsIWidget*        aParent,
@@ -153,6 +152,9 @@ public:
 
   NS_IMETHOD         SetParent(nsIWidget* aNewParent);
   virtual nsIWidget *GetParent(void);
+
+protected:
+  virtual ~EmbedLitePuppetWidget();
 
 private:
   nsresult Paint();

@@ -43,10 +43,12 @@ public:
 
   WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener);
 
-  virtual ~WebBrowserChrome();
 
   void SetEventHandler();
   void RemoveEventHandler();
+
+protected:
+  virtual ~WebBrowserChrome();
 
 private:
   nsIntPoint GetScrollOffset(nsIDOMWindow* aWindow);

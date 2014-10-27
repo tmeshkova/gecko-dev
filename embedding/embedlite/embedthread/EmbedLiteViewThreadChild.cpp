@@ -393,8 +393,10 @@ EmbedLiteViewThreadChild::RecvResumeTimeouts()
   nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(mDOMWindow, &rv));
   NS_ENSURE_SUCCESS(rv, false);
 
-  rv = pwindow->ResumeTimeouts();
-  NS_ENSURE_SUCCESS(rv, false);
+  if (pwindow->TimeoutSuspendCount()) {
+    rv = pwindow->ResumeTimeouts();
+    NS_ENSURE_SUCCESS(rv, false);
+  }
 
   return true;
 }
@@ -880,8 +882,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     }
   }
   if (aData.mType == MultiTouchInput::MULTITOUCH_END ||
-      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL ||
-      aData.mType == MultiTouchInput::MULTITOUCH_LEAVE) {
+      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL) {
     mDispatchSynthMouseEvents = true;
   }
   return true;

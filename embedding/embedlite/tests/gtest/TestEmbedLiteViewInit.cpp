@@ -9,6 +9,7 @@
 #include "nsStringGlue.h"
 #include "nsIServiceManager.h"
 #include "nsIFile.h"
+#include "nsDirectoryServiceDefs.h" // for NS_GRE_DIR
 
 TEST(EmbedLiteViewInitTest, EmbedLiteAppCreateView)
 {

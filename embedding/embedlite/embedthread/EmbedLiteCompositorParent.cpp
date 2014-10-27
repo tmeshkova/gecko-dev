@@ -94,7 +94,7 @@ EmbedLiteCompositorParent::PrepareOffscreen()
         SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
                                           screen->PreserveBuffer());
       SurfaceFactory_GL* factory = nullptr;
-      if (context->GetContextType() == GLContextType::EGL) {
+      if (context->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
         factory = SurfaceFactory_EGLImage::Create(context, screen->Caps());
       } else {
@@ -152,7 +152,7 @@ EmbedLiteCompositorParent::Invalidate()
 
   UpdateTransformState();
 
-  if (!view->GetListener()->Invalidate()) {
+  if (view->GetListener() && !view->GetListener()->Invalidate()) {
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL);
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, 16);
     return true;
@@ -171,9 +171,7 @@ bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
     // Nothing to paint yet, just return silently
     return false;
   }
-  IntSize size(aTarget->GetSize());
-  nsIntRect boundRect(0, 0, size.width, size.height);
-  CompositeToTarget(aTarget, &boundRect);
+  CompositeToTarget(aTarget);
   return true;
 }
 
@@ -257,6 +255,34 @@ void* EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
   }
 
   return nullptr;
+}
+
+void
+EmbedLiteCompositorParent::SuspendRendering()
+{
+  if (!CompositorParent::IsInCompositorThread()) {
+    CancelableTask* pauseTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::SuspendRendering);
+    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
+    return;
+  }
+
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
+  static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Pause();
+}
+
+void
+EmbedLiteCompositorParent::ResumeRendering()
+{
+  if (!CompositorParent::IsInCompositorThread()) {
+    CancelableTask* pauseTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::ResumeRendering);
+    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
+    return;
+  }
+
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
+  static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Resume();
 }
 
 } // namespace embedlite

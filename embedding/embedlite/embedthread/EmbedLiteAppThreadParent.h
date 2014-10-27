@@ -16,8 +16,6 @@ class EmbedLiteAppThreadParent : public PEmbedLiteAppParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteAppThreadParent)
 public:
-  virtual ~EmbedLiteAppThreadParent();
-
   // IPDL
   virtual bool
   RecvInitialized();
@@ -43,6 +41,8 @@ protected:
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*);
 
 private:
+  virtual ~EmbedLiteAppThreadParent();
+
   EmbedLiteAppThreadParent();
 
   EmbedLiteApp* mApp;

@@ -28,6 +28,7 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, uint32_t aUniqueID, uint32_t aP
   : mApp(aApp)
   , mListener(NULL)
   , mViewImpl(NULL)
+  , mViewParent(NULL)
   , mUniqueID(aUniqueID)
   , mParent(aParent)
 {
@@ -65,12 +66,13 @@ EmbedLiteView::GetListener() const
 }
 
 void
-EmbedLiteView::SetImpl(EmbedLiteViewImplIface* aViewImpl)
+EmbedLiteView::SetImpl(EmbedLiteViewThreadParent* aViewImpl)
 {
   mViewImpl = aViewImpl;
+  mViewParent = aViewImpl;
 }
 
-EmbedLiteViewImplIface*
+EmbedLiteViewIface*
 EmbedLiteView::GetImpl()
 {
   return mViewImpl;
@@ -80,107 +82,111 @@ void
 EmbedLiteView::LoadURL(const char* aUrl)
 {
   LOGT("url:%s", aUrl);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->LoadURL(aUrl);
+  unused << mViewParent->SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
 }
 
 void
 EmbedLiteView::SetIsActive(bool aIsActive)
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetIsActive(aIsActive);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendSetIsActive(aIsActive);
 }
 
 void
 EmbedLiteView::SetIsFocused(bool aIsFocused)
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetIsFocused(aIsFocused);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendSetIsFocused(aIsFocused);
 }
 
 void
 EmbedLiteView::SuspendTimeouts()
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SuspendTimeouts();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendSuspendTimeouts();
 }
 
 void
 EmbedLiteView::ResumeTimeouts()
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->ResumeTimeouts();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendResumeTimeouts();
 }
 
 void EmbedLiteView::GoBack()
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->GoBack();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendGoBack();
+
 }
 
 void EmbedLiteView::GoForward()
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->GoForward();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendGoForward();
 }
 
 void EmbedLiteView::StopLoad()
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->StopLoad();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendStopLoad();
+
 }
 
 void EmbedLiteView::Reload(bool hard)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->Reload(hard);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendReload(hard);
 }
 
 void
 EmbedLiteView::LoadFrameScript(const char* aURI)
 {
   LOGT("uri:%s, mViewImpl:%p", aURI, mViewImpl);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->LoadFrameScript(aURI);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
 }
 
 void
 EmbedLiteView::AddMessageListener(const char* aName)
 {
   LOGT("name:%s", aName);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->AddMessageListener(aName);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendAddMessageListener(nsDependentCString(aName));
 }
 
 void
 EmbedLiteView::RemoveMessageListener(const char* aName)
 {
   LOGT("name:%s", aName);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->RemoveMessageListener(aName);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendRemoveMessageListener(nsDependentCString(aName));
 }
 
 void EmbedLiteView::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->AddMessageListeners(aMessageNames);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendAddMessageListeners(aMessageNames);
 }
 
 void EmbedLiteView::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->RemoveMessageListeners(aMessageNames);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendRemoveMessageListeners(aMessageNames);
 }
 
 void
 EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->DoSendAsyncMessage(aMessageName, aMessage);
+  NS_ENSURE_TRUE(mViewParent, );
+
+  const nsDependentString msgname(aMessageName);
+  const nsDependentString msg(aMessage);
+  unused << mViewParent->SendAsyncMessage(msgname, msg);
 }
 
 // Render interface
@@ -190,14 +196,7 @@ EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int strid
 {
   LOGF("data:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
   NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->RenderToImage(aData, imgW, imgH, stride, depth);
-}
-
-bool
-EmbedLiteView::RenderGL()
-{
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->RenderGL();
+  return NS_SUCCEEDED(mViewImpl->RenderToImage(aData, imgW, imgH, stride, depth));
 }
 
 char*
@@ -297,37 +296,17 @@ EmbedLiteView::SetGLViewPortSize(int width, int height)
 }
 
 void
-EmbedLiteView::SetGLViewTransform(gfxMatrix matrix)
+EmbedLiteView::SuspendRendering()
 {
   NS_ENSURE_TRUE(mViewImpl, );
-  gfx::Matrix m(matrix.xx, matrix.yx, matrix.xy, matrix.yy, matrix.x0, matrix.y0);
-  mViewImpl->SetGLViewTransform(m);
+  mViewImpl->SuspendRendering();
 }
 
 void
-EmbedLiteView::SetViewClipping(float aX, float aY, float aWidth, float aHeight)
+EmbedLiteView::ResumeRendering()
 {
   NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetViewClipping(gfxRect(aX, aY, aWidth, aHeight));
-}
-
-void
-EmbedLiteView::SetViewOpacity(float aOpacity)
-{
-}
-
-void
-EmbedLiteView::SetTransformation(float aScale, nsIntPoint aScrollOffset)
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetTransformation(aScale, aScrollOffset);
-}
-
-void
-EmbedLiteView::ScheduleRender()
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->ScheduleRender();
+  mViewImpl->ResumeRendering();
 }
 
 void
@@ -401,20 +380,17 @@ EmbedLiteView::PinchEnd(int x, int y, float scale)
 uint32_t
 EmbedLiteView::GetUniqueID()
 {
-  if (mViewImpl && mViewImpl->GetUniqueID() != mUniqueID) {
+  NS_ENSURE_TRUE(mViewImpl, 0);
+  uint32_t id;
+  mViewImpl->GetUniqueID(&id);
+  if (id != mUniqueID) {
     NS_ERROR("Something went wrong");
   }
   return mUniqueID;
 }
 
-bool
-EmbedLiteView::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget)
-{
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height, textureTarget);
-}
-
-void* EmbedLiteView::GetPlatformImage(int* width, int* height)
+void*
+EmbedLiteView::GetPlatformImage(int* width, int* height)
 {
   NS_ENSURE_TRUE(mViewImpl, nullptr);
   void* aImage;

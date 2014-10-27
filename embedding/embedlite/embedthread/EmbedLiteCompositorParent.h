@@ -30,6 +30,8 @@ public:
   void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
   void* GetPlatformImage(int* width, int* height);
+  virtual void SuspendRendering();
+  virtual void ResumeRendering();
 
 protected:
   virtual ~EmbedLiteCompositorParent();

@@ -30,7 +30,6 @@ class EmbedLiteViewThreadChild : public PEmbedLiteViewChild,
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewThreadChild)
 public:
   EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId);
-  virtual ~EmbedLiteViewThreadChild();
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
@@ -64,6 +63,8 @@ public:
                                 const nsString& aData);
 
 protected:
+  virtual ~EmbedLiteViewThreadChild();
+
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
   virtual bool RecvDestroy();
   virtual bool RecvLoadURL(const nsString&);

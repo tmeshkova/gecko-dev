@@ -2,18 +2,19 @@
 # vim: set filetype=python:
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, you can obtain one at http://mozilla.org/MPL/2.0/.
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+LIBRARY_NAME = 'qmessagepump'
+FORCE_STATIC_LIB = True
 
-UNIFIED_SOURCES += [
-    'TestEmbedLiteCoreInit.cpp',
-    'TestEmbedLiteViewInit.cpp',
+GENERATED_SOURCES += [
+    'moc_qmessagepump.cpp',
 ]
 
-LOCAL_INCLUDES = [
-    '../..',
+EXPORTS += [
+    'qmessagepump.h',
 ]
 
-LIBRARY_NAME = 'embedlitetest'
-
-FINAL_LIBRARY = 'xul-gtest'
+SOURCES += [
+    'qmessagepump.cpp',
+]

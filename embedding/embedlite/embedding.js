@@ -43,6 +43,7 @@ pref("browser.dom.window.dump.enabled", true);
 pref("layers.acceleration.draw-fps", false);
 pref("layers.use-deprecated-textures", false);
 pref("layers.enable-tiles", true);
+pref("layers.async-pan-zoom.enabled", true);
 pref("font.size.inflation.disabledInMasterProcess", true);
 pref("apz.asyncscroll.throttle", 15);
 pref("apz.y_skate_size_multiplier", "4.5f");
