@@ -56,7 +56,6 @@ public:
   virtual ~EmbedLiteApp();
 
   enum EmbedType {
-    EMBED_INVALID,// Default value
     EMBED_THREAD, // Initialize XPCOM in child thread
     EMBED_PROCESS // Initialize XPCOM in separate process
   };
@@ -108,9 +107,13 @@ public:
   virtual void DestroyView(EmbedLiteView* aView);
 
   virtual void SetIsAccelerated(bool aIsAccelerated);
-  virtual bool IsAccelerated() {
-    return mRenderType == RENDER_HW ? true : false ;
+  virtual bool IsAccelerated() const {
+    return (mRenderType == RENDER_HW);
   }
+  virtual bool IsInitialized() const {
+    return (mState == INITIALIZED);
+  }
+
   virtual RenderType GetRenderType() {
     return mRenderType;
   }
@@ -135,8 +138,36 @@ public:
   // Only one EmbedHelper object allowed
   static EmbedLiteApp* GetInstance();
 
+  // TODO: this must be hidden for API users
+  void Shutdown();
+
 private:
+
   EmbedLiteApp();
+
+  /**
+   * States of EmbedLiteApp's lifecycle
+   */
+  enum State {
+    // This is the initial and final state of EmbedLiteApp's lifecycle.
+    // Allowed next states: STARTING
+    STOPPED,
+
+    // The app is in a start-up process. No messages can be sent to the
+    // EmbedLiteApp instance from a toolkit in this state except Stop().
+    // Allowed next states: INITIALIZED, DESTROYING
+    STARTING,
+
+    // The app is ready to operate with views.
+    // Allowed next states: DESTROYING
+    INITIALIZED,
+
+    // The app is in shutdown process.
+    // Allowed next states: STOPPED
+    DESTROYING
+  };
+
+  void SetState(State aState);
 
   static void StartChild(EmbedLiteApp* aApp);
   void Initialized();
@@ -164,7 +195,7 @@ private:
   EmbedType mEmbedType;
   std::map<uint32_t, EmbedLiteView*> mViews;
   uint32_t mViewCreateID;
-  bool mDestroying;
+  State mState;
   RenderType mRenderType;
   char* mProfilePath;
   bool mIsAsyncLoop;

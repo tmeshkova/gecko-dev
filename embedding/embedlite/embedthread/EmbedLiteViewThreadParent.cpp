@@ -46,7 +46,7 @@ namespace embedlite {
 
 EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId)
   : mId(id)
-  , mView(EmbedLiteApp::GetInstance()->GetViewByID(id))
+  , mListener(nullptr)
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
   , mUILoop(MessageLoop::current())
@@ -54,21 +54,15 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mUploadTexture(0)
   , mController(new EmbedContentController(this, mUILoop))
 {
-  MOZ_COUNT_CTOR(EmbedLiteViewThreadParent);
-  MOZ_ASSERT(mView, "View destroyed during OMTC view construction");
-  mView->SetImpl(this);
+  LOGT();
 }
 
 EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
 {
-  MOZ_COUNT_DTOR(EmbedLiteViewThreadParent);
-  LOGT("mView:%p, mCompositor:%p", mView, mCompositor.get());
+  LOGT("mCompositor:%p", mCompositor.get());
   bool mHadCompositor = mCompositor.get() != nullptr;
-  mController = nullptr;
+  mCompositor = nullptr;
 
-  if (mView) {
-    mView->SetImpl(NULL);
-  }
   // If we haven't had compositor created, then noone will notify app that view destroyed
   // Let's do it here
   if (!mHadCompositor) {
@@ -96,11 +90,7 @@ EmbedLiteViewThreadParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 void
 EmbedLiteViewThreadParent::UpdateScrollController()
 {
-  if (mViewAPIDestroyed) {
-    return;
-  }
-
-  NS_ENSURE_TRUE(mView, );
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
 
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
@@ -114,12 +104,8 @@ EmbedLiteViewThreadParent::UpdateScrollController()
 bool
 EmbedLiteViewThreadParent::RecvInitialized()
 {
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->ViewInitialized();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->ViewInitialized();
   return true;
 }
 
@@ -128,78 +114,54 @@ EmbedLiteViewThreadParent::RecvOnLocationChanged(const nsCString& aLocation,
                                                  const bool& aCanGoBack,
                                                  const bool& aCanGoForward)
 {
-  LOGNI();
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnLocationChanged(aLocation.get(), aCanGoBack, aCanGoForward);
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnLocationChanged(aLocation.get(), aCanGoBack, aCanGoForward);
   return true;
 }
 
 bool
 EmbedLiteViewThreadParent::RecvOnLoadStarted(const nsCString& aLocation)
 {
-  LOGNI();
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnLoadStarted(aLocation.get());
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnLoadStarted(aLocation.get());
   return true;
 }
 
 bool
 EmbedLiteViewThreadParent::RecvOnLoadFinished()
 {
-  LOGNI();
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnLoadFinished();
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnLoadFinished();
   return true;
 }
 
 bool
 EmbedLiteViewThreadParent::RecvOnWindowCloseRequested()
 {
-  LOGNI();
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnWindowCloseRequested();
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnWindowCloseRequested();
   return true;
 }
 
 bool
 EmbedLiteViewThreadParent::RecvOnLoadRedirect()
 {
-  LOGNI();
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnLoadRedirect();
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnLoadRedirect();
   return true;
 }
 
 bool
 EmbedLiteViewThreadParent::RecvOnLoadProgress(const int32_t& aProgress, const int32_t& aCurTotal, const int32_t& aMaxTotal)
 {
-  LOGNI("progress:%i", aProgress);
-  NS_ENSURE_TRUE(mView, true);
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  mView->GetListener()->OnLoadProgress(aProgress, aCurTotal, aMaxTotal);
+  LOGT("progress:%i", aProgress);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnLoadProgress(aProgress, aCurTotal, aMaxTotal);
   return true;
 }
 
@@ -207,13 +169,9 @@ bool
 EmbedLiteViewThreadParent::RecvOnSecurityChanged(const nsCString& aStatus,
                                                  const uint32_t& aState)
 {
-  LOGNI();
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnSecurityChanged(aStatus.get(), aState);
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnSecurityChanged(aStatus.get(), aState);
   return true;
 }
 
@@ -221,13 +179,9 @@ bool
 EmbedLiteViewThreadParent::RecvOnFirstPaint(const int32_t& aX,
                                             const int32_t& aY)
 {
-  LOGNI();
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnFirstPaint(aX, aY);
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnFirstPaint(aX, aY);
   return true;
 }
 
@@ -235,13 +189,9 @@ bool
 EmbedLiteViewThreadParent::RecvOnScrolledAreaChanged(const uint32_t& aWidth,
                                                      const uint32_t& aHeight)
 {
-  LOGNI("area[%u,%u]", aWidth, aHeight);
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnScrolledAreaChanged(aWidth, aHeight);
+  LOGT("area[%u,%u]", aWidth, aHeight);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnScrolledAreaChanged(aWidth, aHeight);
   return true;
 }
 
@@ -249,24 +199,18 @@ bool
 EmbedLiteViewThreadParent::RecvOnScrollChanged(const int32_t& offSetX,
                                                const int32_t& offSetY)
 {
-  LOGNI("off[%i,%i]", offSetX, offSetY);
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->OnScrollChanged(offSetX, offSetY);
+  LOGT("off[%i,%i]", offSetX, offSetY);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnScrollChanged(offSetX, offSetY);
   return true;
 }
 
 bool
 EmbedLiteViewThreadParent::RecvOnTitleChanged(const nsString& aTitle)
 {
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  mView->GetListener()->OnTitleChanged(aTitle.get());
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->OnTitleChanged(aTitle.get());
   return true;
 }
 
@@ -276,6 +220,7 @@ EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellI
                                                      const bool& aIsRoot,
                                                      const ZoomConstraints& aConstraints)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   if (aIsRoot) {
     mController->SaveZoomConstraints(aConstraints);
   }
@@ -291,6 +236,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
                                           const ViewID& aViewId,
                                           const CSSRect& aRect)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   if (mController->GetManager()) {
     mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);
   }
@@ -300,6 +246,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
 bool
 EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   if (mController->GetManager()) {
     mController->GetManager()->ContentReceivedTouch(aGuid, aPreventDefault);
   }
@@ -309,12 +256,9 @@ EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& a
 bool
 EmbedLiteViewThreadParent::RecvSetBackgroundColor(const nscolor& aColor)
 {
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->SetBackgroundColor(NS_GET_R(aColor), NS_GET_G(aColor), NS_GET_B(aColor), NS_GET_A(aColor));
+  LOGT();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->SetBackgroundColor(NS_GET_R(aColor), NS_GET_G(aColor), NS_GET_B(aColor), NS_GET_A(aColor));
   return true;
 }
 
@@ -324,26 +268,31 @@ void
 EmbedLiteViewThreadParent::LoadURL(const char* aUrl)
 {
   LOGT("url:%s", aUrl);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
 }
 
 void EmbedLiteViewThreadParent::GoBack()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendGoBack();
 }
 
 void EmbedLiteViewThreadParent::GoForward()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendGoForward();
 }
 
 void EmbedLiteViewThreadParent::StopLoad()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendStopLoad();
 }
 
 void EmbedLiteViewThreadParent::Reload(bool hardReload)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendReload(hardReload);
 }
 
@@ -351,6 +300,7 @@ void
 EmbedLiteViewThreadParent::SetIsActive(bool aIsActive)
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendSetIsActive(aIsActive);
 }
 
@@ -358,6 +308,7 @@ void
 EmbedLiteViewThreadParent::SetIsFocused(bool aIsFocused)
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendSetIsFocused(aIsFocused);
 }
 
@@ -365,6 +316,7 @@ void
 EmbedLiteViewThreadParent::SuspendTimeouts()
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendSuspendTimeouts();
 }
 
@@ -372,6 +324,7 @@ void
 EmbedLiteViewThreadParent::ResumeTimeouts()
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendResumeTimeouts();
 }
 
@@ -379,6 +332,7 @@ void
 EmbedLiteViewThreadParent::LoadFrameScript(const char* aURI)
 {
   LOGT("uri:%s", aURI);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
 }
 
@@ -386,6 +340,7 @@ void
 EmbedLiteViewThreadParent::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msgName:%ls, msg:%ls", aMessageName, aMessage);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   const nsDependentString msgname(aMessageName);
   const nsDependentString msg(aMessage);
   unused << SendAsyncMessage(msgname,
@@ -396,6 +351,7 @@ void
 EmbedLiteViewThreadParent::AddMessageListener(const char* aMessageName)
 {
   LOGT("msgName:%s", aMessageName);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendAddMessageListener(nsDependentCString(aMessageName));
 }
 
@@ -403,18 +359,21 @@ void
 EmbedLiteViewThreadParent::RemoveMessageListener(const char* aMessageName)
 {
   LOGT("msgName:%s", aMessageName);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendRemoveMessageListener(nsDependentCString(aMessageName));
 }
 
 void
 EmbedLiteViewThreadParent::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendAddMessageListeners(aMessageNames);
 }
 
 void
 EmbedLiteViewThreadParent::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendRemoveMessageListeners(aMessageNames);
 }
 
@@ -422,14 +381,10 @@ bool
 EmbedLiteViewThreadParent::RecvAsyncMessage(const nsString& aMessage,
                                             const nsString& aData)
 {
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
   LOGF("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
 
-  NS_ENSURE_TRUE(mView, false);
-  mView->GetListener()->RecvAsyncMessage(aMessage.get(), aData.get());
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  mListener->RecvAsyncMessage(aMessage.get(), aData.get());
   return true;
 }
 
@@ -439,12 +394,8 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
                                            InfallibleTArray<nsString>* aJSONRetVal)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aJSON).get());
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
-  char* retval = mView->GetListener()->RecvSyncMessage(aMessage.get(), aJSON.get());
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
+  char* retval = mListener->RecvSyncMessage(aMessage.get(), aJSON.get());
   if (retval) {
     aJSONRetVal->AppendElement(NS_ConvertUTF8toUTF16(nsDependentCString(retval)));
     delete retval;
@@ -479,6 +430,7 @@ bool
 EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
 {
   LOGF("d:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, false);
   if (mCompositor) {
     RefPtr<DrawTarget> target = gfxPlatform::GetPlatform()->CreateDrawTargetForData(aData, IntSize(imgW, imgH), stride, _depth_to_gfxformat(depth));
     {
@@ -491,6 +443,7 @@ EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int img
 bool
 EmbedLiteViewThreadParent::RenderGL()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, false);
   if (mCompositor) {
     return mCompositor->RenderGL();
   }
@@ -501,6 +454,7 @@ void
 EmbedLiteViewThreadParent::SetViewSize(int width, int height)
 {
   LOGT("sz[%i,%i]", width, height);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   mViewSize = ScreenIntSize(width, height);
   unused << SendSetViewSize(gfxSize(width, height));
 }
@@ -515,6 +469,7 @@ EmbedLiteViewThreadParent::RecvGetGLViewSize(gfxSize* aSize)
 void
 EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   mGLViewPortSize = gfxSize(width, height);
   if (mCompositor) {
     mCompositor->SetSurfaceSize(width, height);
@@ -525,6 +480,7 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 void
 EmbedLiteViewThreadParent::SetGLViewTransform(gfx::Matrix matrix)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->SetWorldTransform(matrix);
   }
@@ -533,6 +489,7 @@ EmbedLiteViewThreadParent::SetGLViewTransform(gfx::Matrix matrix)
 void
 EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->SetClipping(aClipRect);
   }
@@ -541,6 +498,7 @@ EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
 void
 EmbedLiteViewThreadParent::SetViewOpacity(const float aOpacity)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->SetWorldOpacity(aOpacity);
   }
@@ -549,11 +507,13 @@ EmbedLiteViewThreadParent::SetViewOpacity(const float aOpacity)
 void
 EmbedLiteViewThreadParent::SetTransformation(float aScale, nsIntPoint aScrollOffset)
 {
+  LOGNI();
 }
 
 void
 EmbedLiteViewThreadParent::ScheduleRender()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->ScheduleRenderOnCompositorThread();
   }
@@ -562,6 +522,7 @@ EmbedLiteViewThreadParent::ScheduleRender()
 void
 EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
     mController->ReceiveInputEvent(aEvent, &guid);
@@ -590,6 +551,7 @@ void
 EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 {
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mLastIMEState) {
     unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
                                   NS_ConvertUTF8toUTF16(nsDependentCString(preEdit)));
@@ -601,17 +563,20 @@ EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 void
 EmbedLiteViewThreadParent::ViewAPIDestroyed()
 {
+  mViewAPIDestroyed = true;
   if (mController) {
     mController->ClearRenderFrame();
   }
-  mViewAPIDestroyed = true;
-  mView = nullptr;
+  unused << SendDestroy();
+  mListener->ViewDestroyed();
+  mListener = nullptr;
 }
 
 void
 EmbedLiteViewThreadParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
 }
 
@@ -619,6 +584,7 @@ void
 EmbedLiteViewThreadParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
 }
 
@@ -626,6 +592,7 @@ void
 EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
@@ -642,6 +609,7 @@ void
 EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
@@ -658,6 +626,7 @@ void
 EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
@@ -676,12 +645,12 @@ EmbedLiteViewThreadParent::RecvGetInputContext(int32_t* aIMEEnabled,
                                                intptr_t* aNativeIMEContext)
 {
   LOGT("mLastIMEState:%i", mLastIMEState);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   *aIMEEnabled = mLastIMEState;
   *aIMEOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
   *aNativeIMEContext = 0;
-  if (mView) {
-    mView->GetListener()->GetIMEStatus(aIMEEnabled, aIMEOpen, aNativeIMEContext);
-  }
+  NS_ENSURE_TRUE(mListener, true);
+  mListener->GetIMEStatus(aIMEEnabled, aIMEOpen, aNativeIMEContext);
   return true;
 }
 
@@ -697,13 +666,9 @@ EmbedLiteViewThreadParent::RecvSetInputContext(const int32_t& aIMEEnabled,
   LOGT("IMEEnabled:%i, IMEOpen:%i, type:%s, imMode:%s, actHint:%s, cause:%i, focusChange:%i, mLastIMEState:%i->%i",
        aIMEEnabled, aIMEOpen, NS_ConvertUTF16toUTF8(aType).get(), NS_ConvertUTF16toUTF8(aInputmode).get(),
        NS_ConvertUTF16toUTF8(aActionHint).get(), aCause, aFocusChange, mLastIMEState, aIMEEnabled);
-  if (mViewAPIDestroyed) {
-    return true;
-  }
-
-  NS_ENSURE_TRUE(mView, false);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   mLastIMEState = aIMEEnabled;
-  mView->GetListener()->IMENotification(aIMEEnabled, aIMEOpen, aCause, aFocusChange, aType.get(), aInputmode.get());
+  mListener->IMENotification(aIMEEnabled, aIMEOpen, aCause, aFocusChange, aType.get(), aInputmode.get());
   return true;
 }
 

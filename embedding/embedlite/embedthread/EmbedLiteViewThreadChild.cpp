@@ -82,9 +82,9 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
   , mViewResized(false)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
+  , mIsValid(true)
 {
   LOGT("id:%u, parentID:%u", aId, parentId);
-  AddRef();
   // Init default prefs
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {
@@ -125,6 +125,7 @@ EmbedLiteViewThreadChild::ActorDestroy(ActorDestroyReason aWhy)
 bool EmbedLiteViewThreadChild::RecvDestroy()
 {
   LOGT("destroy");
+  mIsValid = false;
   mControllerListeners.Clear();
   AppChild()->AppService()->UnregisterView(mId);
   if (mHelper)
@@ -143,6 +144,8 @@ bool EmbedLiteViewThreadChild::RecvDestroy()
 void
 EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
 {
+  NS_ENSURE_TRUE(mIsValid,);
+
   if (mInitWindowTask) {
     mInitWindowTask->Cancel();
   }
@@ -432,6 +435,7 @@ bool
 EmbedLiteViewThreadChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+  NS_ENSURE_TRUE(mIsValid, true);
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
     return SendAsyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage));
   }
@@ -442,6 +446,7 @@ bool
 EmbedLiteViewThreadChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+  NS_ENSURE_TRUE(mIsValid, true);
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
     return SendSyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
   }
@@ -452,6 +457,7 @@ bool
 EmbedLiteViewThreadChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+  NS_ENSURE_TRUE(mIsValid, true);
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
     CallRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
   }
@@ -463,6 +469,7 @@ EmbedLiteViewThreadChild::RecvAsyncMessage(const nsAString& aMessage,
                                            const nsAString& aData)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
+  NS_ENSURE_TRUE(mHelper,);
   mHelper->DispatchMessageManagerMessage(aMessage, aData);
 }
 
@@ -525,7 +532,7 @@ EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
 gfxSize
 EmbedLiteViewThreadChild::GetGLViewSize()
 {
-  if (mGLViewSize.IsEmpty()) {
+  if (mIsValid && mGLViewSize.IsEmpty()) {
     SendGetGLViewSize(&mGLViewSize);
   }
   return mGLViewSize;
@@ -853,6 +860,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
 bool
 EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData)
 {
+  NS_ENSURE_TRUE(mIsValid, true);
   WidgetTouchEvent localEvent;
   if (mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
     nsEventStatus status =
@@ -894,36 +902,42 @@ EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid&
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward)
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLoadStarted(const char* aLocation)
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnLoadStarted(nsDependentCString(aLocation)) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLoadFinished()
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnLoadFinished() ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnWindowCloseRequested()
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnWindowCloseRequested() ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLoadRedirect()
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnLoadRedirect() ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal)
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnLoadProgress(aProgress, aCurTotal, aMaxTotal) ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -936,6 +950,7 @@ EmbedLiteViewThreadChild::OnSecurityChanged(const char* aStatus, uint32_t aState
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnFirstPaint(int32_t aX, int32_t aY)
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   nsresult rv = NS_OK;
   nsCOMPtr <nsIDOMWindow> window;
   rv = mWebBrowser->GetContentDOMWindow(getter_AddRefs(window));
@@ -962,18 +977,21 @@ EmbedLiteViewThreadChild::OnFirstPaint(int32_t aX, int32_t aY)
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight)
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnScrolledAreaChanged(aWidth, aHeight) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnScrollChanged(int32_t offSetX, int32_t offSetY)
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnScrollChanged(offSetX, offSetY) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnTitleChanged(const char16_t* aTitle)
 {
+  NS_ENSURE_TRUE(mIsValid, NS_ERROR_FAILURE);
   return SendOnTitleChanged(nsDependentString(aTitle)) ? NS_OK : NS_ERROR_FAILURE;
 }
 

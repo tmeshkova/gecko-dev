@@ -32,29 +32,27 @@ public:
   ::EmbedLiteAppService* AppService();
   EmbedLiteViewThreadChild* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
 
-  virtual bool RecvCreateView(const uint32_t& id, const uint32_t& parentId);
-
 protected:
   // Embed API ipdl interface
-  virtual bool RecvSetBoolPref(const nsCString&, const bool&);
-  virtual bool RecvSetCharPref(const nsCString&, const nsCString&);
-  virtual bool RecvSetIntPref(const nsCString&, const int&);
-  virtual bool RecvLoadGlobalStyleSheet(const nsCString&, const bool&);
-  virtual bool RecvLoadComponentManifest(const nsCString&);
+  virtual bool RecvSetBoolPref(const nsCString&, const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSetCharPref(const nsCString&, const nsCString&) MOZ_OVERRIDE;
+  virtual bool RecvSetIntPref(const nsCString&, const int&) MOZ_OVERRIDE;
+  virtual bool RecvLoadGlobalStyleSheet(const nsCString&, const bool&) MOZ_OVERRIDE;
+  virtual bool RecvLoadComponentManifest(const nsCString&) MOZ_OVERRIDE;
+
+  virtual bool RecvPreDestroy() MOZ_OVERRIDE;
+  virtual bool RecvObserve(const nsCString& topic,
+                           const nsString& data) MOZ_OVERRIDE;
+  virtual bool RecvAddObserver(const nsCString&) MOZ_OVERRIDE;
+  virtual bool RecvRemoveObserver(const nsCString&) MOZ_OVERRIDE;
+  virtual bool RecvAddObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
+  virtual bool RecvRemoveObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
 
   // IPDL protocol impl
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
 
-  virtual bool RecvPreDestroy();
-  virtual bool RecvObserve(const nsCString& topic,
-                           const nsString& data);
-  virtual bool RecvAddObserver(const nsCString&);
-  virtual bool RecvRemoveObserver(const nsCString&);
-  virtual bool RecvAddObservers(const InfallibleTArray<nsCString>& observers);
-  virtual bool RecvRemoveObservers(const InfallibleTArray<nsCString>& observers);
-
-  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId);
-  virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*);
+  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId) MOZ_OVERRIDE;
+  virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) MOZ_OVERRIDE;
 
 private:
   void InitWindowWatcher();

@@ -30,7 +30,6 @@ class EmbedLiteSubThread : public base::Thread,
     virtual void CleanUp();
 
   private:
-    MessageLoop* mParentLoop;
     EmbedLiteApp* mApp;
 };
 

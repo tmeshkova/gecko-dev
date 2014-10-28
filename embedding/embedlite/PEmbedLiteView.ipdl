@@ -30,19 +30,19 @@ namespace embedlite {
 intr protocol PEmbedLiteView {
     manager PEmbedLiteApp;
 child:
-    async LoadURL(nsString url);
-    async GoBack();
-    async GoForward();
-    async StopLoad();
-    async Reload(bool hardReload);
-    async LoadFrameScript(nsString uri);
-    async SetViewSize(gfxSize aSize);
-    async SetGLViewSize(gfxSize aSize);
-    async SetIsActive(bool aIsActive);
-    async SetIsFocused(bool aIsFocused);
-    async SuspendTimeouts();
-    async ResumeTimeouts();
-    async AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
+    LoadURL(nsString url);
+    GoBack();
+    GoForward();
+    StopLoad();
+    Reload(bool hardReload);
+    LoadFrameScript(nsString uri);
+    SetViewSize(gfxSize aSize);
+    SetGLViewSize(gfxSize aSize);
+    SetIsActive(bool aIsActive);
+    SetIsFocused(bool aIsFocused);
+    SuspendTimeouts();
+    ResumeTimeouts();
+    AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
 
     UpdateFrame(FrameMetrics frame) compress;
     HandleDoubleTap(nsIntPoint point);
@@ -65,23 +65,23 @@ child:
     AddMessageListeners(nsString [] messageNames);
     RemoveMessageListeners(nsString [] messageNames);
 
-    async Destroy();
+    Destroy();
 
 parent:
-    async Initialized();
-    async __delete__();
+    Initialized();
+     __delete__();
 
-    async OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);
-    async OnLoadStarted(nsCString aLocation);
-    async OnLoadFinished();
-    async OnLoadRedirect();
-    async OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal);
-    async OnSecurityChanged(nsCString aStatus, uint32_t aState);
-    async OnFirstPaint(int32_t aX, int32_t aY);
-    async OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight);
-    async OnScrollChanged(int32_t offSetX, int32_t offSetY);
-    async OnTitleChanged(nsString aTitle);
-    async OnWindowCloseRequested();
+    OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);
+    OnLoadStarted(nsCString aLocation);
+    OnLoadFinished();
+    OnLoadRedirect();
+    OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal);
+    OnSecurityChanged(nsCString aStatus, uint32_t aState);
+    OnFirstPaint(int32_t aX, int32_t aY);
+    OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight);
+    OnScrollChanged(int32_t offSetX, int32_t offSetY);
+    OnTitleChanged(nsString aTitle);
+    OnWindowCloseRequested();
 
     /**
      * Updates the zoom constraints for a scrollable frame in this tab.
@@ -96,7 +96,7 @@ parent:
      * CSS pixels. This rect is relative to the document.
      */
     ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
-    async SetBackgroundColor(nscolor color);
+    SetBackgroundColor(nscolor color);
     ContentReceivedTouch(ScrollableLayerGuid aGuid, bool aPreventDefault);
     sync GetGLViewSize()
       returns (gfxSize aSize);

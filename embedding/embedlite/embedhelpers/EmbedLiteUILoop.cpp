@@ -52,6 +52,7 @@ void EmbedLiteUILoop::DoQuit()
   DoIdleWork();
   if (type() == MessageLoop::TYPE_EMBED) {
     delete state_;
+    state_ = nullptr;
   }
 }
 

@@ -29,12 +29,9 @@ class EmbedLiteViewThreadChild : public PEmbedLiteViewChild,
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewThreadChild)
 public:
-  EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId);
-  virtual ~EmbedLiteViewThreadChild();
-
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
-  uint64_t GetOuterID() {
+  uint64_t GetOuterID() const {
     return mOuterId;
   }
   void ResetInputState();
@@ -50,9 +47,10 @@ public:
   void AddGeckoContentListener(mozilla::layers::GeckoContentController* listener);
   void RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener);
 
+  bool IsValid() const { return mIsValid; };
   nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
-  uint32_t GetID() { return mId; }
+  uint32_t GetID() const { return mId; }
   gfxSize GetGLViewSize();
 
   /**
@@ -65,57 +63,61 @@ public:
 
 protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
-  virtual bool RecvDestroy();
-  virtual bool RecvLoadURL(const nsString&);
-  virtual bool RecvGoBack();
-  virtual bool RecvGoForward();
-  virtual bool RecvStopLoad();
-  virtual bool RecvReload(const bool&);
+  virtual bool RecvDestroy() MOZ_OVERRIDE;
+  virtual bool RecvLoadURL(const nsString&) MOZ_OVERRIDE;
+  virtual bool RecvGoBack() MOZ_OVERRIDE;
+  virtual bool RecvGoForward() MOZ_OVERRIDE;
+  virtual bool RecvStopLoad() MOZ_OVERRIDE;
+  virtual bool RecvReload(const bool&) MOZ_OVERRIDE;
 
-  virtual bool RecvSetIsActive(const bool&);
-  virtual bool RecvSetIsFocused(const bool&);
-  virtual bool RecvSuspendTimeouts();
-  virtual bool RecvResumeTimeouts();
-  virtual bool RecvLoadFrameScript(const nsString&);
-  virtual bool RecvSetViewSize(const gfxSize&);
+  virtual bool RecvSetIsActive(const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSetIsFocused(const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSuspendTimeouts() MOZ_OVERRIDE;
+  virtual bool RecvResumeTimeouts() MOZ_OVERRIDE;
+  virtual bool RecvLoadFrameScript(const nsString&) MOZ_OVERRIDE;
+  virtual bool RecvSetViewSize(const gfxSize&) MOZ_OVERRIDE;
   virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                       const gfxSize& scrollSize);
+                                       const gfxSize& scrollSize) MOZ_OVERRIDE;
 
-  virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
-  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint);
-  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint);
-  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint);
-  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration);
+  virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
+  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
+  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
+  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
+  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) MOZ_OVERRIDE;
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
                               const float&    aY,
                               const int32_t&  aButton,
                               const int32_t&  aClickCount,
                               const int32_t&  aModifiers,
-                              const bool&     aIgnoreRootScrollFrame);
-  virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit);
-  virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
-  virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
-  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
-  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
+                              const bool&     aIgnoreRootScrollFrame) MOZ_OVERRIDE;
+  virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit) MOZ_OVERRIDE;
+  virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) MOZ_OVERRIDE;
+  virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) MOZ_OVERRIDE;
+  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&) MOZ_OVERRIDE;
+  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&) MOZ_OVERRIDE;
 
   virtual bool
-  RecvAddMessageListener(const nsCString&);
+  RecvAddMessageListener(const nsCString&) MOZ_OVERRIDE;
   virtual bool
-  RecvRemoveMessageListener(const nsCString&);
+  RecvRemoveMessageListener(const nsCString&) MOZ_OVERRIDE;
   void RecvAsyncMessage(const nsAString& aMessage,
-                        const nsAString& aData);
-  virtual bool RecvSetGLViewSize(const gfxSize&);
+                        const nsAString& aData) MOZ_OVERRIDE;
+  virtual bool RecvSetGLViewSize(const gfxSize&) MOZ_OVERRIDE;
+
+  virtual bool
+  RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
+
+  virtual bool
+  RecvRemoveMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
+
+private:
+  EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId);
+
+  virtual ~EmbedLiteViewThreadChild();
 
   void RequestHasHWAcceleratedContextLooped();
 
-  virtual bool
-  RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames);
-
-  virtual bool
-  RecvRemoveMessageListeners(const InfallibleTArray<nsString>& messageNames);
-
-private:
   friend class TabChildHelper;
   friend class EmbedLiteAppService;
   friend class EmbedLiteAppThreadChild;
@@ -146,6 +148,8 @@ private:
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
   nsTArray<mozilla::layers::GeckoContentController*> mControllerListeners;
+
+  bool mIsValid;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadChild);
 };

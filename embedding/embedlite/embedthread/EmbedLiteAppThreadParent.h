@@ -15,18 +15,21 @@ class EmbedLiteApp;
 class EmbedLiteAppThreadParent : public PEmbedLiteAppParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteAppThreadParent)
-public:
-  virtual ~EmbedLiteAppThreadParent();
+protected:
+  // IPDL implementation
+  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&) MOZ_OVERRIDE;
+  virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*) MOZ_OVERRIDE;
 
-  // IPDL
+  // IPDL interface
   virtual bool
-  RecvInitialized();
+  RecvInitialized() MOZ_OVERRIDE;
 
   virtual bool
-  RecvReadyToShutdown();
+  RecvReadyToShutdown() MOZ_OVERRIDE;
 
   virtual bool RecvObserve(const nsCString& topic,
-                           const nsString& data);
+                           const nsString& data) MOZ_OVERRIDE;
 
   virtual bool
   RecvCreateWindow(
@@ -35,19 +38,14 @@ public:
           const uint32_t& chromeFlags,
           const uint32_t& contextFlags,
           uint32_t* createdID,
-          bool* cancel);
-
-protected:
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
-  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&);
-  virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*);
+          bool* cancel) MOZ_OVERRIDE;
 
 private:
   EmbedLiteAppThreadParent();
+  virtual ~EmbedLiteAppThreadParent();
 
   EmbedLiteApp* mApp;
 
-private:
   friend class EmbedLiteApp;
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppThreadParent);
 };

@@ -167,8 +167,8 @@ void EmbedContentController::PostDelayedTask(Task* aTask, int aDelayMs)
 EmbedLiteViewListener* const EmbedContentController::GetListener() const
 {
   static FakeListener sFakeListener;
-  return mRenderFrame && mRenderFrame->mView ?
-         mRenderFrame->mView->GetListener() : &sFakeListener;
+  return mRenderFrame && mRenderFrame->mListener ?
+         mRenderFrame->mListener : &sFakeListener;
 }
 
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)

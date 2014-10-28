@@ -24,12 +24,10 @@ namespace embedlite {
 class FakeListener : public EmbedLiteViewListener {};
 static FakeListener sFakeListener;
 
-EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, uint32_t aUniqueID, uint32_t aParent)
+EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteViewImplIface* aViewImpl, uint32_t aUniqueID)
   : mApp(aApp)
-  , mListener(NULL)
-  , mViewImpl(NULL)
+  , mViewImpl(aViewImpl)
   , mUniqueID(aUniqueID)
-  , mParent(aParent)
 {
   LOGT();
 }
@@ -37,31 +35,31 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, uint32_t aUniqueID, uint32_t aP
 EmbedLiteView::~EmbedLiteView()
 {
   LOGT("impl:%p", mViewImpl);
-  if (mViewImpl && mApp->GetType() == EmbedLiteApp::EMBED_THREAD) {
-    EmbedLiteViewThreadParent* impl = static_cast<EmbedLiteViewThreadParent*>(mViewImpl);
-    unused << impl->SendDestroy();
-  } else {
-    LOGNI();
-  }
   if (mViewImpl) {
     mViewImpl->ViewAPIDestroyed();
   }
-  mViewImpl = NULL;
-  if (mListener) {
-    mListener->ViewDestroyed();
-  }
+  mViewImpl = nullptr;
 }
 
 void
 EmbedLiteView::SetListener(EmbedLiteViewListener* aListener)
 {
-   mListener = aListener;
+  if (mViewImpl && mApp->GetType() == EmbedLiteApp::EMBED_THREAD) {
+    static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener = aListener;
+  } else {
+    LOGNI();
+  }
 }
 
 EmbedLiteViewListener* const
 EmbedLiteView::GetListener() const
 {
-  return mListener ? mListener : &sFakeListener;
+  if (mViewImpl && mApp->GetType() == EmbedLiteApp::EMBED_THREAD) {
+      return static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener ? static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener : &sFakeListener;
+  } else {
+    LOGNI();
+    return &sFakeListener;
+  }
 }
 
 void

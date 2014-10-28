@@ -346,7 +346,7 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
     return;
   }
 
-  if (!mEmbed) {
+  if (!mEmbed || !mEmbed->IsValid()) {
     return;
   }
 
@@ -365,7 +365,7 @@ EmbedLitePuppetWidget::GetInputContext()
 {
   mInputContext.mIMEState.mOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
   mInputContext.mNativeIMEContext = nullptr;
-  if (mEmbed) {
+  if (mEmbed && mEmbed->IsValid()) {
     int32_t enabled, open;
     intptr_t nativeIMEContext;
     mEmbed->SendGetInputContext(&enabled, &open, &nativeIMEContext);
@@ -395,7 +395,7 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
     return;
   }
 
-  if (mEmbed) {
+  if (mEmbed && mEmbed->IsValid()) {
     mEmbed->ResetInputState();
   }
 

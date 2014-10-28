@@ -10,26 +10,25 @@ namespace embedlite {
 intr protocol PEmbedLiteApp {
   manages PEmbedLiteView;
 parent:
-  async Initialized();
-  async ReadyToShutdown();
-  sync PEmbedLiteView(uint32_t id, uint32_t parentId);
+  Initialized();
+  ReadyToShutdown();
   sync CreateWindow(uint32_t parentId, nsCString uri, uint32_t chromeFlags, uint32_t contextFlags)
     returns (uint32_t createdID, bool cancel);
 
 child:
-  async PreDestroy();
-  async CreateView(uint32_t id, uint32_t parentId);
-  async SetBoolPref(nsCString name, bool value);
-  async SetCharPref(nsCString name, nsCString value);
-  async SetIntPref(nsCString name, int value);
-  async LoadGlobalStyleSheet(nsCString uri, bool aEnable);
-  async AddObserver(nsCString topic);
-  async RemoveObserver(nsCString topic);
-  async LoadComponentManifest(nsCString manifest);
-  async AddObservers(nsCString [] observers);
-  async RemoveObservers(nsCString [] observers);
+  PEmbedLiteView(uint32_t id, uint32_t parentId);
+  PreDestroy();
+  SetBoolPref(nsCString name, bool value);
+  SetCharPref(nsCString name, nsCString value);
+  SetIntPref(nsCString name, int value);
+  LoadGlobalStyleSheet(nsCString uri, bool aEnable);
+  AddObserver(nsCString topic);
+  RemoveObserver(nsCString topic);
+  LoadComponentManifest(nsCString manifest);
+  AddObservers(nsCString [] observers);
+  RemoveObservers(nsCString [] observers);
 both:
-  async Observe(nsCString topic, nsString data);
+  Observe(nsCString topic, nsString data);
 };
 
 }}
