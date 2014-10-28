@@ -26,7 +26,7 @@ EmbedLiteJSON::~EmbedLiteJSON()
 {
 }
 
-NS_IMPL_ISUPPORTS1(EmbedLiteJSON, nsIEmbedLiteJSON)
+NS_IMPL_ISUPPORTS(EmbedLiteJSON, nsIEmbedLiteJSON)
 
 nsresult
 CreateObjectStatic(nsIWritablePropertyBag2 * *aObject)

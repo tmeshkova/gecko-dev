@@ -23,7 +23,6 @@
 #include "EmbedLiteView.h"
 #include "nsXULAppAPI.h"
 #include "EmbedLiteMessagePump.h"
-#include "EmbedLiteRenderTarget.h"
 
 #include "EmbedLiteCompositorParent.h"
 
@@ -55,7 +54,6 @@ EmbedLiteApp::EmbedLiteApp()
   , mRenderType(RENDER_AUTO)
   , mProfilePath(strdup("mozembed"))
   , mIsAsyncLoop(false)
-  , mIsCompositeInMainThread(true)
 {
   LOGT();
   sSingleton = this;
@@ -71,12 +69,6 @@ EmbedLiteApp::~EmbedLiteApp()
     free(mProfilePath);
     mProfilePath = nullptr;
   }
-}
-
-EmbedLiteRenderTarget*
-EmbedLiteApp::CreateEmbedLiteRenderTarget(void* aContext, void* aSurface)
-{
-  return new EmbedLiteRenderTarget(aContext, aSurface);
 }
 
 void
@@ -253,6 +245,7 @@ EmbedLiteApp::StopChildThread()
   }
 
   mAppChild->Close();
+  delete mAppParent;
   mAppParent = nullptr;
   mAppChild = nullptr;
 
@@ -264,6 +257,12 @@ EmbedLiteApp::StopChildThread()
 void _FinalStop(EmbedLiteApp* app)
 {
   app->Stop();
+}
+
+void
+EmbedLiteApp::PreDestroy(EmbedLiteApp* app)
+{
+  unused << app->mAppParent->SendPreDestroy();
 }
 
 void
@@ -281,7 +280,7 @@ EmbedLiteApp::Stop()
   } else if (!mDestroying) {
     mDestroying = true;
     mUILoop->PostTask(FROM_HERE,
-                      NewRunnableMethod(mAppParent.get(), &EmbedLiteAppThreadParent::SendPreDestroy));
+                      NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
   } else {
     NS_ASSERTION(mUILoop, "Start was not called before stop");
     mUILoop->DoQuit();
@@ -334,6 +333,7 @@ void
 EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
 {
   LOGT("topic:%s", aMessageName);
+  NS_ENSURE_TRUE(mAppParent, );
   unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
 }
 
@@ -418,7 +418,7 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
   }
   if (mDestroying && mViews.empty()) {
     mUILoop->PostTask(FROM_HERE,
-                      NewRunnableMethod(mAppParent.get(), &EmbedLiteAppThreadParent::SendPreDestroy));
+                      NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
   }
 }
 
@@ -455,9 +455,6 @@ EmbedLiteApp::Initialized()
 {
   if (mListener) {
     mListener->Initialized();
-  }
-  if (mIsCompositeInMainThread) {
-    mozilla::layers::CompositorParent::StartUpWithExistingThread(MessageLoop::current(), PlatformThread::CurrentId());
   }
 }
 

@@ -47,8 +47,8 @@ public:
   void TransformCoordinateToGecko(const mozilla::ScreenIntPoint& aPoint,
                                   LayoutDeviceIntPoint* aRefPointOut);
   void ContentReceivedTouch(const ScrollableLayerGuid& aGuid, bool aPreventDefault);
-  nsEventStatus ReceiveInputEvent(const InputData& aEvent,
-                                  ScrollableLayerGuid* aOutTargetGuid);
+  nsEventStatus ReceiveInputEvent(InputData& aEvent,
+                                  mozilla::layers::ScrollableLayerGuid* aOutTargetGuid);
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
 

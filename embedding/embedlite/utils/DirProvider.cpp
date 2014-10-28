@@ -16,9 +16,9 @@ nsCOMPtr<nsIFile> DirProvider::sProfileDir = 0;
 nsCOMPtr<nsIFile> DirProvider::sGREDir = 0;
 nsISupports* DirProvider::sProfileLock = 0;
 
-NS_IMPL_QUERY_INTERFACE2(DirProvider,
-                         nsIDirectoryServiceProvider,
-                         nsIDirectoryServiceProvider2)
+NS_IMPL_QUERY_INTERFACE(DirProvider,
+                        nsIDirectoryServiceProvider,
+                        nsIDirectoryServiceProvider2)
 
 NS_IMETHODIMP_(MozExternalRefCountType)
 DirProvider::AddRef()

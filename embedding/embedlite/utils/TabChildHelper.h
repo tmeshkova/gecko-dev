@@ -25,16 +25,15 @@ namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteViewThreadChild;
-class TabChildHelper : public nsIDOMEventListener,
-                       public nsIObserver,
-                       public mozilla::dom::TabChildBase
+class TabChildHelper : public mozilla::dom::TabChildBase,
+                       public nsIDOMEventListener,
+                       public nsIObserver
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
   TabChildHelper(EmbedLiteViewThreadChild* aView);
-  virtual ~TabChildHelper();
 
-  NS_DECL_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
   NS_DECL_NSIOBSERVER
 
@@ -61,14 +60,17 @@ public:
                                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
                                        const bool& aIsRoot,
                                        const mozilla::layers::ZoomConstraints& aConstraints) MOZ_OVERRIDE;
+  void ReportSizeUpdate(const gfxSize& aSize);
 
 protected:
+  virtual ~TabChildHelper();
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
   // Sends a simulated mouse event from a touch event for compatibility.
   bool ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                     WidgetTouchEvent& aEvent);
   void CancelTapTracking();
+  bool HasValidInnerSize();
 
 private:
   bool InitTabChildGlobal();
@@ -78,6 +80,7 @@ private:
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
+  bool mHasValidInnerSize;
 };
 
 }

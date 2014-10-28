@@ -25,7 +25,7 @@ class EmbedLiteAppThreadChild;
 class EmbedLiteAppThreadParent;
 class EmbedLiteSubThread;
 class EmbedLiteView;
-class EmbedLiteRenderTarget;
+class PEmbedLiteAppParent;
 class EmbedLiteAppListener
 {
 public:
@@ -88,7 +88,7 @@ public:
   virtual void Stop();
 
   // if true then compositor will be started in separate own thread, and view->CompositorCreated notification will be called in non-main thread
-  virtual void SetCompositorInSeparateThread(bool aOwnThread) { mIsCompositeInMainThread = !aOwnThread; }
+  virtual void SetCompositorInSeparateThread(bool aOwnThread) { } // Deprecated
 
   // Create custom Event Message pump, alloc new object which must be destroyed in EmbedLiteAppListener::Destroyed, or later
   virtual EmbedLiteMessagePump* CreateEmbedLiteMessagePump(EmbedLiteMessagePumpListener* aListener);
@@ -129,9 +129,6 @@ public:
   virtual void AddObservers(nsTArray<nsCString>& observersList);
   virtual void RemoveObservers(nsTArray<nsCString>& observersList);
 
-  // Create wrapper for current active GL context, for proper GL sharing.
-  virtual EmbedLiteRenderTarget* CreateEmbedLiteRenderTarget(void* aContext = nullptr, void* aSurface = nullptr);
-
   // Only one EmbedHelper object allowed
   static EmbedLiteApp* GetInstance();
 
@@ -152,13 +149,14 @@ private:
   uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const char* uri, const uint32_t& contextFlags, const uint32_t& parentId);
   EmbedLiteAppListener* GetListener();
   MessageLoop* GetUILoop();
+  static void PreDestroy(EmbedLiteApp*);
 
   static EmbedLiteApp* sSingleton;
   EmbedLiteAppListener* mListener;
   EmbedLiteUILoop* mUILoop;
 
   RefPtr<EmbedLiteSubThread> mSubThread;
-  RefPtr<EmbedLiteAppThreadParent> mAppParent;
+  PEmbedLiteAppParent* mAppParent;
   RefPtr<EmbedLiteAppThreadChild> mAppChild;
 
   EmbedType mEmbedType;
@@ -168,7 +166,6 @@ private:
   RenderType mRenderType;
   char* mProfilePath;
   bool mIsAsyncLoop;
-  bool mIsCompositeInMainThread;
 };
 
 } // namespace embedlite

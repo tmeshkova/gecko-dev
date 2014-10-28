@@ -46,8 +46,8 @@ const size_t EmbedLitePuppetWidget::kMaxDimension = 4000;
 static nsTArray<EmbedLitePuppetWidget*> gTopLevelWindows;
 static bool sFailedToCreateGLContext = false;
 
-NS_IMPL_ISUPPORTS_INHERITED1(EmbedLitePuppetWidget, nsBaseWidget,
-                             nsISupportsWeakReference)
+NS_IMPL_ISUPPORTS_INHERITED(EmbedLitePuppetWidget, nsBaseWidget,
+                            nsISupportsWeakReference)
 
 static bool
 IsPopup(const nsWidgetInitData* aInitData)
@@ -81,33 +81,6 @@ EmbedLitePuppetWidget::IsTopLevel()
          mWindowType == eWindowType_invisible;
 }
 
-void EmbedLitePuppetWidget::DestroyCompositor()
-{
-  LayerScope::DestroyServerSocket();
-
-  if (mCompositorChild) {
-    mCompositorChild->SendWillStop();
-
-    // The call just made to SendWillStop can result in IPC from the
-    // CompositorParent to the CompositorChild (e.g. caused by the destruction
-    // of shared memory). We need to ensure this gets processed by the
-    // CompositorChild before it gets destroyed. It suffices to ensure that
-    // events already in the MessageLoop get processed before the
-    // CompositorChild is destroyed, so we add a task to the MessageLoop to
-    // handle compositor desctruction.
-    if (mCompositorChild) {
-      MessageLoop::current()->PostTask(FROM_HERE,
-                                       NewRunnableMethod(mCompositorChild.get(), &CompositorChild::Destroy));
-    }
-    // The DestroyCompositor task we just added to the MessageLoop will handle
-    // releasing mCompositorParent and mCompositorChild.
-    if (mCompositorParent)
-      unused << mCompositorParent.forget();
-    if (mCompositorChild)
-      unused << mCompositorChild.forget();
-  }
-}
-
 EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewThreadChild* aEmbed, uint32_t& aId)
   : mEmbed(aEmbed)
   , mVisible(false)
@@ -125,7 +98,6 @@ EmbedLitePuppetWidget::~EmbedLitePuppetWidget()
   MOZ_COUNT_DTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
   gTopLevelWindows.RemoveElement(this);
-  DestroyCompositor();
 }
 
 NS_IMETHODIMP
@@ -199,16 +171,20 @@ EmbedLitePuppetWidget::Destroy()
 
   mOnDestroyCalled = true;
 
-  Base::OnDestroy();
-  Base::Destroy();
   nsIWidget* topWidget = GetTopLevelWidget();
   if (mLayerManager && topWidget == this) {
     mLayerManager->Destroy();
   }
-  mParent = nullptr;
   mLayerManager = nullptr;
+
+  Base::OnDestroy();
+  Base::Destroy();
+  mParent = nullptr;
   mEmbed = nullptr;
   mChild = nullptr;
+
+  DestroyCompositor();
+
   return NS_OK;
 }
 
@@ -540,10 +516,9 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 {
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
-  ClientLayerManager* lm = new ClientLayerManager(this);
+  nsRefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
   MessageLoop* childMessageLoop = CompositorParent::CompositorLoop();
   mCompositorChild = new CompositorChild(lm);
-  static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->SetChildCompositor(mCompositorChild, MessageLoop::current());
   mCompositorChild->Open(parentChannel, childMessageLoop, ipc::ChildSide);
 
   TextureFactoryIdentifier textureFactoryIdentifier;
@@ -562,7 +537,7 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
   if (success) {
     ShadowLayerForwarder* lf = lm->AsShadowForwarder();
     if (!lf) {
-      delete lm;
+      lm = nullptr;
       mCompositorChild = nullptr;
       return;
     }
@@ -571,13 +546,13 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
     ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
     WindowUsesOMTC();
 
-    mLayerManager = lm;
+    mLayerManager = lm.forget();
   } else {
     // We don't currently want to support not having a LayersChild
     if (ViewIsValid()) {
       NS_RUNTIMEABORT("failed to construct LayersChild, and View still here");
     }
-    delete lm;
+    lm = nullptr;
     mCompositorChild = nullptr;
   }
 }
@@ -591,9 +566,7 @@ EmbedLitePuppetWidget::GetNaturalBounds()
 bool
 EmbedLitePuppetWidget::HasGLContext()
 {
-  EmbedLiteCompositorParent* parent =
-    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
-  return parent->RequestHasHWAcceleratedContext();
+  return true;
 }
 
 }  // namespace widget

@@ -51,7 +51,7 @@ EmbedLiteAppThreadChild::EmbedLiteAppThreadChild(MessageLoop* aParentLoop)
   sAppThreadChild = this;
 }
 
-NS_IMPL_ISUPPORTS1(EmbedLiteAppThreadChild, nsIObserver)
+NS_IMPL_ISUPPORTS(EmbedLiteAppThreadChild, nsIObserver)
 
 EmbedLiteAppThreadChild::~EmbedLiteAppThreadChild()
 {

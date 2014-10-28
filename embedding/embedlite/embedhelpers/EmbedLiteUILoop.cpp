@@ -26,7 +26,16 @@ EmbedLiteUILoop::EmbedLiteUILoop(EmbedLiteMessagePump* aCustomLoop)
 
 EmbedLiteUILoop::~EmbedLiteUILoop()
 {
-  LOGT();
+  // We do call Quit before XPCOM shutdown, that make UI loop having some leftovers like xpcom-shutdown messages in queue
+  // let's clean it up
+  while (!incoming_queue_.empty()) {
+    LOGT("Warning! incoming queue is not empty on dtor");
+    incoming_queue_.pop();
+  }
+  while (!work_queue_.empty()) {
+    LOGT("Warning! work queue is not empty on dtor");
+    work_queue_.pop();
+  }
 }
 
 void EmbedLiteUILoop::StartLoop()

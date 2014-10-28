@@ -14,55 +14,45 @@
 #include "EmbedLiteViewThreadParent.h"
 
 namespace mozilla {
-namespace layers {
-class CompositingRenderTarget;
-}
 namespace embedlite {
 
 class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
 {
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteCompositorParent)
 public:
   EmbedLiteCompositorParent(nsIWidget* aWidget,
                             bool aRenderToEGLSurface,
                             int aSurfaceWidth, int aSurfaceHeight,
                             uint32_t id);
-  virtual ~EmbedLiteCompositorParent();
 
   bool RenderToContext(gfx::DrawTarget* aTarget);
   bool RenderGL();
   void SetSurfaceSize(int width, int height);
   void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
-  void SetWorldOpacity(float aOpacity);
+  void* GetPlatformImage(int* width, int* height);
+  virtual void SuspendRendering();
+  virtual void ResumeRendering();
 
-  virtual bool RecvStop() MOZ_OVERRIDE;
-  virtual void SetChildCompositor(mozilla::layers::CompositorChild*, MessageLoop*);
-  mozilla::layers::CompositorChild* GetChildCompositor() {
-    return mChildCompositor;
-  }
-  virtual bool RequestHasHWAcceleratedContext();
 protected:
+  virtual ~EmbedLiteCompositorParent();
   virtual PLayerTransactionParent*
-    AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                 const uint64_t& aId,
-                                 TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                 bool* aSuccess);
+  AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
+                               const uint64_t& aId,
+                               TextureFactoryIdentifier* aTextureFactoryIdentifier,
+                               bool* aSuccess) MOZ_OVERRIDE;
+  virtual void ScheduleTask(CancelableTask*, int) MOZ_OVERRIDE;
 
-  virtual void ScheduleTask(CancelableTask*, int);
+private:
+  void PrepareOffscreen();
+  bool Invalidate();
+  void UpdateTransformState();
 
-  void DeferredDestroyCompositor();
-
-  bool IsGLBackend();
-
-  RefPtr<EmbedLiteViewThreadParent> mView;
-  RefPtr<mozilla::layers::CompositorChild> mChildCompositor;
-  MessageLoop* mChildMessageLoop;
   uint32_t mId;
   gfx::Matrix mWorldTransform;
   nsIntRect mActiveClipping;
-  CancelableTask *mCurrentCompositeTask;
-  float mWorldOpacity;
+  CancelableTask* mCurrentCompositeTask;
+  gfx::IntSize mLastViewSize;
+  short mInitialPaintCount;
 };
 
 } // embedlite

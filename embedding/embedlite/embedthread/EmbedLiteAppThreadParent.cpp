@@ -43,6 +43,7 @@ EmbedLiteAppThreadParent::RecvInitialized()
   PR_SetEnv("MOZ_LAYERS_PREFER_OFFSCREEN=1");
   mApp->Initialized();
   bool accel = mApp->IsAccelerated();
+  mApp->SetBoolPref("dom.netinfo.enabled", false);
   mApp->SetBoolPref("layers.acceleration.disabled", !accel);
   mApp->SetBoolPref("layers.acceleration.force-enabled", accel);
   mApp->SetBoolPref("layers.async-video.enabled", accel);

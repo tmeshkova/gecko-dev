@@ -22,8 +22,6 @@ html xul|scrollbar {
   border: 0px solid transparent !important;
   pointer-events: none;
   opacity: 1;
- /* make frame scrollbar invisible until bug 977015 is fixed */
-  display: none;
 }
 
 xul|scrollbar[orient="vertical"] {

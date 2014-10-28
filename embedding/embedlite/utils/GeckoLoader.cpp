@@ -99,6 +99,10 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 
   // create nsIFile pointing to xpcomDir
   const char* greHome = getenv("XRE_LIBXPCOM_PATH");
+  if (!greHome) {
+    LOGE("GRE_HOME is not defined and unable to get XRE_LIBXPCOM_PATH\n");
+    return false;
+  }
   nsCOMPtr<nsIFile> xuldir;
   rv = XRE_GetBinaryPath(greHome, getter_AddRefs(xuldir));
   if (NS_FAILED(rv)) {
@@ -196,9 +200,8 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   rv = NS_NewNativeLocalFile(greHomeCSTR, PR_FALSE,
                              getter_AddRefs(kDirectoryProvider.sGREDir));
 
-  if (getenv("USE_PRE_DEFINED_APP_INFO")) {
-    XRE_AddStaticComponent(&kLocalAppInfoModule);
-  }
+  // Initialize default xul application info component
+  XRE_AddStaticComponent(&kLocalAppInfoModule);
 
   // init embedding
   rv = XRE_InitEmbedding2(xuldir, appdir,

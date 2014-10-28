@@ -23,7 +23,6 @@ private:
     bool CanDestroy();
 
     static NemoResourceHandler* mGlobalHandler;
-    void* mResourceSet;
     int mCounter;
 };
 

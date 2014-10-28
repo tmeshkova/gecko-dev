@@ -43,6 +43,7 @@ pref("browser.dom.window.dump.enabled", true);
 pref("layers.acceleration.draw-fps", false);
 pref("layers.use-deprecated-textures", false);
 pref("layers.enable-tiles", true);
+pref("layers.async-pan-zoom.enabled", true);
 pref("font.size.inflation.disabledInMasterProcess", true);
 pref("apz.asyncscroll.throttle", 15);
 pref("apz.y_skate_size_multiplier", "4.5f");
@@ -277,9 +278,9 @@ pref("dom.event.touch.coalescing.enabled", false);
 
 // On memory pressure, release dirty but unused pages held by jemalloc
 // back to the system.
-pref("memory.free_dirty_pages", false);
+pref("memory.free_dirty_pages", true);
 
-pref("layout.imagevisibility.enabled", false);
+pref("layout.imagevisibility.enabled", true);
 
 // Enable Web Audio for Firefox for Android in Nightly and Aurora
 pref("media.webaudio.enabled", true);

@@ -25,7 +25,7 @@ EmbedLiteXulAppInfo::~EmbedLiteXulAppInfo()
 {
 }
 
-NS_IMPL_ISUPPORTS2(EmbedLiteXulAppInfo, nsIXULRuntime, nsIXULAppInfo)
+NS_IMPL_ISUPPORTS(EmbedLiteXulAppInfo, nsIXULRuntime, nsIXULAppInfo)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetID(nsACString& aID)
 {
@@ -140,11 +140,12 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetLastRunCrashID(nsAString& aLastRunCrashID)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+/*
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetBrowserTabsRemote(bool* aResult)
 {
   *aResult = false;
   return NS_OK;
-}
+}*/
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsReleaseBuild(bool* aResult)
 {
@@ -186,5 +187,12 @@ EmbedLiteXulAppInfo::GetProcessID(uint32_t* aResult)
 #else
   *aResult = getpid();
 #endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetBrowserTabsRemote(bool* aResult)
+{
+  *aResult = false;
   return NS_OK;
 }

@@ -42,7 +42,9 @@ protected:
     GLLibraryEGL* const mEGL;
     const GLFormats mFormats;
     GLuint mProdTex;
+public:
     EGLImage mImage;
+protected:
     GLContext* mCurConsGL;
     GLuint mConsTex;
     nsRefPtr<TextureGarbageBin> mGarbageBin;

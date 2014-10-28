@@ -24,8 +24,6 @@ public:
   NS_DECL_NSIOBSERVER
 
   EmbedLiteAppThreadChild(MessageLoop* aParentLoop);
-  virtual ~EmbedLiteAppThreadChild();
-
   void Init(MessageChannel* aParentChannel);
   static EmbedLiteAppThreadChild* GetInstance();
   EmbedLiteViewThreadChild* GetViewByID(uint32_t aId);
@@ -35,6 +33,8 @@ public:
   virtual bool RecvCreateView(const uint32_t& id, const uint32_t& parentId);
 
 protected:
+  virtual ~EmbedLiteAppThreadChild();
+
   // Embed API ipdl interface
   virtual bool RecvSetBoolPref(const nsCString&, const bool&);
   virtual bool RecvSetCharPref(const nsCString&, const nsCString&);

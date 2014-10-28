@@ -26,7 +26,7 @@ WindowCreator::~WindowCreator()
   LOGT();
 }
 
-NS_IMPL_ISUPPORTS2(WindowCreator, nsIWindowCreator, nsIWindowCreator2)
+NS_IMPL_ISUPPORTS(WindowCreator, nsIWindowCreator, nsIWindowCreator2)
 
 NS_IMETHODIMP
 WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
@@ -93,5 +93,5 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome* aParent,
 {
   LOGNI();
   bool cancel;
-  return CreateChromeWindow2(aParent, aChromeFlags, 0, 0, &cancel, _retval);
+  return CreateChromeWindow2(aParent, aChromeFlags, 0, nullptr, &cancel, _retval);
 }

@@ -210,6 +210,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
     NS_ERROR("Got stuck with DOMWindow1!");
   }
 
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
   utils->GetOuterWindowID(&mOuterId);
 
@@ -392,8 +393,10 @@ EmbedLiteViewThreadChild::RecvResumeTimeouts()
   nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(mDOMWindow, &rv));
   NS_ENSURE_SUCCESS(rv, false);
 
-  rv = pwindow->ResumeTimeouts();
-  NS_ENSURE_SUCCESS(rv, false);
+  if (pwindow->TimeoutSuspendCount()) {
+    rv = pwindow->ResumeTimeouts();
+    NS_ENSURE_SUCCESS(rv, false);
+  }
 
   return true;
 }
@@ -515,7 +518,7 @@ EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
   baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
   baseWindow->SetVisibility(true);
 
-  mHelper->HandlePossibleViewportChange();
+  mHelper->ReportSizeUpdate(aSize);
 
   return true;
 }
@@ -587,18 +590,18 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     return true;
   }
 
-
-  FrameMetrics metrics(aFrameMetrics);
-  if (mViewResized && mHelper->HandlePossibleViewportChange()) {
-    metrics = mHelper->mLastRootMetrics;
+  if (mViewResized &&
+      aFrameMetrics.mIsRoot &&
+      mHelper->mLastRootMetrics.mPresShellId == aFrameMetrics.mPresShellId &&
+      mHelper->HandlePossibleViewportChange()) {
     mViewResized = false;
   }
 
-  RelayFrameMetrics(metrics);
+  RelayFrameMetrics(aFrameMetrics);
 
   bool ret = true;
   if (sHandleDefaultAZPC.viewport) {
-    ret = mHelper->RecvUpdateFrame(metrics);
+    ret = mHelper->RecvUpdateFrame(aFrameMetrics);
   }
 
   return ret;
@@ -732,7 +735,7 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
   bool prevIsComposition = mIMEComposing;
   bool StartComposite = !prevIsComposition && commit.IsEmpty() && !preEdit.IsEmpty();
   bool UpdateComposite = prevIsComposition && commit.IsEmpty() && !preEdit.IsEmpty();
-  bool EndComposite = prevIsComposition && !commit.IsEmpty() && preEdit.IsEmpty();
+  bool EndComposite = prevIsComposition && preEdit.IsEmpty();
   mIMEComposing = UpdateComposite || StartComposite;
   nsString pushStr = preEdit.IsEmpty() ? commit : preEdit;
   if (!commit.IsEmpty() && !EndComposite) {
@@ -745,18 +748,30 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
     mHelper->DispatchWidgetEvent(event);
   }
 
-  if (StartComposite || UpdateComposite) {
-    WidgetCompositionEvent event(true, NS_COMPOSITION_UPDATE, widget);
-    InitEvent(event, nullptr);
-    event.data = pushStr;
-    mHelper->DispatchWidgetEvent(event);
-  }
-
   if (StartComposite || UpdateComposite || EndComposite) {
+    WidgetCompositionEvent updateEvent(true, NS_COMPOSITION_UPDATE, widget);
+    InitEvent(updateEvent, nullptr);
+    updateEvent.data = pushStr;
+    mHelper->DispatchWidgetEvent(updateEvent);
+
     WidgetTextEvent event(true, NS_TEXT_TEXT, widget);
     InitEvent(event, nullptr);
     event.theText = pushStr;
     mHelper->DispatchWidgetEvent(event);
+
+    nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+    if (!ps) {
+      return false;
+    }
+    nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
+    nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
+
+    InternalEditorInputEvent inputEvent(true, NS_EDITOR_INPUT, widget);
+    inputEvent.time = static_cast<uint64_t>(PR_Now() / 1000);
+    inputEvent.mIsComposing = mIMEComposing;
+    nsEventStatus status = nsEventStatus_eIgnore;
+    nsresult rv =
+      ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
   }
 
   if (EndComposite) {
@@ -781,6 +796,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -805,6 +821,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -826,6 +843,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   }
 
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
 
   NS_ENSURE_TRUE(utils, true);
@@ -864,8 +882,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     }
   }
   if (aData.mType == MultiTouchInput::MULTITOUCH_END ||
-      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL ||
-      aData.mType == MultiTouchInput::MULTITOUCH_LEAVE) {
+      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL) {
     mDispatchSynthMouseEvents = true;
   }
   return true;

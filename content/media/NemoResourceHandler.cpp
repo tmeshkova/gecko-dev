@@ -6,18 +6,11 @@
 
 #include "NemoResourceHandler.h"
 
-#include <QtCore/QCoreApplication>
-#define signals Q_SIGNALS
-#define slots Q_SLOTS
-#include <policy/audio-resource.h>
-#include <policy/resource-set.h>
 #include "nsThreadUtils.h"
 #include "mozilla/Services.h"
 #include "nsIObserverService.h"
 #include "nsStringGlue.h"
 #include "mozilla/Preferences.h"
-
-using namespace ResourcePolicy;
 
 namespace mozilla {
 
@@ -92,28 +85,12 @@ void
 NemoResourceHandler::Aquire()
 {
     mCounter++;
-    if (mCounter > 0 && !mResourceSet)
-    {
-        ResourceSet* set = new ResourcePolicy::ResourceSet("player");
-        ResourcePolicy::AudioResource *audioResource = new ResourcePolicy::AudioResource("player");
-        audioResource->setProcessID(QCoreApplication::applicationPid());
-        audioResource->setStreamTag("media.name", "*");
-        set->addResourceObject(audioResource);
-        set->addResource(ResourcePolicy::VideoPlaybackType);
-        set->acquire();
-        mResourceSet = set;
-    }
 }
 
 void
 NemoResourceHandler::Release()
 {
     mCounter--;
-    if (mCounter == 0 && mResourceSet)
-    {
-        delete static_cast<ResourceSet*>(mResourceSet);
-        mResourceSet = nullptr;
-    }
 }
 
 bool
@@ -123,8 +100,7 @@ NemoResourceHandler::CanDestroy()
 }
 
 NemoResourceHandler::NemoResourceHandler()
-  : mResourceSet(nullptr)
-  , mCounter(0)
+  : mCounter(0)
 {
     MOZ_ASSERT(mGlobalHandler == nullptr);
     mGlobalHandler = this;

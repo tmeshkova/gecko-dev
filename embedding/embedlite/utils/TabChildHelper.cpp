@@ -50,6 +50,7 @@ static bool sPostAZPCAsJsonViewport(false);
 
 TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
   : mView(aView)
+  , mHasValidInnerSize(false)
 {
   LOGT();
 
@@ -156,13 +157,13 @@ TabChildHelper::Unload()
   observerService->RemoveObserver(this, DETECT_SCROLLABLE_SUBFRAME);
 }
 
-NS_INTERFACE_MAP_BEGIN(TabChildHelper)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TabChildHelper)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
-NS_INTERFACE_MAP_END
+NS_INTERFACE_MAP_END_INHERITING(TabChildBase)
 
-NS_IMPL_ADDREF(TabChildHelper)
-NS_IMPL_RELEASE(TabChildHelper)
+NS_IMPL_ADDREF_INHERITED(TabChildHelper, TabChildBase);
+NS_IMPL_RELEASE_INHERITED(TabChildHelper, TabChildBase);
 
 bool
 TabChildHelper::InitTabChildGlobal()
@@ -199,6 +200,12 @@ TabChildHelper::InitTabChildGlobal()
   return true;
 }
 
+bool
+TabChildHelper::HasValidInnerSize()
+{
+  return mHasValidInnerSize;
+}
+
 NS_IMETHODIMP
 TabChildHelper::Observe(nsISupports* aSubject,
                         const char* aTopic,
@@ -221,6 +228,8 @@ TabChildHelper::Observe(nsISupports* aSubject,
     nsCOMPtr<nsIDocument> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
+      mozilla::dom::AutoNoJSAPI nojsapi;
+
       nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
       mContentDocumentIsDisplayed = true;
@@ -237,6 +246,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
         // until we we get an inner size.
         if (HasValidInnerSize()) {
           InitializeRootMetrics();
+
           utils->SetResolution(mLastRootMetrics.mResolution.scale,
                                mLastRootMetrics.mResolution.scale);
           HandlePossibleViewportChange();
@@ -408,14 +418,6 @@ TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aDa
       msg = NS_TOUCH_END;
       break;
     }
-    case MultiTouchInput::MULTITOUCH_ENTER: {
-      msg = NS_TOUCH_ENTER;
-      break;
-    }
-    case MultiTouchInput::MULTITOUCH_LEAVE: {
-      msg = NS_TOUCH_LEAVE;
-      break;
-    }
     case MultiTouchInput::MULTITOUCH_CANCEL: {
       msg = NS_TOUCH_CANCEL;
       break;
@@ -494,4 +496,16 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                           aViewId,
                                           aIsRoot,
                                           aConstraints);
+}
+
+void
+TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
+{
+  bool initialSizing = !HasValidInnerSize()
+                    && (aSize.width != 0 && aSize.height != 0);
+  if (initialSizing) {
+    mHasValidInnerSize = true;
+  }
+
+  HandlePossibleViewportChange();
 }
