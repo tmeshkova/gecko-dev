@@ -502,7 +502,7 @@ private:
   nsGlobalWindow* mWindow;
 };
 
-NS_IMPL_ISUPPORTS2(nsGlobalWindowObserver, nsIObserver, nsIInterfaceRequestor)
+NS_IMPL_ISUPPORTS(nsGlobalWindowObserver, nsIObserver, nsIInterfaceRequestor)
 
 nsTimeout::nsTimeout()
   : mCleared(false),
@@ -2154,7 +2154,7 @@ WindowStateHolder::~WindowStateHolder()
   }
 }
 
-NS_IMPL_ISUPPORTS1(WindowStateHolder, WindowStateHolder)
+NS_IMPL_ISUPPORTS(WindowStateHolder, WindowStateHolder)
 
 // We need certain special behavior for remote XUL whitelisted domains, but we
 // don't want that behavior to take effect in automation, because we whitelist
@@ -8396,7 +8396,7 @@ nsGlobalWindow::ReallyCloseWindow()
 void
 nsGlobalWindow::EnterModalState()
 {
-  FORWARD_TO_OUTER_VOID(EnterModalState, ());
+  MOZ_ASSERT(IsOuterWindow(), "Modal state is maintained on outer windows");
 
   // GetScriptableTop, not GetTop, so that EnterModalState works properly with
   // <iframe mozbrowser>.
@@ -8529,7 +8529,7 @@ private:
 void
 nsGlobalWindow::LeaveModalState()
 {
-  FORWARD_TO_OUTER_VOID(LeaveModalState, ());
+  MOZ_ASSERT(IsOuterWindow(), "Modal state is maintained on outer windows");
 
   nsGlobalWindow* topWin = GetScriptableTop();
 

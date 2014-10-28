@@ -13,7 +13,6 @@ let Cr = Components.results;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/AddonManager.jsm");
-Cu.import("resource://gre/modules/DownloadNotifications.jsm");
 Cu.import("resource://gre/modules/FileUtils.jsm");
 Cu.import("resource://gre/modules/JNI.jsm");
 Cu.import('resource://gre/modules/Payment.jsm');
@@ -111,6 +110,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
   ["WebrtcUI", ["getUserMedia:request", "recording-device-events"], "chrome://browser/content/WebrtcUI.js"],
 #endif
   ["MemoryObserver", ["memory-pressure", "Memory:Dump"], "chrome://browser/content/MemoryObserver.js"],
+  ["ConsoleAPI", ["console-api-log-event"], "chrome://browser/content/ConsoleAPI.js"],
   ["FindHelper", ["FindInPage:Find", "FindInPage:Prev", "FindInPage:Next", "FindInPage:Closed", "Tab:Selected"], "chrome://browser/content/FindHelper.js"],
   ["PermissionsHelper", ["Permissions:Get", "Permissions:Clear"], "chrome://browser/content/PermissionsHelper.js"],
   ["FeedHandler", ["Feeds:Subscribe"], "chrome://browser/content/FeedHandler.js"],
@@ -361,7 +361,7 @@ var BrowserApp = {
 
     NativeWindow.init();
     LightWeightThemeWebInstaller.init();
-    DownloadNotifications.init();
+    Downloads.init();
     FormAssistant.init();
     IndexedDB.init();
     HealthReportStatusListener.init();
@@ -649,7 +649,7 @@ var BrowserApp = {
       function(aTarget) {
         aTarget.muted = true;
       });
-
+  
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.unmute"),
       NativeWindow.contextmenus.mediaContext("media-muted"),
       function(aTarget) {
@@ -742,7 +742,6 @@ var BrowserApp = {
 
   shutdown: function shutdown() {
     NativeWindow.uninit();
-    DownloadNotifications.uninit();
     LightWeightThemeWebInstaller.uninit();
     FormAssistant.uninit();
     IndexedDB.uninit();
@@ -1812,7 +1811,7 @@ var NativeWindow = {
         return;
 
       sendMessageToJava({
-        type: "Menu:Update",
+        type: "Menu:Update", 
         id: aId,
         options: aOptions
       });
@@ -1838,7 +1837,7 @@ var NativeWindow = {
    *                     automatically dismiss before this time.
    *        checkbox:    A string to appear next to a checkbox under the notification
    *                     message. The button callback functions will be called with
-   *                     the checked state as an argument.
+   *                     the checked state as an argument.                   
    */
     show: function(aMessage, aValue, aButtons, aTabID, aOptions) {
       if (aButtons == null) {
@@ -2240,7 +2239,7 @@ var NativeWindow = {
             mode: SelectionHandler.SELECT_AT_POINT,
             x: x,
             y: y
-          })) {
+          })) { 
             SelectionHandler.attachCaret(target);
           }
         }
@@ -3134,7 +3133,7 @@ Tab.prototype = {
                                 viewportWidth - 15);
   },
 
-  /**
+  /** 
    * Reloads the tab with the desktop mode setting.
    */
   reloadWithMode: function (aDesktopMode) {
@@ -3769,7 +3768,7 @@ Tab.prototype = {
 
             if (sizes == "any") {
               // Since Java expects an integer, use -1 to represent icons with sizes="any"
-              maxSize = -1;
+              maxSize = -1; 
             } else {
               let tokens = sizes.split(" ");
               tokens.forEach(function(token) {
@@ -6647,7 +6646,7 @@ var IdentityHandler = {
                                .QueryInterface(Components.interfaces.nsISSLStatusProvider)
                                .SSLStatus;
 
-    // Don't pass in the actual location object, since it can cause us to
+    // Don't pass in the actual location object, since it can cause us to 
     // hold on to the window object too long.  Just pass in the fields we
     // care about. (bug 424829)
     let locationObj = {};
@@ -6697,7 +6696,7 @@ var IdentityHandler = {
 
       return result;
     }
-
+    
     // Otherwise, we don't know the cert owner
     result.owner = Strings.browser.GetStringFromName("identity.ownerUnknown3");
 
@@ -7309,7 +7308,7 @@ var WebappsUI = {
         favicon.src = WebappsUI.DEFAULT_ICON;
       }
     };
-
+  
     favicon.src = aIconURL;
   },
 
@@ -7483,14 +7482,21 @@ let Reader = {
       sendMessageToJava({
         type: "Reader:LongClick",
       });
+
+      // Create a relative timestamp for telemetry
+      let uptime = Date.now() - Services.startup.getStartupInfo().linkerInitialized;
+      UITelemetry.addEvent("save.1", "pageaction", uptime, "reader");
     },
   },
 
   updatePageAction: function(tab) {
-    if(this.pageAction.id) {
+    if (this.pageAction.id) {
       NativeWindow.pageactions.remove(this.pageAction.id);
       delete this.pageAction.id;
     }
+
+    // Create a relative timestamp for telemetry
+    let uptime = Date.now() - Services.startup.getStartupInfo().linkerInitialized;
 
     if (tab.readerActive) {
       this.pageAction.id = NativeWindow.pageactions.add({
@@ -7499,7 +7505,17 @@ let Reader = {
         clickCallback: this.pageAction.readerModeCallback,
         important: true
       });
-    } else if (tab.readerEnabled) {
+
+      // Only start a reader session if the viewer is in the foreground. We do
+      // not track background reader viewers.
+      UITelemetry.startSession("reader.1", uptime);
+      return;
+    }
+
+    // Only stop a reader session if the foreground viewer is not visible.
+    UITelemetry.stopSession("reader.1", "", uptime);
+
+    if (tab.readerEnabled) {
       this.pageAction.id = NativeWindow.pageactions.add({
         title: Strings.browser.GetStringFromName("readerMode.enter"),
         icon: "drawable://reader",
@@ -8071,6 +8087,10 @@ var ExternalApps = {
       icon: "drawable://icon_openinapp",
 
       clickCallback: () => {
+        // Create a relative timestamp for telemetry
+        let uptime = Date.now() - Services.startup.getStartupInfo().linkerInitialized;
+        UITelemetry.addEvent("launch.1", "pageaction", uptime, "helper");
+
         if (apps.length > 1) {
           // Use the HelperApps prompt here to filter out any Http handlers
           HelperApps.prompt(apps, {
@@ -8488,21 +8508,3 @@ HTMLContextMenuItem.prototype = Object.create(ContextMenuItem.prototype, {
     }
   },
 });
-
-/**
- * CID of Downloads.jsm's implementation of nsITransfer.
- */
-const kTransferCid = Components.ID("{1b4c85df-cbdd-4bb6-b04e-613caece083c}");
-
-/**
- * Contract ID of the service implementing nsITransfer.
- */
-const kTransferContractId = "@mozilla.org/transfer;1";
-
-// Override Toolkit's nsITransfer implementation with the one from the
-// JavaScript API for downloads.  This will eventually be removed when
-// nsIDownloadManager will not be available anymore (bug 851471).  The
-// old code in this module will be removed in bug 899110.
-Components.manager.QueryInterface(Ci.nsIComponentRegistrar)
-                  .registerFactory(kTransferCid, "",
-                                   kTransferContractId, null);

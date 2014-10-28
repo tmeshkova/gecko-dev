@@ -327,24 +327,25 @@ ValidateConstant(JSContext *cx, AsmJSModule::Global &global, HandleValue globalV
 static bool
 LinkModuleToHeap(JSContext *cx, AsmJSModule &module, Handle<ArrayBufferObject*> heap)
 {
-    if (!IsValidAsmJSHeapLength(heap->byteLength())) {
+    uint32_t heapLength = heap->byteLength();
+    if (!IsValidAsmJSHeapLength(heapLength)) {
         ScopedJSFreePtr<char> msg(
             JS_smprintf("ArrayBuffer byteLength 0x%x is not a valid heap length. The next "
                         "valid length is 0x%x",
-                        heap->byteLength(),
-                        RoundUpToNextValidAsmJSHeapLength(heap->byteLength())));
+                        heapLength,
+                        RoundUpToNextValidAsmJSHeapLength(heapLength)));
         return LinkFail(cx, msg.get());
     }
 
     // This check is sufficient without considering the size of the loaded datum because heap
     // loads and stores start on an aligned boundary and the heap byteLength has larger alignment.
     JS_ASSERT((module.minHeapLength() - 1) <= INT32_MAX);
-    if (heap->byteLength() < module.minHeapLength()) {
+    if (heapLength < module.minHeapLength()) {
         ScopedJSFreePtr<char> msg(
             JS_smprintf("ArrayBuffer byteLength of 0x%x is less than 0x%x (which is the"
                         "largest constant heap access offset rounded up to the next valid "
                         "heap size).",
-                        heap->byteLength(),
+                        heapLength,
                         module.minHeapLength()));
         return LinkFail(cx, msg.get());
     }
@@ -460,15 +461,6 @@ CallAsmJS(JSContext *cx, unsigned argc, Value *vp)
     // the arguments.
     const AsmJSModule::ExportedFunction &func = FunctionToExportedFunction(callee, module);
 
-    // An asm.js module is specialized to its heap's base address and length
-    // which is normally immutable except for the neuter operation that occurs
-    // when an ArrayBuffer is transfered. Throw an internal error if we try to
-    // run with a neutered heap.
-    if (module.maybeHeapBufferObject() && module.maybeHeapBufferObject()->isNeutered()) {
-        js_ReportOverRecursed(cx);
-        return false;
-    }
-
     // The calling convention for an external call into asm.js is to pass an
     // array of 8-byte values where each value contains either a coerced int32
     // (in the low word) or double value, with the coercions specified by the
@@ -498,6 +490,15 @@ CallAsmJS(JSContext *cx, unsigned argc, Value *vp)
                 return false;
             break;
         }
+    }
+
+    // An asm.js module is specialized to its heap's base address and length
+    // which is normally immutable except for the neuter operation that occurs
+    // when an ArrayBuffer is transfered. Throw an internal error if we're
+    // about to run with a neutered heap.
+    if (module.maybeHeapBufferObject() && module.maybeHeapBufferObject()->isNeutered()) {
+        js_ReportOverRecursed(cx);
+        return false;
     }
 
     {
@@ -758,12 +759,24 @@ LinkAsmJS(JSContext *cx, unsigned argc, JS::Value *vp)
     RootedFunction fun(cx, &args.callee().as<JSFunction>());
     Rooted<AsmJSModuleObject*> moduleObj(cx, &ModuleFunctionToModuleObject(fun));
 
+    // All ICache flushing of the module being linked has been inhibited under the
+    // assumption that the module is flushed after dynamic linking (when the last code
+    // mutation occurs).  Thus, enter an AutoFlushICache context for the entire module
+    // now.  The module range is set below.
+    AutoFlushICache afc("LinkAsmJS");
+
     // When a module is linked, it is dynamically specialized to the given
     // arguments (buffer, ffis). Thus, if the module is linked again (it is just
     // a function so it can be called multiple times), we need to clone a new
     // module.
-    if (moduleObj->module().isDynamicallyLinked() && !CloneModule(cx, &moduleObj))
-        return false;
+    if (moduleObj->module().isDynamicallyLinked()) {
+        if (!CloneModule(cx, &moduleObj))
+            return false;
+    } else {
+        // CloneModule already calls setAutoFlushICacheRange internally before patching
+        // the cloned module, so avoid calling twice.
+        moduleObj->module().setAutoFlushICacheRange();
+    }
 
     AsmJSModule &module = moduleObj->module();
 

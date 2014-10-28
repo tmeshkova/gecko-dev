@@ -658,7 +658,7 @@ private:
   nsWeakPtr mDocument;
 };
 
-NS_IMPL_ISUPPORTS1(VibrateWindowListener, nsIDOMEventListener)
+NS_IMPL_ISUPPORTS(VibrateWindowListener, nsIDOMEventListener)
 
 StaticRefPtr<VibrateWindowListener> gVibrateWindowListener;
 
@@ -1017,9 +1017,9 @@ class BeaconStreamListener MOZ_FINAL : public nsIStreamListener
     NS_DECL_NSIREQUESTOBSERVER
 };
 
-NS_IMPL_ISUPPORTS2(BeaconStreamListener,
-                   nsIStreamListener,
-                   nsIRequestObserver)
+NS_IMPL_ISUPPORTS(BeaconStreamListener,
+                  nsIStreamListener,
+                  nsIRequestObserver)
 
 
 NS_IMETHODIMP
@@ -1203,8 +1203,10 @@ Navigator::SendBeacon(const nsAString& aUrl,
         return false;
       }
 
-      rv = strStream->SetData(reinterpret_cast<char*>(aData.Value().GetAsArrayBufferView().Data()),
-                              aData.Value().GetAsArrayBufferView().Length());
+      ArrayBufferView& view = aData.Value().GetAsArrayBufferView();
+      view.ComputeLengthAndData();
+      rv = strStream->SetData(reinterpret_cast<char*>(view.Data()),
+                              view.Length());
 
       if (NS_FAILED(rv)) {
         aRv.Throw(NS_ERROR_FAILURE);

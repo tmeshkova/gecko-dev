@@ -141,7 +141,7 @@ public:
   ConsoleCallData()
     : mMethodName(Console::MethodLog)
     , mPrivate(false)
-    , mTimeStamp(JS_Now())
+    , mTimeStamp(JS_Now() / PR_USEC_PER_MSEC)
     , mMonotonicTimer(0)
   {
     MOZ_COUNT_CTOR(ConsoleCallData);
@@ -476,10 +476,7 @@ private:
       arguments.AppendElement(value);
     }
 
-    console->ProfileMethod(cx, mAction, arguments, error);
-    if (error.Failed()) {
-      NS_WARNING("Failed to call call profile() method to the ConsoleAPI.");
-    }
+    console->ProfileMethod(cx, mAction, arguments);
   }
 
 private:
@@ -662,23 +659,20 @@ Console::TimeEnd(JSContext* aCx, const JS::Handle<JS::Value> aTime)
 }
 
 void
-Console::Profile(JSContext* aCx, const Sequence<JS::Value>& aData,
-                 ErrorResult& aRv)
+Console::Profile(JSContext* aCx, const Sequence<JS::Value>& aData)
 {
-  ProfileMethod(aCx, NS_LITERAL_STRING("profile"), aData, aRv);
+  ProfileMethod(aCx, NS_LITERAL_STRING("profile"), aData);
 }
 
 void
-Console::ProfileEnd(JSContext* aCx, const Sequence<JS::Value>& aData,
-                    ErrorResult& aRv)
+Console::ProfileEnd(JSContext* aCx, const Sequence<JS::Value>& aData)
 {
-  ProfileMethod(aCx, NS_LITERAL_STRING("profileEnd"), aData, aRv);
+  ProfileMethod(aCx, NS_LITERAL_STRING("profileEnd"), aData);
 }
 
 void
 Console::ProfileMethod(JSContext* aCx, const nsAString& aAction,
-                       const Sequence<JS::Value>& aData,
-                       ErrorResult& aRv)
+                       const Sequence<JS::Value>& aData)
 {
   if (!NS_IsMainThread()) {
     // Here we are in a worker thread.
@@ -687,6 +681,8 @@ Console::ProfileMethod(JSContext* aCx, const nsAString& aAction,
     runnable->Dispatch();
     return;
   }
+
+  ClearException ce(aCx);
 
   RootedDictionary<ConsoleProfileEvent> event(aCx);
   event.mAction = aAction;
@@ -700,15 +696,14 @@ Console::ProfileMethod(JSContext* aCx, const nsAString& aAction,
 
   JS::Rooted<JS::Value> eventValue(aCx);
   if (!event.ToObject(aCx, &eventValue)) {
-    aRv.Throw(NS_ERROR_FAILURE);
     return;
   }
 
   JS::Rooted<JSObject*> eventObj(aCx, &eventValue.toObject());
   MOZ_ASSERT(eventObj);
 
-  if (!JS_DefineProperty(aCx, eventObj, "wrappedJSObject", eventValue, JSPROP_ENUMERATE)) {
-    aRv.Throw(NS_ERROR_FAILURE);
+  if (!JS_DefineProperty(aCx, eventObj, "wrappedJSObject", eventValue,
+      JSPROP_ENUMERATE)) {
     return;
   }
 
@@ -717,7 +712,6 @@ Console::ProfileMethod(JSContext* aCx, const nsAString& aAction,
   const nsIID& iid = NS_GET_IID(nsISupports);
 
   if (NS_FAILED(xpc->WrapJS(aCx, eventObj, iid, getter_AddRefs(wrapper)))) {
-    aRv.Throw(NS_ERROR_FAILURE);
     return;
   }
 
@@ -836,13 +830,14 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
   ConsoleCallData* callData = new ConsoleCallData();
   mQueuedCalls.insertBack(callData);
 
+  ClearException ce(aCx);
+
   callData->Initialize(aCx, aMethodName, aMethodString, aData);
   RAII raii(mQueuedCalls);
 
   if (mWindow) {
     nsCOMPtr<nsIWebNavigation> webNav = do_GetInterface(mWindow);
     if (!webNav) {
-      Throw(aCx, NS_ERROR_FAILURE);
       return;
     }
 
@@ -857,7 +852,6 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
   nsCOMPtr<nsIStackFrame> stack = CreateStack(aCx, maxDepth);
 
   if (!stack) {
-    Throw(aCx, NS_ERROR_FAILURE);
     return;
   }
 
@@ -866,7 +860,6 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
     uint32_t language;
     nsresult rv = stack->GetLanguage(&language);
     if (NS_FAILED(rv)) {
-      Throw(aCx, rv);
       return;
     }
 
@@ -877,7 +870,6 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
                                            callData->mTopStackFrame.ref(),
                                            language);
       if (NS_FAILED(rv)) {
-        Throw(aCx, rv);
         return;
       }
 
@@ -887,7 +879,6 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
     nsCOMPtr<nsIStackFrame> caller;
     rv = stack->GetCaller(getter_AddRefs(caller));
     if (NS_FAILED(rv)) {
-      Throw(aCx, rv);
       return;
     }
 
@@ -902,24 +893,32 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
     callData->mReifiedStack.construct();
     nsresult rv = ReifyStack(stack, callData->mReifiedStack.ref());
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      Throw(aCx, rv);
       return;
     }
   }
 
   // Monotonic timer for 'time' and 'timeEnd'
-  if ((aMethodName == MethodTime || aMethodName == MethodTimeEnd) && mWindow) {
-    nsGlobalWindow *win = static_cast<nsGlobalWindow*>(mWindow.get());
-    MOZ_ASSERT(win);
+  if ((aMethodName == MethodTime || aMethodName == MethodTimeEnd)) {
+    if (mWindow) {
+      nsGlobalWindow *win = static_cast<nsGlobalWindow*>(mWindow.get());
+      MOZ_ASSERT(win);
 
-    ErrorResult rv;
-    nsRefPtr<nsPerformance> performance = win->GetPerformance(rv);
-    if (rv.Failed()) {
-      Throw(aCx, rv.ErrorCode());
-      return;
+      ErrorResult rv;
+      nsRefPtr<nsPerformance> performance = win->GetPerformance(rv);
+      if (rv.Failed()) {
+        return;
+      }
+
+      callData->mMonotonicTimer = performance->Now();
+    } else {
+      WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+      MOZ_ASSERT(workerPrivate);
+
+      TimeDuration duration =
+        mozilla::TimeStamp::Now() - workerPrivate->CreationTimeStamp();
+
+      callData->mMonotonicTimer = duration.ToMilliseconds();
     }
-
-    callData->mMonotonicTimer = performance->Now();
   }
 
   // The operation is completed. RAII class has to be disabled.
@@ -1111,7 +1110,6 @@ Console::ProcessCallData(ConsoleCallData* aData)
 
   JS::Rooted<JS::Value> eventValue(cx);
   if (!event.ToObject(cx, &eventValue)) {
-    Throw(cx, NS_ERROR_FAILURE);
     return;
   }
 

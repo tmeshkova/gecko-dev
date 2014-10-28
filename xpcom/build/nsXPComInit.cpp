@@ -14,10 +14,10 @@
 #include "nsXPCOMPrivate.h"
 #include "nsXPCOMCIDInternal.h"
 
-#include "prlink.h"
-
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/CompositorParent.h"
+
+#include "prlink.h"
 
 #include "nsCycleCollector.h"
 #include "nsObserverList.h"
@@ -375,7 +375,7 @@ private:
     }
 };
 
-NS_IMPL_ISUPPORTS1(ICUReporter, nsIMemoryReporter)
+NS_IMPL_ISUPPORTS(ICUReporter, nsIMemoryReporter)
 
 /* static */ template<> Atomic<size_t> CountingAllocatorBase<ICUReporter>::sAmount(0);
 
@@ -395,7 +395,7 @@ private:
     }
 };
 
-NS_IMPL_ISUPPORTS1(OggReporter, nsIMemoryReporter)
+NS_IMPL_ISUPPORTS(OggReporter, nsIMemoryReporter)
 
 /* static */ template<> Atomic<size_t> CountingAllocatorBase<OggReporter>::sAmount(0);
 
@@ -416,7 +416,7 @@ private:
     }
 };
 
-NS_IMPL_ISUPPORTS1(VPXReporter, nsIMemoryReporter)
+NS_IMPL_ISUPPORTS(VPXReporter, nsIMemoryReporter)
 
 /* static */ template<> Atomic<size_t> CountingAllocatorBase<VPXReporter>::sAmount(0);
 #endif /* MOZ_VPX */
@@ -438,7 +438,7 @@ private:
     }
 };
 
-NS_IMPL_ISUPPORTS1(NesteggReporter, nsIMemoryReporter)
+NS_IMPL_ISUPPORTS(NesteggReporter, nsIMemoryReporter)
 
 /* static */ template<> Atomic<size_t> CountingAllocatorBase<NesteggReporter>::sAmount(0);
 #endif /* MOZ_WEBM */
@@ -789,12 +789,18 @@ ShutdownXPCOM(nsIServiceManager* servMgr)
             }
         }
 
+        // This must happen after the shutdown of media and widgets, which
+        // are triggered by the NS_XPCOM_SHUTDOWN_OBSERVER_ID notification.
+        layers::ImageBridgeChild::ShutDown();
+
         NS_ProcessPendingEvents(thread);
         mozilla::scache::StartupCache::DeleteSingleton();
         if (observerService)
             (void) observerService->
                 NotifyObservers(nullptr, NS_XPCOM_SHUTDOWN_THREADS_OBSERVER_ID,
                                 nullptr);
+
+        layers::CompositorParent::ShutDown();
 
         gXPCOMThreadsShutDown = true;
         NS_ProcessPendingEvents(thread);

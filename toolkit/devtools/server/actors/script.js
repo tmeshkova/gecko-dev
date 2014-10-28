@@ -102,24 +102,16 @@ BreakpointStore.prototype = {
       if (!this._breakpoints[url][line]) {
         this._breakpoints[url][line] = [];
       }
-      if(this._breakpoints[url][line][column]) {
-        updating = true;
-      }
       this._breakpoints[url][line][column] = aBreakpoint;
     } else {
       // Add a breakpoint that breaks on the whole line.
       if (!this._wholeLineBreakpoints[url]) {
         this._wholeLineBreakpoints[url] = [];
       }
-      if(this._wholeLineBreakpoints[url][line]) {
-        updating = true;
-      }
       this._wholeLineBreakpoints[url][line] = aBreakpoint;
     }
 
-    if (!updating) {
-      this._size++;
-    }
+    this._size++;
   },
 
   /**
@@ -3026,6 +3018,7 @@ let stringifiers = {
  */
 function ObjectActor(aObj, aThreadActor)
 {
+  dbg_assert(!aObj.optimizedOut, "Should not create object actors for optimized out values!");
   this.obj = aObj;
   this.threadActor = aThreadActor;
 }
@@ -4535,10 +4528,18 @@ EnvironmentActor.prototype = {
     }
     for each (let name in parameterNames) {
       let arg = {};
+
+      let value = this.obj.getVariable(name);
+      // The slot is optimized out.
+      // FIXME: Need actual UI, bug 941287.
+      if (value && value.optimizedOut) {
+        continue;
+      }
+
       // TODO: this part should be removed in favor of the commented-out part
       // below when getVariableDescriptor lands (bug 725815).
       let desc = {
-        value: this.obj.getVariable(name),
+        value: value,
         configurable: false,
         writable: true,
         enumerable: true
@@ -4567,22 +4568,22 @@ EnvironmentActor.prototype = {
         continue;
       }
 
+      let value = this.obj.getVariable(name);
+      // The slot is optimized out or arguments on a dead scope.
+      // FIXME: Need actual UI, bug 941287.
+      if (value && (value.optimizedOut || value.missingArguments)) {
+        continue;
+      }
+
       // TODO: this part should be removed in favor of the commented-out part
       // below when getVariableDescriptor lands.
       let desc = {
+        value: value,
         configurable: false,
         writable: true,
         enumerable: true
       };
-      try {
-        desc.value = this.obj.getVariable(name);
-      } catch (e) {
-        // Avoid "Debugger scope is not live" errors for |arguments|, introduced
-        // in bug 746601.
-        if (name != "arguments") {
-          throw e;
-        }
-      }
+
       //let desc = this.obj.getVariableDescriptor(name);
       let descForm = {
         enumerable: true,

@@ -156,7 +156,7 @@ nsFontFaceLoader::LoadTimerCallback(nsITimer* aTimer, void* aClosure)
   }
 }
 
-NS_IMPL_ISUPPORTS1(nsFontFaceLoader, nsIStreamLoaderObserver)
+NS_IMPL_ISUPPORTS(nsFontFaceLoader, nsIStreamLoaderObserver)
 
 NS_IMETHODIMP
 nsFontFaceLoader::OnStreamComplete(nsIStreamLoader* aLoader,
@@ -1014,5 +1014,12 @@ nsUserFontSet::GetPrivateBrowsing()
 void
 nsUserFontSet::DoRebuildUserFontSet()
 {
+  if (!mPresContext) {
+    // AFAICS, this can only happen if someone has already called Destroy() on
+    // this font-set, which means it is in the process of being torn down --
+    // so there's no point trying to update its rules.
+    return;
+  }
+
   mPresContext->RebuildUserFontSet();
 }

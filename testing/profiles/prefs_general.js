@@ -54,6 +54,7 @@ user_pref("font.size.inflation.minTwips", 0);
 // AddonManager tests require that the experiments provider be present.
 user_pref("experiments.supported", true);
 user_pref("experiments.logging.level", "Trace");
+user_pref("experiments.logging.dump", true);
 // Point the manifest at something local so we don't risk it hitting production
 // data and installing experiments that may vary over time.
 user_pref("experiments.manifest.uri", "http://%(server)s/experiments-dummy/manifest");
@@ -188,3 +189,8 @@ user_pref('browser.contentHandlers.types.5.uri', 'http://test1.example.org/rss?u
 
 // We want to collect telemetry, but we don't want to send in the results.
 user_pref('toolkit.telemetry.server', 'https://%(server)s/telemetry-dummy/');
+
+// We don't want to hit the real Firefox Accounts server for tests.  We don't
+// actually need a functioning FxA server, so just set it to something that
+// resolves and accepts requests, even if they all fail.
+user_pref('identity.fxaccounts.auth.uri', 'https://%(server)s/fxa-dummy/');

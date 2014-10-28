@@ -182,7 +182,7 @@ DiscardingEnabled()
 class ScaleRequest
 {
 public:
-  ScaleRequest(RasterImage* aImage, const gfx::Size& aScale, imgFrame* aSrcFrame)
+  ScaleRequest(RasterImage* aImage, const gfxSize& aScale, imgFrame* aSrcFrame)
     : scale(aScale)
     , dstLocked(false)
     , done(false)
@@ -276,7 +276,7 @@ public:
   nsRefPtr<gfxImageSurface> dstSurface;
 
   // Below are the values that may be touched on the scaling thread.
-  gfx::Size scale;
+  gfxSize scale;
   uint8_t* srcData;
   uint8_t* dstData;
   nsIntRect srcRect;
@@ -327,7 +327,7 @@ private: /* members */
 class ScaleRunner : public nsRunnable
 {
 public:
-  ScaleRunner(RasterImage* aImage, const gfx::Size& aScale, imgFrame* aSrcFrame)
+  ScaleRunner(RasterImage* aImage, const gfxSize& aScale, imgFrame* aSrcFrame)
   {
     nsAutoPtr<ScaleRequest> request(new ScaleRequest(aImage, aScale, aSrcFrame));
 
@@ -380,10 +380,10 @@ namespace image {
 static nsCOMPtr<nsIThread> sScaleWorkerThread = nullptr;
 
 #ifndef DEBUG
-NS_IMPL_ISUPPORTS2(RasterImage, imgIContainer, nsIProperties)
+NS_IMPL_ISUPPORTS(RasterImage, imgIContainer, nsIProperties)
 #else
-NS_IMPL_ISUPPORTS3(RasterImage, imgIContainer, nsIProperties,
-                              imgIContainerDebug)
+NS_IMPL_ISUPPORTS(RasterImage, imgIContainer, nsIProperties,
+                  imgIContainerDebug)
 #endif
 
 //******************************************************************************
@@ -2506,7 +2506,7 @@ RasterImage::SyncDecode()
 }
 
 bool
-RasterImage::CanQualityScale(const gfx::Size& scale)
+RasterImage::CanQualityScale(const gfxSize& scale)
 {
   // If target size is 1:1 with original, don't scale.
   if (scale.width == 1.0 && scale.height == 1.0)
@@ -2524,7 +2524,7 @@ RasterImage::CanQualityScale(const gfx::Size& scale)
 
 bool
 RasterImage::CanScale(GraphicsFilter aFilter,
-                      gfx::Size aScale, uint32_t aFlags)
+                      gfxSize aScale, uint32_t aFlags)
 {
 // The high-quality scaler requires Skia.
 #ifdef MOZ_ENABLE_SKIA
@@ -2600,7 +2600,7 @@ RasterImage::DrawWithPreDownscaleIfNeeded(imgFrame *aFrame,
   gfxMatrix userSpaceToImageSpace = aUserSpaceToImageSpace;
   gfxMatrix imageSpaceToUserSpace = aUserSpaceToImageSpace;
   imageSpaceToUserSpace.Invert();
-  gfx::Size scale = ToSize(imageSpaceToUserSpace.ScaleFactors(true));
+  gfxSize scale = imageSpaceToUserSpace.ScaleFactors(true);
   nsIntRect subimage = aSubimage;
   nsRefPtr<gfxASurface> surf;
 
@@ -3167,8 +3167,8 @@ RasterImage::FinishedSomeDecoding(eShutdownIntent aIntent /* = eShutdownIntent_D
   return RequestDecodeIfNeeded(rv, aIntent, done, wasSize);
 }
 
-NS_IMPL_ISUPPORTS1(RasterImage::DecodePool,
-                              nsIObserver)
+NS_IMPL_ISUPPORTS(RasterImage::DecodePool,
+                  nsIObserver)
 
 /* static */ RasterImage::DecodePool*
 RasterImage::DecodePool::Singleton()
@@ -3201,7 +3201,7 @@ public:
     ~RIDThreadPoolListener() {}
 };
 
-NS_IMPL_ISUPPORTS1(RIDThreadPoolListener, nsIThreadPoolListener)
+NS_IMPL_ISUPPORTS(RIDThreadPoolListener, nsIThreadPoolListener)
 
 NS_IMETHODIMP
 RIDThreadPoolListener::OnThreadCreated()

@@ -30,7 +30,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(WebAudioDecodeJob)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mOutput)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSuccessCallback)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mFailureCallback)
-  tmp->mArrayBuffer = nullptr;
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(WebAudioDecodeJob)
@@ -42,9 +41,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(WebAudioDecodeJob)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(WebAudioDecodeJob)
-  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mArrayBuffer)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
-
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(WebAudioDecodeJob, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(WebAudioDecodeJob, Release)
 
@@ -143,6 +140,7 @@ private:
     // Destruct MediaDecoderReader first.
     mDecoderReader = nullptr;
     mBufferDecoder = nullptr;
+    JS_free(nullptr, mBuffer);
   }
 
 private:
@@ -409,8 +407,10 @@ WebAudioDecodeJob::AllocateBuffer()
   }
 
   // Now create the AudioBuffer
-  mOutput = new AudioBuffer(mContext, mWriteIndex, mContext->SampleRate());
-  if (!mOutput->InitializeBuffers(mChannelBuffers.Length(), cx)) {
+  ErrorResult rv;
+  mOutput = AudioBuffer::Create(mContext, mChannelBuffers.Length(),
+                                mWriteIndex, mContext->SampleRate(), cx, rv);
+  if (rv.Failed()) {
     return false;
   }
 
@@ -476,7 +476,6 @@ MediaBufferDecoder::EnsureThreadPoolInitialized()
 
 WebAudioDecodeJob::WebAudioDecodeJob(const nsACString& aContentType,
                                      AudioContext* aContext,
-                                     const ArrayBuffer& aBuffer,
                                      DecodeSuccessCallback* aSuccessCallback,
                                      DecodeErrorCallback* aFailureCallback)
   : mContentType(aContentType)
@@ -489,18 +488,12 @@ WebAudioDecodeJob::WebAudioDecodeJob(const nsACString& aContentType,
   MOZ_ASSERT(aSuccessCallback);
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_COUNT_CTOR(WebAudioDecodeJob);
-
-  mArrayBuffer = aBuffer.Obj();
-
-  mozilla::HoldJSObjects(this);
 }
 
 WebAudioDecodeJob::~WebAudioDecodeJob()
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_COUNT_DTOR(WebAudioDecodeJob);
-  mArrayBuffer = nullptr;
-  mozilla::DropJSObjects(this);
 }
 
 void

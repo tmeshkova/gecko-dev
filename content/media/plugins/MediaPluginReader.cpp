@@ -144,9 +144,7 @@ bool MediaPluginReader::DecodeVideoFrame(bool &aKeyframeSkip,
       if (mLastVideoFrame) {
         int64_t durationUs;
         mPlugin->GetDuration(mPlugin, &durationUs);
-        if (durationUs < mLastVideoFrame->mTime) {
-          durationUs = 0;
-        }
+        durationUs = std::max<int64_t>(durationUs - mLastVideoFrame->mTime, 0);
         mVideoQueue.Push(VideoData::ShallowCopyUpdateDuration(mLastVideoFrame,
                                                               durationUs));
         mLastVideoFrame = nullptr;
@@ -323,8 +321,8 @@ nsresult MediaPluginReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aE
 {
   NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
 
-  mVideoQueue.Erase();
-  mAudioQueue.Erase();
+  mVideoQueue.Reset();
+  mAudioQueue.Reset();
 
   mAudioSeekTimeUs = mVideoSeekTimeUs = aTarget;
 

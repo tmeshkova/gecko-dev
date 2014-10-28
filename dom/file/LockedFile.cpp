@@ -756,6 +756,8 @@ already_AddRefed<nsIInputStream>
 LockedFile::GetInputStream(const ArrayBuffer& aValue, uint64_t* aInputLength,
                            ErrorResult& aRv)
 {
+  aValue.ComputeLengthAndData();
+
   const char* data = reinterpret_cast<const char*>(aValue.Data());
   uint32_t length = aValue.Length();
 
@@ -816,7 +818,7 @@ FinishHelper::FinishHelper(LockedFile* aLockedFile)
   mStream.swap(aLockedFile->mStream);
 }
 
-NS_IMPL_ISUPPORTS1(FinishHelper, nsIRunnable)
+NS_IMPL_ISUPPORTS(FinishHelper, nsIRunnable)
 
 NS_IMETHODIMP
 FinishHelper::Run()

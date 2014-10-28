@@ -262,7 +262,7 @@ public:
   NS_DECL_NSIOBSERVER
 };
 
-NS_IMPL_ISUPPORTS1(nsJSEnvironmentObserver, nsIObserver)
+NS_IMPL_ISUPPORTS(nsJSEnvironmentObserver, nsIObserver)
 
 NS_IMETHODIMP
 nsJSEnvironmentObserver::Observe(nsISupports* aSubject, const char* aTopic,
@@ -2063,7 +2063,8 @@ nsJSContext::EndCycleCollectionCallback(CycleCollectorResults &aResults)
   Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_MAX_PAUSE, gCCStats.mMaxSliceTime);
 
   if (!sLastCCEndTime.IsNull()) {
-    uint32_t timeBetween = TimeBetween(sLastCCEndTime, gCCStats.mBeginTime);
+    // TimeBetween returns milliseconds, but we want to report seconds.
+    uint32_t timeBetween = TimeBetween(sLastCCEndTime, gCCStats.mBeginTime) / 1000;
     Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_TIME_BETWEEN, timeBetween);
   }
   sLastCCEndTime = endCCTimeStamp;

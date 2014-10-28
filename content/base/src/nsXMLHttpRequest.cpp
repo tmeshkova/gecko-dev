@@ -138,7 +138,7 @@ using namespace mozilla::dom;
     return NS_OK;                                                               \
   }
 
-NS_IMPL_ISUPPORTS1(nsXHRParseEndListener, nsIDOMEventListener)
+NS_IMPL_ISUPPORTS(nsXHRParseEndListener, nsIDOMEventListener)
 
 class nsResumeTimeoutsEvent : public nsRunnable
 {
@@ -180,7 +180,7 @@ public:
   virtual ~XMLHttpRequestAuthPrompt();
 };
 
-NS_IMPL_ISUPPORTS1(XMLHttpRequestAuthPrompt, nsIAuthPrompt)
+NS_IMPL_ISUPPORTS(XMLHttpRequestAuthPrompt, nsIAuthPrompt)
 
 XMLHttpRequestAuthPrompt::XMLHttpRequestAuthPrompt()
 {
@@ -1934,6 +1934,7 @@ nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
     if (mUploadTransferred < mUploadTotal) {
       mUploadTransferred = mUploadTotal;
       mProgressSinceLastProgressEvent = true;
+      mUploadLengthComputable = true;
       MaybeDispatchProgressEvents(true);
     }
     mUploadComplete = true;
@@ -2454,6 +2455,7 @@ GetRequestBody(nsIVariant* aBody, nsIInputStream** aResult, uint64_t* aContentLe
       JS::Rooted<JSObject*> obj(cx, JSVAL_TO_OBJECT(realVal));
       if (JS_IsArrayBufferObject(obj)) {
           ArrayBuffer buf(obj);
+          buf.ComputeLengthAndData();
           return GetRequestBody(buf.Data(), buf.Length(), aResult,
                                 aContentLength, aContentType, aCharset);
       }
@@ -2497,14 +2499,16 @@ nsXMLHttpRequest::GetRequestBody(nsIVariant* aVariant,
   switch (body.GetType()) {
     case nsXMLHttpRequest::RequestBody::ArrayBuffer:
     {
-      return ::GetRequestBody(value.mArrayBuffer->Data(),
-                              value.mArrayBuffer->Length(), aResult,
+      const ArrayBuffer* buffer = value.mArrayBuffer;
+      buffer->ComputeLengthAndData();
+      return ::GetRequestBody(buffer->Data(), buffer->Length(), aResult,
                               aContentLength, aContentType, aCharset);
     }
     case nsXMLHttpRequest::RequestBody::ArrayBufferView:
     {
-      return ::GetRequestBody(value.mArrayBufferView->Data(),
-                              value.mArrayBufferView->Length(), aResult,
+      const ArrayBufferView* view = value.mArrayBufferView;
+      view->ComputeLengthAndData();
+      return ::GetRequestBody(view->Data(), view->Length(), aResult,
                               aContentLength, aContentType, aCharset);
     }
     case nsXMLHttpRequest::RequestBody::Blob:
@@ -3781,7 +3785,7 @@ nsXMLHttpRequest::EnsureXPCOMifier()
   return newRef.forget();
 }
 
-NS_IMPL_ISUPPORTS1(nsXMLHttpRequest::nsHeaderVisitor, nsIHttpHeaderVisitor)
+NS_IMPL_ISUPPORTS(nsXMLHttpRequest::nsHeaderVisitor, nsIHttpHeaderVisitor)
 
 NS_IMETHODIMP nsXMLHttpRequest::
 nsHeaderVisitor::VisitHeader(const nsACString &header, const nsACString &value)
@@ -3930,13 +3934,12 @@ ArrayBufferBuilder::getArrayBuffer(JSContext* aCx)
   }
 
   JSObject* obj = JS_NewArrayBufferWithContents(aCx, mLength, mDataPtr);
-  if (!obj) {
-    return nullptr;
-  }
-
   mDataPtr = nullptr;
   mLength = mCapacity = 0;
-
+  if (!obj) {
+    js_free(mDataPtr);
+    return nullptr;
+  }
   return obj;
 }
 

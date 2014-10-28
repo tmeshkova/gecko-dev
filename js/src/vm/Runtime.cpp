@@ -77,6 +77,7 @@ PerThreadData::PerThreadData(JSRuntime *runtime)
 #endif
     activation_(nullptr),
     asmJSActivationStack_(nullptr),
+    autoFlushICache_(nullptr),
 #ifdef JS_ARM_SIMULATOR
     simulator_(nullptr),
     simulatorStackLimit_(0),
@@ -319,10 +320,6 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime, JSUseHelperThreads useHelperThrea
     PodZero(&debugHooks);
     PodArrayZero(nativeStackQuota);
     PodZero(&asmJSCacheOps);
-
-#if JS_STACK_GROWTH_DIRECTION > 0
-    mainThread.nativeStackLimit = UINTPTR_MAX;
-#endif
 }
 
 static bool

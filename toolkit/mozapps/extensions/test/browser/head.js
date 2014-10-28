@@ -6,8 +6,10 @@ Components.utils.import("resource://gre/modules/NetUtil.jsm");
 
 let tmp = {};
 Components.utils.import("resource://gre/modules/AddonManager.jsm", tmp);
+Components.utils.import("resource://gre/modules/Log.jsm", tmp);
 let AddonManager = tmp.AddonManager;
 let AddonManagerPrivate = tmp.AddonManagerPrivate;
+let Log = tmp.Log;
 
 var pathParts = gTestPath.split("/");
 // Drop the test filename
@@ -124,17 +126,16 @@ registerCleanupFunction(function() {
   checkOpenWindows("Addons:Compatibility");
   checkOpenWindows("Addons:Install");
 
-  // We can for now know that getAllInstalls actually calls its callback before
-  // it returns so this will complete before the next test start.
-  AddonManager.getAllInstalls(function(aInstalls) {
-    for (let install of aInstalls) {
-      if (install instanceof MockInstall)
-        continue;
+  return new Promise((resolve, reject) => AddonManager.getAllInstalls(resolve))
+    .then(aInstalls => {
+      for (let install of aInstalls) {
+        if (install instanceof MockInstall)
+          continue;
 
-      ok(false, "Should not have seen an install of " + install.sourceURI.spec + " in state " + install.state);
-      install.cancel();
-    }
-  });
+        ok(false, "Should not have seen an install of " + install.sourceURI.spec + " in state " + install.state);
+        install.cancel();
+      }
+    });
 });
 
 function log_exceptions(aCallback, ...aArgs) {
@@ -145,6 +146,12 @@ function log_exceptions(aCallback, ...aArgs) {
     info("Exception thrown: " + e);
     throw e;
   }
+}
+
+function log_callback(aPromise, aCallback) {
+  aPromise.then(aCallback)
+    .then(null, e => info("Exception thrown: " + e));
+  return aPromise;
 }
 
 function add_test(test) {
@@ -283,87 +290,89 @@ function wait_for_manager_load(aManagerWindow, aCallback) {
 }
 
 function open_manager(aView, aCallback, aLoadCallback, aLongerTimeout) {
-  let deferred = Promise.defer();
+  let p = new Promise((resolve, reject) => {
 
-  function setup_manager(aManagerWindow) {
-    if (aLoadCallback)
-      log_exceptions(aLoadCallback, aManagerWindow);
+    function setup_manager(aManagerWindow) {
+      if (aLoadCallback)
+        log_exceptions(aLoadCallback, aManagerWindow);
 
-    if (aView)
-      aManagerWindow.loadView(aView);
+      if (aView)
+        aManagerWindow.loadView(aView);
 
-    ok(aManagerWindow != null, "Should have an add-ons manager window");
-    is(aManagerWindow.location, MANAGER_URI, "Should be displaying the correct UI");
+      ok(aManagerWindow != null, "Should have an add-ons manager window");
+      is(aManagerWindow.location, MANAGER_URI, "Should be displaying the correct UI");
 
-    waitForFocus(function() {
-      wait_for_manager_load(aManagerWindow, function() {
-        wait_for_view_load(aManagerWindow, function() {
-          // Some functions like synthesizeMouse don't like to be called during
-          // the load event so ensure that has completed
-          executeSoon(function() {
-            if (aCallback) {
-              log_exceptions(aCallback, aManagerWindow);
-            }
-            deferred.resolve(aManagerWindow);
-          });
-        }, null, aLongerTimeout);
-      });
-    }, aManagerWindow);
-  }
+      waitForFocus(function() {
+        info("window has focus, waiting for manager load");
+        wait_for_manager_load(aManagerWindow, function() {
+          info("Manager waiting for view load");
+          wait_for_view_load(aManagerWindow, function() {
+            resolve(aManagerWindow);
+          }, null, aLongerTimeout);
+        });
+      }, aManagerWindow);
+    }
 
-  if (gUseInContentUI) {
-    gBrowser.selectedTab = gBrowser.addTab();
-    switchToTabHavingURI(MANAGER_URI, true);
+    if (gUseInContentUI) {
+      info("Loading manager window in tab");
+      Services.obs.addObserver(function (aSubject, aTopic, aData) {
+        Services.obs.removeObserver(arguments.callee, aTopic);
+        if (aSubject.location.href != MANAGER_URI) {
+          info("Ignoring load event for " + aSubject.location.href);
+          return;
+        }
+        setup_manager(aSubject);
+      }, "EM-loaded", false);
 
-    // This must be a new load, else the ping/pong would have
-    // found the window above.
-    Services.obs.addObserver(function (aSubject, aTopic, aData) {
-      Services.obs.removeObserver(arguments.callee, aTopic);
-      if (aSubject.location.href != MANAGER_URI)
-        return;
-      setup_manager(aSubject);
-    }, "EM-loaded", false);
-    return deferred.promise;
-  }
+      gBrowser.selectedTab = gBrowser.addTab();
+      switchToTabHavingURI(MANAGER_URI, true);
+    } else {
+      info("Loading manager window in dialog");
+      Services.obs.addObserver(function (aSubject, aTopic, aData) {
+        Services.obs.removeObserver(arguments.callee, aTopic);
+        setup_manager(aSubject);
+      }, "EM-loaded", false);
 
-  openDialog(MANAGER_URI);
-  Services.obs.addObserver(function (aSubject, aTopic, aData) {
-    Services.obs.removeObserver(arguments.callee, aTopic);
-    setup_manager(aSubject);
-  }, "EM-loaded", false);
+      openDialog(MANAGER_URI);
+    }
+  });
 
-  return deferred.promise;
+  // The promise resolves with the manager window, so it is passed to the callback
+  return log_callback(p, aCallback);
 }
 
 function close_manager(aManagerWindow, aCallback, aLongerTimeout) {
-  let deferred = Promise.defer();
-  requestLongerTimeout(aLongerTimeout ? aLongerTimeout : 2);
+  let p = new Promise((resolve, reject) => {
+    requestLongerTimeout(aLongerTimeout ? aLongerTimeout : 2);
 
-  ok(aManagerWindow != null, "Should have an add-ons manager window to close");
-  is(aManagerWindow.location, MANAGER_URI, "Should be closing window with correct URI");
+    ok(aManagerWindow != null, "Should have an add-ons manager window to close");
+    is(aManagerWindow.location, MANAGER_URI, "Should be closing window with correct URI");
 
-  aManagerWindow.addEventListener("unload", function() {
-    this.removeEventListener("unload", arguments.callee, false);
-    if (aCallback) {
-      log_exceptions(aCallback);
-    }
-    deferred.resolve();
-  }, false);
+    aManagerWindow.addEventListener("unload", function() {
+      try {
+        dump("Manager window unload handler");
+        this.removeEventListener("unload", arguments.callee, false);
+        resolve();
+      } catch(e) {
+        reject(e);
+      }
+    }, false);
+  });
 
+  info("Telling manager window to close");
   aManagerWindow.close();
+  info("Manager window close() call returned");
 
-  return deferred.promise;
+  return log_callback(p, aCallback);
 }
 
 function restart_manager(aManagerWindow, aView, aCallback, aLoadCallback) {
   if (!aManagerWindow) {
-    open_manager(aView, aCallback, aLoadCallback);
-    return;
+    return open_manager(aView, aCallback, aLoadCallback);
   }
 
-  close_manager(aManagerWindow, function() {
-    open_manager(aView, aCallback, aLoadCallback);
-  });
+  return close_manager(aManagerWindow)
+    .then(() => open_manager(aView, aCallback, aLoadCallback));
 }
 
 function wait_for_window_open(aCallback) {
@@ -437,25 +446,17 @@ function is_element_hidden(aElement, aMsg) {
  * The callback will receive the Addon for the installed add-on.
  */
 function install_addon(path, cb, pathPrefix=TESTROOT) {
-  let deferred = Promise.defer();
+  let p = new Promise((resolve, reject) => {
+    AddonManager.getInstallForURL(pathPrefix + path, (install) => {
+      install.addListener({
+        onInstallEnded: () => resolve(install.addon),
+      });
 
-  AddonManager.getInstallForURL(pathPrefix + path, (install) => {
-    install.addListener({
-      onInstallEnded: () => {
-        executeSoon(() => {
-          if (cb) {
-            cb(install.addon);
-          }
+      install.install();
+    }, "application/x-xpinstall");
+  });
 
-          deferred.resolve(install.addon);
-        });
-      },
-    });
-
-    install.install();
-  }, "application/x-xpinstall");
-
-  return deferred.promise;
+  return log_callback(p, cb);
 }
 
 function CategoryUtilities(aManagerWindow) {
@@ -517,22 +518,14 @@ CategoryUtilities.prototype = {
   },
 
   open: function(aCategory, aCallback) {
-    let deferred = Promise.defer();
 
     isnot(this.window, null, "Should not open category when manager window is not loaded");
     ok(this.isVisible(aCategory), "Category should be visible if attempting to open it");
 
     EventUtils.synthesizeMouse(aCategory, 2, 2, { }, this.window);
+    let p = new Promise((resolve, reject) => wait_for_view_load(this.window, resolve));
 
-    wait_for_view_load(this.window, (win) => {
-      if (aCallback) {
-        log_exceptions(aCallback, win);
-      }
-
-      deferred.resolve(win);
-    });
-
-    return deferred.promise;
+    return log_callback(p, aCallback);
   },
 
   openType: function(aCategoryType, aCallback) {
@@ -591,6 +584,7 @@ function MockProvider(aUseAsyncCallbacks, aTypes) {
   this.addons = [];
   this.installs = [];
   this.callbackTimers = [];
+  this.timerLocations = new Map();
   this.useAsyncCallbacks = (aUseAsyncCallbacks === undefined) ? true : aUseAsyncCallbacks;
   this.types = (aTypes === undefined) ? [{
     id: "extension",
@@ -614,6 +608,7 @@ MockProvider.prototype = {
   started: null,
   apiDelay: 10,
   callbackTimers: null,
+  timerLocations: null,
   useAsyncCallbacks: null,
   types: null,
 
@@ -791,9 +786,23 @@ MockProvider.prototype = {
    * Called when the provider should shutdown.
    */
   shutdown: function MP_shutdown() {
-    for (let timer of this.callbackTimers)
-      timer.cancel();
+    if (this.callbackTimers.length) {
+      info("MockProvider: pending callbacks at shutdown(): calling immediately");
+    }
+    while (this.callbackTimers.length > 0) {
+      // When we notify the callback timer, it removes itself from our array
+      let timer = this.callbackTimers[0];
+      try {
+        let setAt = this.timerLocations.get(timer);
+        info("Notifying timer set at " + (setAt || "unknown location"));
+        timer.callback.notify(timer);
+        timer.cancel();
+      } catch(e) {
+        info("Timer notify failed: " + e);
+      }
+    }
     this.callbackTimers = [];
+    this.timerLocations = null;
 
     this.started = false;
   },
@@ -976,18 +985,26 @@ MockProvider.prototype = {
    */
   _delayCallback: function MP_delayCallback(aCallback, ...aArgs) {
     if (!this.useAsyncCallbacks) {
-      aCallback.apply(null, params);
+      aCallback(...aArgs);
       return;
     }
 
-    var timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+    let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     // Need to keep a reference to the timer, so it doesn't get GC'ed
-    var pos = this.callbackTimers.length;
     this.callbackTimers.push(timer);
-    var self = this;
-    timer.initWithCallback(function() {
-      self.callbackTimers.splice(pos, 1);
-      aCallback.apply(null, aArgs);
+    // Capture a stack trace where the timer was set
+    // needs the 'new Error' hack until bug 1007656
+    this.timerLocations.set(timer, Log.stackTrace(new Error("dummy")));
+    timer.initWithCallback(() => {
+      let idx = this.callbackTimers.indexOf(timer);
+      if (idx == -1) {
+        dump("MockProvider._delayCallback lost track of timer set at "
+             + (this.timerLocations.get(timer) || "unknown location") + "\n");
+      } else {
+        this.callbackTimers.splice(idx, 1);
+      }
+      this.timerLocations.delete(timer);
+      aCallback(...aArgs);
     }, this.apiDelay, timer.TYPE_ONE_SHOT);
   }
 };

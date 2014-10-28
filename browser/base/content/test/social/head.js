@@ -514,23 +514,19 @@ function resizeWindowToChatAreaWidth(desired, cb, count = 0) {
     return;
   }
   function resize_handler(event) {
-    // for whatever reason, sometimes we get called twice for different event
-    // phases, only handle one of them.
-    if (event.eventPhase != event.AT_TARGET)
-      return;
     // we did resize - but did we get far enough to be able to continue?
     let newSize = window.SocialChatBar.chatbar.getBoundingClientRect().width;
     let sizedOk = widthDeltaCloseEnough(newSize - desired);
     if (!sizedOk)
       return;
-    window.removeEventListener("resize", resize_handler);
+    window.removeEventListener("resize", resize_handler, true);
     info(count + ": resized window width is " + newSize);
     executeSoon(function() {
       cb(sizedOk);
     });
   }
   // Otherwise we request resize and expect a resize event
-  window.addEventListener("resize", resize_handler);
+  window.addEventListener("resize", resize_handler, true);
   window.resizeBy(delta, 0);
 }
 
@@ -553,17 +549,18 @@ function resizeAndCheckWidths(first, second, third, checks, cb) {
         }
         ok(true, count + ": " + "correct number of chats visible");
         info(">> Check " + count);
-        resizeAndCheckWidths(first, second, third, checks, cb);
-        return true;
+        executeSoon(function() {
+          resizeAndCheckWidths(first, second, third, checks, cb);
+        });
       }
-      return false;
     }
-    if (!collapsedObserver()) {
-      let m = new MutationObserver(collapsedObserver);
-      m.observe(first, {attributes: true });
-      m.observe(second, {attributes: true });
-      m.observe(third, {attributes: true });
-    }
+    let m = new MutationObserver(collapsedObserver);
+    m.observe(first, {attributes: true });
+    m.observe(second, {attributes: true });
+    m.observe(third, {attributes: true });
+    // and just in case we are already at the right size, explicitly call the
+    // observer.
+    collapsedObserver(undefined, m);
   }, count);
 }
 

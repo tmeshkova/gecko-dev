@@ -77,7 +77,7 @@ protected:
     nsTArray<nsFontMetrics*>  mFontMetrics;
 };
 
-NS_IMPL_ISUPPORTS1(nsFontCache, nsIObserver)
+NS_IMPL_ISUPPORTS(nsFontCache, nsIObserver)
 
 // The Init and Destroy methods are necessary because it's not
 // safe to call AddObserver from a constructor or RemoveObserver
@@ -399,6 +399,7 @@ nsDeviceContext::CreateRenderingContext()
                                                              gfx::IntSize(mWidth, mHeight));
 
     pContext->Init(this, dt);
+    pContext->ThebesContext()->SetFlag(gfxContext::FLAG_DISABLE_SNAPPING);
     pContext->Scale(mPrintingScale, mPrintingScale);
 
     return pContext.forget();

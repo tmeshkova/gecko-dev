@@ -1781,7 +1781,7 @@ skip-if(B2G&&browserIsRemote) == 858803-1.html 858803-1-ref.html # bug 974780
 fuzzy(1,10000) fuzzy-if(Android&&AndroidVersion>=15,5,10000) == 902330-1.html 902330-1-ref.html
 fuzzy-if(Android,8,400) == 906199-1.html 906199-1-ref.html
 == 921716-1.html 921716-1-ref.html
-== 926155-1.html 926155-1-ref.html
+test-pref(layout.css.sticky.enabled,true) == 926155-1.html 926155-1-ref.html
 fuzzy-if(cocoaWidget,1,40) == 928607-1.html 928607-1-ref.html
 == 931464-1.html 931464-1-ref.html
 == 931853.html 931853-ref.html
@@ -1810,3 +1810,4 @@ skip-if(Android) == 966510-2.html 966510-2-ref.html # same as above
 == 987680-1.html 987680-1-ref.html
 fuzzy-if(/^Windows\x20NT\x206\.2/.test(http.oscpu),1,24) == 991046-1.html 991046-1-ref.html
 pref(layout.css.overflow-clip-box.enabled,true) == 992447.html 992447-ref.html
+pref(layout.css.sticky.enabled,true) == 1005405-1.html 1005405-1-ref.html

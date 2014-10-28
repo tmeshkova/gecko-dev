@@ -1391,7 +1391,7 @@ this.DOMApplicationRegistry = {
       return;
     }
 
-    let manifest = new ManifestHelper(json, app.installOrigin);
+    let manifest = new ManifestHelper(json, app.manifestURL);
     let [aId, aManifest] = yield this.downloadPackage(manifest, {
         manifestURL: aManifestURL,
         origin: app.origin,
@@ -1694,7 +1694,7 @@ this.DOMApplicationRegistry = {
             }
           }
         };
-        let helper = new ManifestHelper(manifest);
+        let helper = new ManifestHelper(manifest, aData.manifestURL);
         debug("onlyCheckAppCache - launch updateSvc.checkForUpdate for " +
               helper.fullAppcachePath());
         updateSvc.checkForUpdate(Services.io.newURI(helper.fullAppcachePath(), null, null),
@@ -3104,7 +3104,10 @@ onInstallSuccessAck: function onInstallSuccessAck(aManifestURL,
         throw "CERTDB_ERROR";
       }
 
-      let [result, zipReader] = yield this._openSignedPackage(aZipFile, certDb);
+      let [result, zipReader] = yield this._openSignedPackage(aApp.installOrigin,
+                                                              aApp.manifestURL,
+                                                              aZipFile,
+                                                              certDb);
 
       // We cannot really know if the system date is correct or
       // not. What we can know is if it's after the build date or not,
@@ -3147,11 +3150,39 @@ onInstallSuccessAck: function onInstallSuccessAck(aManifestURL,
     }).bind(this));
   },
 
-  _openSignedPackage: function(aZipFile, aCertDb) {
+  _openSignedPackage: function(aInstallOrigin, aManifestURL, aZipFile, aCertDb) {
     let deferred = Promise.defer();
 
+    let root = TrustedRootCertificate.index;
+
+    let useReviewerCerts = false;
+    try {
+      useReviewerCerts = Services.prefs.
+                           getBoolPref("dom.mozApps.use_reviewer_certs");
+    } catch (ex) { }
+
+    // We'll use the reviewer and dev certificates only if the pref is set to
+    // true.
+    if (useReviewerCerts) {
+      let manifestPath = Services.io.newURI(aManifestURL, null, null).path;
+
+      switch (aInstallOrigin) {
+        case "https://marketplace.firefox.com":
+          root = manifestPath.startsWith("/reviewers/")
+               ? Ci.nsIX509CertDB.AppMarketplaceProdReviewersRoot
+               : Ci.nsIX509CertDB.AppMarketplaceProdPublicRoot;
+          break;
+
+        case "https://marketplace-dev.allizom.org":
+          root = manifestPath.startsWith("/reviewers/")
+               ? Ci.nsIX509CertDB.AppMarketplaceDevReviewersRoot
+               : Ci.nsIX509CertDB.AppMarketplaceDevPublicRoot;
+          break;
+      }
+    }
+
     aCertDb.openSignedAppFileAsync(
-       TrustedRootCertificate.index, aZipFile,
+       root, aZipFile,
        function(aRv, aZipReader) {
          deferred.resolve([aRv, aZipReader]);
        }

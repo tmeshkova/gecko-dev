@@ -443,8 +443,8 @@ private:
   nsCOMPtr<nsITimer> mTimer;
 };
 
-NS_IMPL_ISUPPORTS4(nsPingListener, nsIStreamListener, nsIRequestObserver,
-                   nsIInterfaceRequestor, nsIChannelEventSink)
+NS_IMPL_ISUPPORTS(nsPingListener, nsIStreamListener, nsIRequestObserver,
+                  nsIInterfaceRequestor, nsIChannelEventSink)
 
 nsPingListener::~nsPingListener()
 {
@@ -3467,11 +3467,14 @@ nsDocShell::IsSandboxedFrom(nsIDocShell* aTargetDocShell)
         return false;
     }
 
-    uint32_t sandboxFlags = 0;
-
-    nsCOMPtr<nsIDocument> doc = mContentViewer->GetDocument();
-    if (doc) {
-        sandboxFlags = doc->GetSandboxFlags();
+    // Default the sandbox flags to our flags, so that if we can't retrieve the
+    // active document, we will still enforce our own.
+    uint32_t sandboxFlags = mSandboxFlags;
+    if (mContentViewer) {
+        nsCOMPtr<nsIDocument> doc = mContentViewer->GetDocument();
+        if (doc) {
+            sandboxFlags = doc->GetSandboxFlags();
+        }
     }
 
     // If no flags, we are not sandboxed at all.
@@ -8746,7 +8749,7 @@ private:
     bool mInPrivateBrowsing;
 };
 
-NS_IMPL_ISUPPORTS1(nsCopyFaviconCallback, nsIFaviconDataCallback)
+NS_IMPL_ISUPPORTS(nsCopyFaviconCallback, nsIFaviconDataCallback)
 #endif
 
 // Tell the favicon service that aNewURI has the same favicon as aOldURI.
@@ -12163,7 +12166,7 @@ nsDocShell::InterfaceRequestorProxy::~InterfaceRequestorProxy()
     mWeakPtr = nullptr;
 }
 
-NS_IMPL_ISUPPORTS1(nsDocShell::InterfaceRequestorProxy, nsIInterfaceRequestor) 
+NS_IMPL_ISUPPORTS(nsDocShell::InterfaceRequestorProxy, nsIInterfaceRequestor) 
   
 NS_IMETHODIMP 
 nsDocShell::InterfaceRequestorProxy::GetInterface(const nsIID & aIID, void **aSink)

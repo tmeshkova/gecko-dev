@@ -611,7 +611,7 @@ private:
   }
 };
 
-NS_IMPL_ISUPPORTS2(ScriptLoaderRunnable, nsIRunnable, nsIStreamLoaderObserver)
+NS_IMPL_ISUPPORTS(ScriptLoaderRunnable, nsIRunnable, nsIStreamLoaderObserver)
 
 class ChannelGetterRunnable MOZ_FINAL : public nsRunnable
 {
@@ -781,7 +781,9 @@ ScriptExecutorRunnable::PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
 NS_IMETHODIMP
 ScriptExecutorRunnable::Cancel()
 {
-  ShutdownScriptLoader(mWorkerPrivate->GetJSContext(), mWorkerPrivate, false);
+  if (mLastIndex == mScriptLoader.mLoadInfos.Length() - 1) {
+    ShutdownScriptLoader(mWorkerPrivate->GetJSContext(), mWorkerPrivate, false);
+  }
   return MainThreadWorkerSyncRunnable::Cancel();
 }
 

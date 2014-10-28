@@ -13,6 +13,7 @@
 #include "jit/Lowering.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
+#include "vm/ArgumentsObject.h"
 
 #include "jsscriptinlines.h"
 
@@ -22,8 +23,11 @@ namespace js {
 namespace jit {
 
 IonBuilder::InliningStatus
-IonBuilder::inlineNativeCall(CallInfo &callInfo, JSNative native)
+IonBuilder::inlineNativeCall(CallInfo &callInfo, JSFunction *target)
 {
+    JS_ASSERT(target->isNative());
+    JSNative native = target->native();
+
     if (!optimizationInfo().inlineNative())
         return InliningStatus_NotInlined;
 
@@ -190,6 +194,10 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSNative native)
         return inlineBailout(callInfo);
     if (native == testingFunc_assertFloat32)
         return inlineAssertFloat32(callInfo);
+
+    // Bound function
+    if (native == js::CallOrConstructBoundFunction)
+        return inlineBoundFunction(callInfo, target);
 
     return InliningStatus_NotInlined;
 }
@@ -682,21 +690,6 @@ IonBuilder::inlineMathCeil(CallInfo &callInfo)
     if (argType == MIRType_Int32 && returnType == MIRType_Int32) {
         callInfo.setImplicitlyUsedUnchecked();
         current->push(callInfo.getArg(0));
-        return InliningStatus_Inlined;
-    }
-
-    if (IsFloatingPointType(argType) && returnType == MIRType_Int32) {
-        // Math.ceil(x) == -Math.floor(-x)
-        callInfo.setImplicitlyUsedUnchecked();
-        MConstant *minusOne = MConstant::New(alloc(), DoubleValue(-1.0));
-        current->add(minusOne);
-        MMul *mul = MMul::New(alloc(), callInfo.getArg(0), minusOne, argType);
-        current->add(mul);
-        MFloor *floor = MFloor::New(alloc(), mul);
-        current->add(floor);
-        MMul *result = MMul::New(alloc(), floor, minusOne, MIRType_Int32);
-        current->add(result);
-        current->push(result);
         return InliningStatus_Inlined;
     }
 
@@ -1901,6 +1894,61 @@ IonBuilder::inlineAssertFloat32(CallInfo &callInfo)
     MConstant *undefined = MConstant::New(alloc(), UndefinedValue());
     current->add(undefined);
     current->push(undefined);
+    return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineBoundFunction(CallInfo &nativeCallInfo, JSFunction *target)
+{
+     if (!target->getBoundFunctionTarget()->is<JSFunction>())
+         return InliningStatus_NotInlined;
+
+    JSFunction *scriptedTarget = &(target->getBoundFunctionTarget()->as<JSFunction>());
+    JSRuntime *runtime = scriptedTarget->runtimeFromMainThread();
+
+    // Don't optimize if we're constructing and the callee is not a
+    // constructor, so that CallKnown does not have to handle this case
+    // (it should always throw).
+    if (nativeCallInfo.constructing() && !scriptedTarget->isInterpretedConstructor() &&
+        !scriptedTarget->isNativeConstructor())
+    {
+        return InliningStatus_NotInlined;
+    }
+
+    if (gc::IsInsideNursery(runtime, scriptedTarget))
+        return InliningStatus_NotInlined;
+
+    for (size_t i = 0; i < target->getBoundFunctionArgumentCount(); i++) {
+        const Value val = target->getBoundFunctionArgument(i);
+        if (val.isObject() && gc::IsInsideNursery(runtime, &val.toObject()))
+            return InliningStatus_NotInlined;
+    }
+
+    const Value thisVal = target->getBoundFunctionThis();
+    if (thisVal.isObject() && gc::IsInsideNursery(runtime, &thisVal.toObject()))
+        return InliningStatus_NotInlined;
+
+    size_t argc = target->getBoundFunctionArgumentCount() + nativeCallInfo.argc();
+    if (argc > ARGS_LENGTH_MAX)
+        return InliningStatus_NotInlined;
+
+    nativeCallInfo.thisArg()->setImplicitlyUsedUnchecked();
+
+    CallInfo callInfo(alloc(), nativeCallInfo.constructing());
+    callInfo.setFun(constant(ObjectValue(*scriptedTarget)));
+    callInfo.setThis(constant(target->getBoundFunctionThis()));
+
+    if (!callInfo.argv().reserve(argc))
+        return InliningStatus_Error;
+
+    for (size_t i = 0; i < target->getBoundFunctionArgumentCount(); i++)
+        callInfo.argv().infallibleAppend(constant(target->getBoundFunctionArgument(i)));
+    for (size_t i = 0; i < nativeCallInfo.argc(); i++)
+        callInfo.argv().infallibleAppend(nativeCallInfo.getArg(i));
+
+    if (!makeCall(scriptedTarget, callInfo, false))
+        return InliningStatus_Error;
+
     return InliningStatus_Inlined;
 }
 

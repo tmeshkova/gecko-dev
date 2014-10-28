@@ -80,7 +80,10 @@ nsPlaintextEditor::nsPlaintextEditor()
 , mCaretStyle(0)
 #endif
 {
-} 
+  // check the "single line editor newline handling"
+  // and "caret behaviour in selection" prefs
+  GetDefaultEditorPrefs(mNewlineHandling, mCaretStyle);
+}
 
 nsPlaintextEditor::~nsPlaintextEditor()
 {
@@ -125,7 +128,6 @@ NS_IMETHODIMP nsPlaintextEditor::Init(nsIDOMDocument *aDoc,
   nsresult res = NS_OK, rulesRes = NS_OK;
   if (mRules) {
     mRules->DetachEditor();
-    mRules = nullptr;
   }
   
   {
@@ -135,10 +137,6 @@ NS_IMETHODIMP nsPlaintextEditor::Init(nsIDOMDocument *aDoc,
     // Init the base editor
     res = nsEditor::Init(aDoc, aRoot, aSelCon, aFlags, aInitialValue);
   }
-
-  // check the "single line editor newline handling"
-  // and "caret behaviour in selection" prefs
-  GetDefaultEditorPrefs(mNewlineHandling, mCaretStyle);
 
   NS_ENSURE_SUCCESS(rulesRes, rulesRes);
 
@@ -324,9 +322,10 @@ nsPlaintextEditor::UpdateMetaCharset(nsIDOMDocument* aDocument,
 
 NS_IMETHODIMP nsPlaintextEditor::InitRules()
 {
-  MOZ_ASSERT(!mRules);
-  // instantiate the rules for this text editor
-  mRules = new nsTextEditRules();
+  if (!mRules) {
+    // instantiate the rules for this text editor
+    mRules = new nsTextEditRules();
+  }
   return mRules->Init(this);
 }
 

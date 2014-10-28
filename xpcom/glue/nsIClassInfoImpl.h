@@ -30,12 +30,12 @@
  * you should already have the following nsISupports implementation in its cpp
  * file:
  *
- *   NS_IMPL_ISUPPORTS2(nsFooBar, nsIFoo, nsIBar).
+ *   NS_IMPL_ISUPPORTS(nsFooBar, nsIFoo, nsIBar).
  *
  * Change this to
  *
  *   NS_IMPL_CLASSINFO(nsFooBar, nullptr, 0, NS_FOOBAR_CID)
- *   NS_IMPL_ISUPPORTS2_CI(nsFooBar, nsIFoo, nsIBar)
+ *   NS_IMPL_ISUPPORTS_CI(nsFooBar, nsIFoo, nsIBar)
  *
  * If nsFooBar is threadsafe, change the 0 above to nsIClassInfo::THREADSAFE.
  * If it's a singleton, use nsIClassInfo::SINGLETON.  The full list of flags is
@@ -45,9 +45,9 @@
  * from an XPCOM object to a scriptable helper.  Unless you're doing
  * specialized JS work, you can probably leave this as nullptr.
  *
- * This file also defines the NS_IMPL_QUERY_INTERFACE2_CI macro, which you can
- * use to replace NS_IMPL_QUERY_INTERFACE2, if you use that instead of
- * NS_IMPL_ISUPPORTS2.
+ * This file also defines the NS_IMPL_QUERY_INTERFACE_CI macro, which you can
+ * use to replace NS_IMPL_QUERY_INTERFACE, if you use that instead of
+ * NS_IMPL_ISUPPORTS.
  *
  * That's it!  The rest is gory details.
  *
@@ -56,7 +56,7 @@
  * "implement" it.  However, after adding these macros to nsFooBar, you you can
  * QueryInterface an instance of nsFooBar to nsIClassInfo.  How can this be?
  *
- * The answer lies in the NS_IMPL_ISUPPORTS2_CI macro.  It modifies nsFooBar's
+ * The answer lies in the NS_IMPL_ISUPPORTS_CI macro.  It modifies nsFooBar's
  * QueryInterface implementation such that, if we ask to QI to nsIClassInfo, it
  * returns a singleton object associated with the class.  (That singleton is
  * defined by NS_IMPL_CLASSINFO.)  So all nsFooBar instances will return the
@@ -159,30 +159,6 @@ NS_CI_INTERFACE_GETTER_NAME(_class)(uint32_t *count, nsIID ***array)          \
     MOZ_FOR_EACH(NS_CLASSINFO_HELPER_ENTRY, (), (__VA_ARGS__))                \
   NS_CLASSINFO_HELPER_END
 
-// TODO: Remove these after changing everything to the variadic variant.
-#define NS_IMPL_CI_INTERFACE_GETTER1(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER2(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER3(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER4(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER5(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER6(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER7(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER8(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER9(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER10(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-#define NS_IMPL_CI_INTERFACE_GETTER11(aClass, ...) \
-  NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-
 #define NS_IMPL_QUERY_INTERFACE_CI(aClass, ...)                               \
   MOZ_STATIC_ASSERT_VALID_ARG_COUNT(__VA_ARGS__);                             \
   NS_INTERFACE_MAP_BEGIN(aClass)                                              \
@@ -191,58 +167,10 @@ NS_CI_INTERFACE_GETTER_NAME(_class)(uint32_t *count, nsIID ***array)          \
     NS_IMPL_QUERY_CLASSINFO(aClass)                                           \
   NS_INTERFACE_MAP_END
 
-// TODO: Remove these after changing everything to the variadic variant.
-#define NS_IMPL_QUERY_INTERFACE1_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE2_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE3_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE4_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE5_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE6_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE7_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE8_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE9_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE10_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_QUERY_INTERFACE11_CI(aClass, ...) \
-  NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)
-
 #define NS_IMPL_ISUPPORTS_CI(aClass, ...)                                     \
   NS_IMPL_ADDREF(aClass)                                                      \
   NS_IMPL_RELEASE(aClass)                                                     \
   NS_IMPL_QUERY_INTERFACE_CI(aClass, __VA_ARGS__)                             \
   NS_IMPL_CI_INTERFACE_GETTER(aClass, __VA_ARGS__)
-
-// TODO: Remove these after changing everything to the variadic variant.
-#define NS_IMPL_ISUPPORTS1_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS2_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS3_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS4_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS5_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS6_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS7_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS8_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS9_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS10_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
-#define NS_IMPL_ISUPPORTS11_CI(aClass, ...) \
-  NS_IMPL_ISUPPORTS_CI(aClass, __VA_ARGS__)
 
 #endif // nsIClassInfoImpl_h__

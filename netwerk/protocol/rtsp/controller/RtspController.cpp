@@ -49,8 +49,8 @@ extern PRLogModuleInfo* gRtspLog;
 namespace mozilla {
 namespace net {
 
-NS_IMPL_ISUPPORTS1(RtspController,
-                   nsIStreamingProtocolController)
+NS_IMPL_ISUPPORTS(RtspController,
+                  nsIStreamingProtocolController)
 
 RtspController::RtspController(nsIChannel *channel)
   : mState(INIT)
@@ -188,9 +188,7 @@ RtspController::AsyncOpen(nsIStreamingProtocolListener *aListener)
     return NS_ERROR_NOT_INITIALIZED;
   }
 
-  // Use main thread pointer, but allow access off main thread.
-  mListener =
-    new nsMainThreadPtrHolder<nsIStreamingProtocolListener>(aListener, false);
+  mListener = aListener;
 
   if (!mURI) {
     LOG(("RtspController::AsyncOpen() illegal URI"));
