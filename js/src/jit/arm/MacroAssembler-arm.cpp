@@ -380,11 +380,11 @@ MacroAssemblerARM::ma_alu(Register src1, Imm32 imm, Register dest,
         // Going to have to use a load.  If the operation is a move, then just move it into the
         // destination register
         if (op == op_mov) {
-            as_Imm32Pool(dest, imm.value, nullptr, c);
+            as_Imm32Pool(dest, imm.value, c);
             return;
         } else {
             // If this isn't just going into a register, then stick it in a temp, and then proceed.
-            as_Imm32Pool(ScratchRegister, imm.value, nullptr, c);
+            as_Imm32Pool(ScratchRegister, imm.value, c);
         }
     }
     as_alu(dest, src1, O2Reg(ScratchRegister), op, sc, c);
@@ -442,7 +442,7 @@ MacroAssemblerARM::ma_movPatchable(Imm32 imm_, Register dest, Assembler::Conditi
         break;
       case L_LDR:
         if(i == nullptr)
-            as_Imm32Pool(dest, imm, nullptr, c);
+            as_Imm32Pool(dest, imm, c);
         else
             as_WritePoolEntry(i, c, imm);
         break;
@@ -1299,10 +1299,10 @@ MacroAssemblerARM::ma_vpush(VFPRegister r)
 }
 
 // Branches when done from within arm-specific code.
-void
+BufferOffset
 MacroAssemblerARM::ma_b(Label *dest, Assembler::Condition c, bool isPatchable)
 {
-    as_b(dest, c, isPatchable);
+    return as_b(dest, c, isPatchable);
 }
 
 void
@@ -1332,11 +1332,11 @@ MacroAssemblerARM::ma_b(void *target, Relocation::Kind reloc, Assembler::Conditi
         as_bx(ScratchRegister, c);
         break;
       case Assembler::B_LDR_BX:
-        as_Imm32Pool(ScratchRegister, trg, nullptr, c);
+        as_Imm32Pool(ScratchRegister, trg, c);
         as_bx(ScratchRegister, c);
         break;
       case Assembler::B_LDR:
-        as_Imm32Pool(pc, trg, nullptr, c);
+        as_Imm32Pool(pc, trg, c);
         if (c == Always)
             m_buffer.markGuard();
         break;
@@ -1493,7 +1493,7 @@ MacroAssemblerARM::ma_vimm(double value, FloatRegister dest, Condition cc)
         }
     }
     // Fall back to putting the value in a pool.
-    as_FImm64Pool(dest, value, nullptr, cc);
+    as_FImm64Pool(dest, value, cc);
 }
 
 static inline uint32_t
@@ -1530,7 +1530,7 @@ MacroAssemblerARM::ma_vimm_f32(float value, FloatRegister dest, Condition cc)
         }
     }
     // Fall back to putting the value in a pool.
-    as_FImm32Pool(vd, value, nullptr, cc);
+    as_FImm32Pool(vd, value, cc);
 }
 
 void
@@ -1740,10 +1740,7 @@ MacroAssemblerARMCompat::buildOOLFakeExitFrame(void *fakeReturnAddr)
     uint32_t descriptor = MakeFrameDescriptor(framePushed(), JitFrame_IonJS);
 
     Push(Imm32(descriptor)); // descriptor_
-
-    enterNoPool();
     Push(ImmPtr(fakeReturnAddr));
-    leaveNoPool();
 
     return true;
 }
@@ -4189,8 +4186,9 @@ CodeOffsetLabel
 MacroAssemblerARMCompat::toggledJump(Label *label)
 {
     // Emit a B that can be toggled to a CMP. See ToggleToJmp(), ToggleToCmp().
-    CodeOffsetLabel ret(nextOffset().getOffset());
-    ma_b(label, Always, true);
+    
+    BufferOffset b = ma_b(label, Always, true);
+    CodeOffsetLabel ret(b.getOffset());
     return ret;
 }
 

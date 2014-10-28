@@ -18,14 +18,23 @@
 #ifndef mozilla_pkix__pkixtypes_h
 #define mozilla_pkix__pkixtypes_h
 
+#include "pkix/enumclass.h"
 #include "pkix/ScopedPtr.h"
 #include "plarena.h"
 #include "cert.h"
 #include "keyhi.h"
+#include "stdint.h"
 
 namespace mozilla { namespace pkix {
 
-typedef ScopedPtr<PLArenaPool, PL_FreeArenaPool> ScopedPLArenaPool;
+inline void
+PORT_FreeArena_false(PLArenaPool *arena) {
+  // PL_FreeArenaPool can't be used because it doesn't actually free the
+  // memory, which doesn't work well with memory analysis tools
+  return PORT_FreeArena(arena, PR_FALSE);
+}
+
+typedef ScopedPtr<PLArenaPool, PORT_FreeArena_false> ScopedPLArenaPool;
 
 typedef ScopedPtr<CERTCertificate, CERT_DestroyCertificate>
         ScopedCERTCertificate;
@@ -33,7 +42,18 @@ typedef ScopedPtr<CERTCertList, CERT_DestroyCertList> ScopedCERTCertList;
 typedef ScopedPtr<SECKEYPublicKey, SECKEY_DestroyPublicKey>
         ScopedSECKEYPublicKey;
 
-typedef unsigned int KeyUsages;
+MOZILLA_PKIX_ENUM_CLASS KeyUsage : uint8_t {
+  digitalSignature = 0,
+  nonRepudiation   = 1,
+  keyEncipherment  = 2,
+  dataEncipherment = 3,
+  keyAgreement     = 4,
+  keyCertSign      = 5,
+  // cRLSign       = 6,
+  // encipherOnly  = 7,
+  // decipherOnly  = 8,
+  noParticularKeyUsageRequired = 0xff,
+};
 
 enum EndEntityOrCA { MustBeEndEntity, MustBeCA };
 

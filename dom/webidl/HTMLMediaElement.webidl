@@ -102,6 +102,11 @@ partial interface HTMLMediaElement {
   attribute boolean mozPreservesPitch;
   readonly attribute boolean mozAutoplayEnabled;
 
+  // NB: for internal use with the video controls:
+  [Func="IsChromeOrXBL"] attribute boolean mozMediaStatisticsShowing;
+  [Func="IsChromeOrXBL"] attribute boolean mozAllowCasting;
+  [Func="IsChromeOrXBL"] attribute boolean mozIsCasting;
+
   // Mozilla extension: stream capture
   [Throws]
   MediaStream mozCaptureStream();

@@ -364,11 +364,15 @@ struct WorkerStructuredCloneCallbacks
       }
       MOZ_ASSERT(dataArray.isObject());
 
-      // Construct the ImageData.
-      nsRefPtr<ImageData> imageData = new ImageData(width, height,
-                                                    dataArray.toObject());
-      // Wrap it in a JS::Value.
-      return imageData->WrapObject(aCx);
+      JS::Rooted<JSObject*> result(aCx);
+      {
+        // Construct the ImageData.
+        nsRefPtr<ImageData> imageData = new ImageData(width, height,
+                                                      dataArray.toObject());
+        // Wrap it in a JS::Value, protected from a moving GC during ~nsRefPtr.
+        result = imageData->WrapObject(aCx);
+      }
+      return result;
     }
 
     Error(aCx, 0);
@@ -2453,7 +2457,7 @@ WorkerPrivateParent<Derived>::Suspend(JSContext* aCx, nsPIDOMWindow* aWindow)
     }
   }
 
-  MOZ_ASSERT(!mParentSuspended, "Suspended more than once!");
+//  MOZ_ASSERT(!mParentSuspended, "Suspended more than once!");
 
   mParentSuspended = true;
 
@@ -3121,26 +3125,10 @@ WorkerPrivateParent<Derived>::BroadcastErrorToSharedWorkers(
 
     uint32_t actionsIndex = windowActions.LastIndexOf(WindowAction(window));
 
-    // Get the context for this window so that we can report errors correctly.
-    JSContext* cx;
-    rv = NS_OK;
-
-    if (actionsIndex == windowActions.NoIndex) {
-      nsIScriptContext* scx = sharedWorker->GetContextForEventHandlers(&rv);
-      cx = (NS_SUCCEEDED(rv) && scx) ?
-           scx->GetNativeContext() :
-           nsContentUtils::GetSafeJSContext();
-    } else {
-      cx = windowActions[actionsIndex].mJSContext;
-    }
-
-    AutoCxPusher autoPush(cx);
-
-    if (NS_FAILED(rv)) {
-      Throw(cx, rv);
-      JS_ReportPendingException(cx);
-      continue;
-    }
+    nsIGlobalObject* global = sharedWorker->GetParentObject();
+    AutoJSAPIWithErrorsReportedToWindow jsapi(global);
+    JSContext* cx = jsapi.cx();
+    JSAutoCompartment ac(cx, global->GetGlobalJSObject());
 
     RootedDictionary<ErrorEventInit> errorInit(aCx);
     errorInit.mBubbles = false;
@@ -3162,7 +3150,7 @@ WorkerPrivateParent<Derived>::BroadcastErrorToSharedWorkers(
     errorEvent->SetTrusted(true);
 
     bool defaultActionEnabled;
-    rv = sharedWorker->DispatchEvent(errorEvent, &defaultActionEnabled);
+    nsresult rv = sharedWorker->DispatchEvent(errorEvent, &defaultActionEnabled);
     if (NS_FAILED(rv)) {
       Throw(cx, rv);
       JS_ReportPendingException(cx);

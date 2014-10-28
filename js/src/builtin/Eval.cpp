@@ -191,30 +191,6 @@ TryEvalJSON(JSContext *cx, JSScript *callerScript,
     return EvalJSON_NotJSON;
 }
 
-static void
-MarkFunctionsWithinEvalScript(JSScript *script)
-{
-    // Mark top level functions in an eval script as being within an eval and,
-    // if applicable, inside a with statement.
-
-    if (!script->hasObjects())
-        return;
-
-    ObjectArray *objects = script->objects();
-    size_t start = script->innerObjectsStart();
-
-    for (size_t i = start; i < objects->length; i++) {
-        JSObject *obj = objects->vector[i];
-        if (obj->is<JSFunction>()) {
-            JSFunction *fun = &obj->as<JSFunction>();
-            if (fun->hasScript())
-                fun->nonLazyScript()->setDirectlyInsideEval();
-            else if (fun->isInterpretedLazy())
-                fun->lazyScript()->setDirectlyInsideEval();
-        }
-    }
-}
-
 // Define subset of ExecuteType so that casting performs the injection.
 enum EvalType { DIRECT_EVAL = EXECUTE_DIRECT_EVAL, INDIRECT_EVAL = EXECUTE_INDIRECT_EVAL };
 
@@ -298,7 +274,7 @@ EvalKernel(JSContext *cx, const CallArgs &args, EvalType evalType, AbstractFrame
         esg.lookupInEvalCache(flatStr, callerScript, pc);
 
     if (!esg.foundScript()) {
-        JSScript *maybeScript;
+        RootedScript maybeScript(cx);
         unsigned lineno;
         const char *filename;
         JSPrincipals *originPrincipals;
@@ -326,8 +302,6 @@ EvalKernel(JSContext *cx, const CallArgs &args, EvalType evalType, AbstractFrame
                                                      srcBuf, flatStr, staticLevel);
         if (!compiled)
             return false;
-
-        MarkFunctionsWithinEvalScript(compiled);
 
         esg.setNewScript(compiled);
     }
@@ -370,7 +344,7 @@ js::DirectEvalStringFromIon(JSContext *cx,
     esg.lookupInEvalCache(flatStr, callerScript, pc);
 
     if (!esg.foundScript()) {
-        JSScript *maybeScript;
+        RootedScript maybeScript(cx);
         const char *filename;
         unsigned lineno;
         JSPrincipals *originPrincipals;
@@ -395,8 +369,6 @@ js::DirectEvalStringFromIon(JSContext *cx,
                                                      srcBuf, flatStr, staticLevel);
         if (!compiled)
             return false;
-
-        MarkFunctionsWithinEvalScript(compiled);
 
         esg.setNewScript(compiled);
     }

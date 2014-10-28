@@ -7,9 +7,11 @@
 LIBRARY_NAME = 'mozillapkix_gtest'
 
 SOURCES += [
+    'pkixcheck_CheckKeyUsage_tests.cpp',
     'pkixder_input_tests.cpp',
     'pkixder_pki_types_tests.cpp',
     'pkixder_universal_types_tests.cpp',
+    'pkixgtest.cpp',
 ]
 
 LOCAL_INCLUDES += [

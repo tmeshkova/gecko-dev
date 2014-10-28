@@ -170,7 +170,7 @@ public:
 
   Result EnsureLength(uint16_t len)
   {
-    if (input + len > end) {
+    if (static_cast<size_t>(end - input) < len) {
       return Fail(SEC_ERROR_BAD_DER);
     }
     return Success;
@@ -236,6 +236,16 @@ ExpectTagAndIgnoreLength(Input& input, uint8_t expectedTag)
 {
   uint16_t ignored;
   return ExpectTagAndGetLength(input, expectedTag, ignored);
+}
+
+inline Result
+ExpectTagAndGetValue(Input& input, uint8_t tag, /*out*/ Input& value)
+{
+  uint16_t length;
+  if (ExpectTagAndGetLength(input, tag, length) != Success) {
+    return Failure;
+  }
+  return input.Skip(length, value);
 }
 
 inline Result

@@ -381,7 +381,8 @@ public:
    * updates that were sent from the graph thread or will be sent before the
    * graph thread receives the next graph update.
    *
-   * If the graph has been shutdown or destroyed, or if it is non-realtime
+   * If the graph has been shut down or destroyed, then the runnable will be
+   * dispatched to the event queue immediately.  If the graph is non-realtime
    * and has not started, then the runnable will be run
    * synchronously/immediately.  (There are no pending updates in these
    * situations.)
@@ -737,8 +738,7 @@ public:
   /**
    * Indicate that this stream should enter the "finished" state. All tracks
    * must have been ended via EndTrack. The finish time of the stream is
-   * when all tracks have ended and when latest time sent to
-   * AdvanceKnownTracksTime() has been reached.
+   * when all tracks have ended.
    */
   void FinishWithLockHeld();
   void Finish()

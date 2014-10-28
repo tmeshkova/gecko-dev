@@ -25,6 +25,7 @@ import org.mozilla.gecko.GeckoThread;
 import org.mozilla.gecko.GeckoThread.LaunchState;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.RobocopUtils;
+import org.mozilla.gecko.Tab;
 import org.mozilla.gecko.Tabs;
 
 import android.app.Activity;
@@ -234,6 +235,12 @@ abstract class BaseTest extends BaseRobocopTest {
             mAsserter.dumpLog("Exception in loadUrl", e);
             throw new RuntimeException(e);
         }
+    }
+
+    protected final void closeTab(int tabId) {
+        Tabs tabs = Tabs.getInstance();
+        Tab tab = tabs.getTab(tabId);
+        tabs.closeTab(tab);
     }
 
     public final void verifyUrl(String url) {
@@ -531,7 +538,10 @@ abstract class BaseTest extends BaseRobocopTest {
             }
         }, MAX_WAIT_MS);
         mAsserter.ok(success, "waiting for add tab view", "add tab view available");
+        Actions.EventExpecter pageShowExpecter = mActions.expectGeckoEvent("Content:PageShow");
         mSolo.clickOnView(mSolo.getView(R.id.add_tab));
+        pageShowExpecter.blockForEvent();
+        pageShowExpecter.unregisterListener();
     }
 
     public void addTab(String url) {

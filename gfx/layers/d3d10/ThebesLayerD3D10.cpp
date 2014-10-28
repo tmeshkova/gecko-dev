@@ -47,7 +47,7 @@ void
 ThebesLayerD3D10::InvalidateRegion(const nsIntRegion &aRegion)
 {
   mInvalidRegion.Or(mInvalidRegion, aRegion);
-  mInvalidRegion.SimplifyOutward(10);
+  mInvalidRegion.SimplifyOutward(20);
   mValidRegion.Sub(mValidRegion, mInvalidRegion);
 }
 
@@ -403,6 +403,8 @@ ThebesLayerD3D10::DrawRegion(nsIntRegion &aRegion, SurfaceMode aMode)
   if (!mD2DSurface && !mDrawTarget) {
     return;
   }
+
+  aRegion.SimplifyOutwardByArea(100 * 100);
 
   nsRefPtr<gfxASurface> destinationSurface;
   

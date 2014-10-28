@@ -918,7 +918,7 @@ pref("network.http.default-socket-type", "");
 // the packet is lost or delayed on the route.
 pref("network.http.keep-alive.timeout", 115);
 
-// Timeout connections if an initial response is not received after 10 mins.
+// Timeout connections if an initial response is not received after 5 mins.
 pref("network.http.response.timeout", 300);
 
 // Limit the absolute number of http connections.
@@ -1343,6 +1343,8 @@ pref("network.seer.preserve", 80); // percentage of seer data to keep when clean
 
 // Allow insecure NTLMv1 when needed.
 pref("network.negotiate-auth.allow-insecure-ntlm-v1", false);
+// Allow insecure NTLMv1 for HTTPS protected sites by default.
+pref("network.negotiate-auth.allow-insecure-ntlm-v1-https", true);
 
 // This list controls which URIs can use the negotiate-auth protocol.  This
 // list should be limited to the servers you know you'll need to login to.
@@ -4224,8 +4226,12 @@ pref("profiler.enabled", false);
 pref("profiler.interval", 10);
 pref("profiler.entries", 100000);
 
+#if defined(MOZ_WIDGET_GONK) || defined(MOZ_WIDGET_ANDROID)
 // Network Information API
 pref("dom.netinfo.enabled", true);
+#else
+pref("dom.netinfo.enabled", false);
+#endif
 
 #ifdef XP_WIN
 // On 32-bit Windows, fire a low-memory notification if we have less than this

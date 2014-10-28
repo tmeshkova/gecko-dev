@@ -140,7 +140,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
     private MenuPopup menuPopup;
     private List<View> focusOrder;
 
-    private final ImageView editCancel;
+    private final ThemedImageView editCancel;
 
     private boolean shouldShrinkURLBar = false;
 
@@ -222,7 +222,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
         actionItemBar = (LinearLayout) findViewById(R.id.menu_items);
         hasSoftMenuButton = !HardwareUtils.hasMenuButton();
 
-        editCancel = (ImageView) findViewById(R.id.edit_cancel);
+        editCancel = (ThemedImageView) findViewById(R.id.edit_cancel);
 
         // We use different layouts on phones and tablets, so adjust the focus
         // order appropriately.
@@ -375,10 +375,14 @@ public class BrowserToolbar extends ThemedRelativeLayout
             editCancel.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    Telemetry.sendUIEvent(TelemetryContract.Event.CANCEL,
-                                          TelemetryContract.Method.ACTIONBAR,
-                                          getResources().getResourceEntryName(editCancel.getId()));
-                    cancelEdit();
+                    // If we exit editing mode during the animation,
+                    // we're put into an inconsistent state (bug 1017276).
+                    if (!isAnimatingEntry) {
+                        Telemetry.sendUIEvent(TelemetryContract.Event.CANCEL,
+                                              TelemetryContract.Method.ACTIONBAR,
+                                              getResources().getResourceEntryName(editCancel.getId()));
+                        cancelEdit();
+                    }
                 }
             });
         }
@@ -405,7 +409,9 @@ public class BrowserToolbar extends ThemedRelativeLayout
     }
 
     public boolean onBackPressed() {
-        if (isEditing()) {
+        // If we exit editing mode during the animation,
+        // we're put into an inconsistent state (bug 1017276).
+        if (isEditing() && !isAnimatingEntry) {
             Telemetry.sendUIEvent(TelemetryContract.Event.CANCEL,
                                   TelemetryContract.Method.BACK);
             cancelEdit();
@@ -933,6 +939,10 @@ public class BrowserToolbar extends ThemedRelativeLayout
         return (uiMode == UIMode.EDIT);
     }
 
+    public boolean isAnimating() {
+        return isAnimatingEntry;
+    }
+
     public void startEditing(String url, PropertyAnimator animator) {
         if (isEditing()) {
             return;
@@ -1425,10 +1435,17 @@ public class BrowserToolbar extends ThemedRelativeLayout
         stateList.addState(EMPTY_STATE_SET, drawable);
 
         setBackgroundDrawable(stateList);
+
+        if (editCancel != null) {
+            editCancel.onLightweightThemeChanged();
+        }
     }
 
     @Override
     public void onLightweightThemeReset() {
         setBackgroundResource(R.drawable.url_bar_bg);
+        if (editCancel != null) {
+            editCancel.onLightweightThemeReset();
+        }
     }
 }

@@ -166,7 +166,7 @@ public class GeckoPreferences
             }
         });
 
-        if (Build.VERSION.SDK_INT >= 14)
+        if (Build.VERSION.SDK_INT >= 14 && getActionBar() != null)
             getActionBar().setHomeButtonEnabled(true);
 
         // If launched from notification, explicitly cancel the notification.
@@ -385,6 +385,11 @@ public class GeckoPreferences
                     preferences.removePreference(pref);
                     i--;
                     continue;
+                } else if (AppConstants.RELEASE_BUILD && PREFS_GEO_REPORTING.equals(key)) {
+                    // We don't build wifi/cell tower collection in release builds, so hide the UI.
+                    preferences.removePreference(pref);
+                    i--;
+                    continue;
                 } else if (PREFS_DEVTOOLS_REMOTE_ENABLED.equals(key)) {
                     final Context thisContext = this;
                     pref.setOnPreferenceClickListener(new OnPreferenceClickListener() {
@@ -594,15 +599,15 @@ public class GeckoPreferences
         } else if (PREFS_ANNOUNCEMENTS_ENABLED.equals(prefName)) {
             // Send a broadcast intent to the product announcements service, either to start or
             // to stop the repeated background checks.
-            broadcastAnnouncementsPref(GeckoAppShell.getContext(), ((Boolean) newValue).booleanValue());
+            broadcastAnnouncementsPref(this, ((Boolean) newValue).booleanValue());
         } else if (PREFS_UPDATER_AUTODOWNLOAD.equals(prefName)) {
-            org.mozilla.gecko.updater.UpdateServiceHelper.registerForUpdates(GeckoAppShell.getContext(), (String) newValue);
+            org.mozilla.gecko.updater.UpdateServiceHelper.registerForUpdates(this, (String) newValue);
         } else if (PREFS_HEALTHREPORT_UPLOAD_ENABLED.equals(prefName)) {
             // The healthreport pref only lives in Android, so we do not persist
             // to Gecko, but we do broadcast intent to the health report
             // background uploader service, which will start or stop the
             // repeated background upload attempts.
-            broadcastHealthReportUploadPref(GeckoAppShell.getContext(), ((Boolean) newValue).booleanValue());
+            broadcastHealthReportUploadPref(this, ((Boolean) newValue).booleanValue());
         } else if (PREFS_GEO_REPORTING.equals(prefName)) {
             // Translate boolean value to int for geo reporting pref.
             newValue = ((Boolean) newValue) ? 1 : 0;
@@ -630,7 +635,7 @@ public class GeckoPreferences
     }
 
     private EditText getTextBox(int aHintText) {
-        EditText input = new EditText(GeckoAppShell.getContext());
+        EditText input = new EditText(this);
         int inputtype = InputType.TYPE_CLASS_TEXT;
         inputtype |= InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
         input.setInputType(inputtype);

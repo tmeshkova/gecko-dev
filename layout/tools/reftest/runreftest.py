@@ -168,6 +168,16 @@ class RefTest(object):
     # Ensure that telemetry is disabled, so we don't connect to the telemetry
     # server in the middle of the tests.
     prefs['toolkit.telemetry.enabled'] = False
+    # Likewise for safebrowsing.
+    prefs['browser.safebrowsing.enabled'] = False
+    prefs['browser.safebrowsing.malware.enabled'] = False
+    # And for snippets.
+    prefs['browser.snippets.enabled'] = False
+    prefs['browser.snippets.syncPromo.enabled'] = False
+    # And for useragent updates.
+    prefs['general.useragent.updates.enabled'] = False
+    # And for webapp updates.  Yes, it is supposed to be an integer.
+    prefs['browser.webapps.checkForUpdates'] = 0
 
     if options.e10s:
       prefs['browser.tabs.remote.autostart'] = True

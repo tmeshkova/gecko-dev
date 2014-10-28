@@ -151,7 +151,7 @@ this.HawkClient.prototype = {
     let uri = this.host + path;
     let self = this;
 
-    function onComplete(error) {
+    function _onComplete(error) {
       let restResponse = this.response;
       let status = restResponse.status;
 
@@ -206,6 +206,18 @@ this.HawkClient.prototype = {
       deferred.resolve(this.response.body);
     };
 
+    function onComplete(error) {
+      try {
+        // |this| is the RESTRequest object and we need to ensure _onComplete
+        // gets the same one.
+        _onComplete.call(this, error);
+      } catch (ex) {
+        log.error("Unhandled exception processing response:" +
+                  CommonUtils.exceptionStr(ex));
+        deferred.reject(ex);
+      }
+    }
+
     let extra = {
       now: this.now(),
       localtimeOffsetMsec: this.localtimeOffsetMsec,
@@ -232,7 +244,7 @@ this.HawkClient.prototype = {
 
   // Given an optional header value, notify that a backoff has been requested.
   _maybeNotifyBackoff: function (response, headerName) {
-    if (!this.observerPrefix) {
+    if (!this.observerPrefix || !response.headers) {
       return;
     }
     let headerVal = response.headers[headerName];
@@ -243,8 +255,8 @@ this.HawkClient.prototype = {
     try {
       backoffInterval = parseInt(headerVal, 10);
     } catch (ex) {
-      this._log.error("hawkclient response had invalid backoff value in '" +
-                      headerName + "' header: " + headerVal);
+      log.error("hawkclient response had invalid backoff value in '" +
+                headerName + "' header: " + headerVal);
       return;
     }
     Observers.notify(this.observerPrefix + ":backoff:interval", backoffInterval);
