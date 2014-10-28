@@ -5639,17 +5639,6 @@ if test -n "$MOZ_GSTREAMER"; then
         AC_MSG_ERROR([gstreamer and gstreamer-plugins-base development packages are needed to build gstreamer backend. Install them or disable gstreamer support with --disable-gstreamer])
     fi
 
-    PKG_CHECK_MODULES(NEMO_RESOURCE, libresourceqt5,
-                      HAS_NEMO_RESOURCE=1,
-                      HAS_NEMO_RESOURCE=)
-
-    if test "$HAS_NEMO_RESOURCE"; then
-        HAS_NEMO_RESOURCE=1
-        AC_DEFINE(HAS_NEMO_RESOURCE)
-        AC_SUBST(NEMO_RESOURCE_LIBS)
-        AC_SUBST(NEMO_RESOURCE_CFLAGS)
-    fi
-
     _SAVE_LDFLAGS=$LDFLAGS
     LDFLAGS="$LDFLAGS $GSTREAMER_LIBS -lgstvideo-$GST_API_VERSION"
     AC_TRY_LINK(,[return 0;],_HAVE_LIBGSTVIDEO=1,_HAVE_LIBGSTVIDEO=)
@@ -5665,7 +5654,6 @@ if test -n "$MOZ_GSTREAMER"; then
 fi
 
 AC_SUBST(MOZ_GSTREAMER)
-AC_SUBST(HAS_NEMO_RESOURCE)
 AC_SUBST(GST_API_VERSION)
 
 if test -n "$MOZ_GSTREAMER"; then

@@ -914,9 +914,6 @@ pref("apz.enlarge_displayport_when_clipped", true);
 pref("apz.axis_lock_mode", 2);
 pref("apz.subframe.enabled", true);
 
-// Allow build sub layers tree for iframes
-pref("apz.subframe.enabled", true);
-
 // This preference allows FirefoxOS apps (and content, I think) to force
 // the use of software (instead of hardware accelerated) 2D canvases by
 // creating a context like this:

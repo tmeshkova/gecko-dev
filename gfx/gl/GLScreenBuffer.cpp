@@ -11,7 +11,6 @@
 #include "GLBlitHelper.h"
 #include "GLReadTexImageHelper.h"
 #include "SharedSurfaceGL.h"
-#include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
 #include "SurfaceStream.h"
 #ifdef MOZ_WIDGET_GONK
 #include "SharedSurfaceGralloc.h"
@@ -58,9 +57,8 @@ GLScreenBuffer::Create(GLContext* gl,
     }
 #endif
 
-    if (!factory) {
+    if (!factory)
         factory = new SurfaceFactory_Basic(gl, caps);
-    }
 
     SurfaceStream* stream = SurfaceStream::CreateForType(
         SurfaceStream::ChooseGLStreamType(SurfaceStream::MainThread,

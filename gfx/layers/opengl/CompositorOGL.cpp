@@ -178,16 +178,6 @@ CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
 
-  // If widget has active GL context then we can try to wrap it into Moz GL Context
-  // TODO: KILL ME SOONER
-  if (mWidget->HasGLContext()) {
-    context = GLContextProvider::CreateWrappingExisting(nullptr, nullptr);
-    if (!context || !context->Init()) {
-      NS_WARNING("Failed to create embedded context");
-      context = nullptr;
-    }
-  }
-
   // Allow to create offscreen GL context for main Layer Manager
   if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
     SurfaceCaps caps = SurfaceCaps::ForRGB();
@@ -1001,7 +991,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
   IntPoint offset = mCurrentRenderTarget->GetOrigin();
   program->SetRenderOffset(offset.x, offset.y);
   if (aOpacity != 1.f)
-    program->SetLayerOpacity(aOpacity * mWorldOpacity);
+    program->SetLayerOpacity(aOpacity);
   if (config.mFeatures & ENABLE_TEXTURE_RECT) {
     TexturedEffect* texturedEffect =
         static_cast<TexturedEffect*>(aEffectChain.mPrimaryEffect.get());

@@ -108,7 +108,6 @@ GLXLibrary::EnsureInitialized()
         { (PRFuncPtr*) &xSwapBuffersInternal, { "glXSwapBuffers", nullptr } },
         { (PRFuncPtr*) &xQueryVersionInternal, { "glXQueryVersion", nullptr } },
         { (PRFuncPtr*) &xGetCurrentContextInternal, { "glXGetCurrentContext", nullptr } },
-        { (PRFuncPtr*) &xGetCurrentDrawableInternal, { "glXGetCurrentDrawable", nullptr } },
         { (PRFuncPtr*) &xWaitGLInternal, { "glXWaitGL", nullptr } },
         { (PRFuncPtr*) &xWaitXInternal, { "glXWaitX", nullptr } },
         /* functions introduced in GLX 1.1 */
@@ -537,15 +536,6 @@ GLXLibrary::xGetCurrentContext()
     return result;
 }
 
-GLXDrawable
-GLXLibrary::xGetCurrentDrawable()
-{
-    BEFORE_GLX_CALL;
-    GLXDrawable result = xGetCurrentDrawableInternal();
-    AFTER_GLX_CALL;
-    return result;
-}
-
 /* static */ void*
 GLXLibrary::xGetProcAddress(const char *procName)
 {
@@ -914,7 +904,7 @@ GLContextGLX::SupportsRobustness() const
 bool
 GLContextGLX::SwapBuffers()
 {
-    if (!mDoubleBuffered || !mOwnsContext)
+    if (!mDoubleBuffered)
         return false;
     mGLX->xSwapBuffers(mDisplay, mDrawable);
     mGLX->xWaitGL();
@@ -982,8 +972,6 @@ GLContextProviderGLX::CreateWrappingExisting(void* aContext, void* aSurface)
         return nullptr;
     }
 
-    aContext = aContext ? aContext : (void*)sGLXLibrary.xGetCurrentContext();
-    aSurface = aSurface ? aSurface : (void*)sGLXLibrary.xGetCurrentDrawable();
     if (aContext && aSurface) {
         SurfaceCaps caps = SurfaceCaps::Any();
         nsRefPtr<GLContextGLX> glContext =

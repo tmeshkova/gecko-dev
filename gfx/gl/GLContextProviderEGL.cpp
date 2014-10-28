@@ -454,7 +454,7 @@ GLContextEGL::SetupLookupFunction()
 bool
 GLContextEGL::SwapBuffers()
 {
-    if (mSurface && mOwnsContext) {
+    if (mSurface) {
 #ifdef MOZ_WIDGET_GONK
         if (!mIsOffscreen) {
             if (mHwc) {
@@ -699,10 +699,6 @@ GLContextProviderEGL::CreateWrappingExisting(void* aContext, void* aSurface)
         MOZ_CRASH("Failed to load EGL library!\n");
         return nullptr;
     }
-
-    // TODO as soon context and surface guaranteed to be non-null
-    aSurface = aSurface ? aSurface : sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
-    aContext = aContext ? aContext : sEGLLibrary.fGetCurrentContext();
 
     if (aContext && aSurface) {
         SurfaceCaps caps = SurfaceCaps::Any();
