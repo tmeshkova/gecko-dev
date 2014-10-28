@@ -7276,15 +7276,18 @@ nsDocShell::CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
   // mContentViewer->PermitUnload may release |this| docshell.
   nsCOMPtr<nsIDocShell> kungFuDeathGrip(this);
   
+  // Make sure timing is created.  But first record whether we had it
+  // already, so we don't clobber the timing for an in-progress load.
+  bool hadTiming = mTiming;
+  MaybeInitTiming();
   if (mContentViewer) {
     // We've got a content viewer already. Make sure the user
     // permits us to discard the current document and replace it
     // with about:blank. And also ensure we fire the unload events
     // in the current document.
 
-    // Make sure timing is created. Unload gets fired first for
+    // Unload gets fired first for
     // document loaded from the session history.
-    MaybeInitTiming();
     mTiming->NotifyBeforeUnload();
 
     bool okToUnload;
@@ -7367,6 +7370,12 @@ nsDocShell::CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
 
   // The transient about:blank viewer doesn't have a session history entry.
   SetHistoryEntry(&mOSHE, nullptr);
+
+  // Clear out our mTiming like we would in EndPageLoad, if we didn't
+  // have one before entering this function.
+  if (!hadTiming) {
+    mTiming = nullptr;
+  }
 
   return rv;
 }
@@ -9242,14 +9251,7 @@ nsDocShell::InternalLoad(nsIURI * aURI,
         aLoadType == LOAD_HISTORY ||
         aLoadType == LOAD_LINK) {
 
-        nsCOMPtr<nsIURI> currentURI;
-        if (sURIFixup && mCurrentURI) {
-            rv = sURIFixup->CreateExposableURI(mCurrentURI,
-                                               getter_AddRefs(currentURI));
-            NS_ENSURE_SUCCESS(rv, rv);
-        } else {
-            currentURI = mCurrentURI;
-        }
+        nsCOMPtr<nsIURI> currentURI = mCurrentURI;
         // Split currentURI and aURI on the '#' character.  Make sure we read
         // the return values of SplitURIAtHash; if it fails, we don't want to
         // allow a short-circuited navigation.
@@ -9264,6 +9266,19 @@ nsDocShell::InternalLoad(nsIURI * aURI,
         bool sameExceptHashes = NS_SUCCEEDED(splitRv1) &&
                                   NS_SUCCEEDED(splitRv2) &&
                                   curBeforeHash.Equals(newBeforeHash);
+
+        if (!sameExceptHashes && sURIFixup && currentURI &&
+            NS_SUCCEEDED(splitRv2)) {
+          // Maybe aURI came from the exposable form of currentURI?
+          nsCOMPtr<nsIURI> currentExposableURI;
+          rv = sURIFixup->CreateExposableURI(currentURI,
+                                             getter_AddRefs(currentExposableURI));
+          NS_ENSURE_SUCCESS(rv, rv);
+          splitRv1 = nsContentUtils::SplitURIAtHash(currentExposableURI,
+                                                    curBeforeHash, curHash);
+          sameExceptHashes = NS_SUCCEEDED(splitRv1) &&
+            curBeforeHash.Equals(newBeforeHash);
+        }
 
         bool historyNavBetweenSameDoc = false;
         if (mOSHE && aSHEntry) {
