@@ -603,6 +603,7 @@ Notification::ShowInternal()
   alertService->ShowAlertNotification(absoluteUrl, mTitle, mBody, true,
                                       uniqueCookie, observer, alertName,
                                       DirectionToString(mDir), mLang,
+                                      EmptyString(),
                                              GetPrincipal());
 }
 

@@ -33,5 +33,13 @@ GStreamerDecoder::Suspend()
   }
 }
 
+void GStreamerDecoder::NotifyPlaybackStopped()
+{
+  if (mLastReader) {
+    mLastReader->Suspend();
+  }
+  MediaDecoder::NotifyPlaybackStopped();
+}
+
 } // namespace mozilla
 

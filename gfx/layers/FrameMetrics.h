@@ -424,6 +424,16 @@ public:
     return mUseDisplayPortMargins;
   }
 
+  void SetViewport(const CSSRect& aViewport)
+  {
+    mViewport = aViewport;
+  }
+
+  const CSSRect& GetViewport() const
+  {
+    return mViewport;
+  }
+
 private:
   // New fields from now on should be made private and old fields should
   // be refactored to be private.

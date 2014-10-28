@@ -20,6 +20,8 @@ public:
   virtual void Suspend() MOZ_OVERRIDE;
   virtual MediaDecoderStateMachine* CreateStateMachine();
   static bool CanHandleMediaType(const nsACString& aMIMEType, const nsAString* aCodecs);
+  virtual void NotifyPlaybackStopped() MOZ_OVERRIDE;
+
 private:
   GStreamerReader* mLastReader;
 };
