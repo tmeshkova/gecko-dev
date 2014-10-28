@@ -5379,15 +5379,23 @@ bool EventStateManager::Prefs::sClickHoldContextMenu = false;
 int32_t EventStateManager::Prefs::sGenericAccessModifierKey = -1;
 int32_t EventStateManager::Prefs::sChromeAccessModifierMask = 0;
 int32_t EventStateManager::Prefs::sContentAccessModifierMask = 0;
+bool EventStateManager::Prefs::sPrefsAlreadyCached = false;
 
 // static
 void
 EventStateManager::Prefs::Init()
 {
-  DebugOnly<nsresult> rv =
-    Preferences::AddBoolVarCache(&sKeyCausesActivation,
-                                 "accessibility.accesskeycausesactivation",
-                                 sKeyCausesActivation);
+  DebugOnly<nsresult> rv = Preferences::RegisterCallback(OnChange, "dom.popup_allowed_events");
+  MOZ_ASSERT(NS_SUCCEEDED(rv),
+             "Failed to observe \"dom.popup_allowed_events\"");
+
+  if (sPrefsAlreadyCached) {
+    return;
+  }
+
+  rv = Preferences::AddBoolVarCache(&sKeyCausesActivation,
+                                    "accessibility.accesskeycausesactivation",
+                                    sKeyCausesActivation);
   MOZ_ASSERT(NS_SUCCEEDED(rv),
              "Failed to observe \"accessibility.accesskeycausesactivation\"");
   rv = Preferences::AddBoolVarCache(&sClickHoldContextMenu,
@@ -5410,10 +5418,7 @@ EventStateManager::Prefs::Init()
                                    sContentAccessModifierMask);
   MOZ_ASSERT(NS_SUCCEEDED(rv),
              "Failed to observe \"ui.key.contentAccess\"");
-
-  rv = Preferences::RegisterCallback(OnChange, "dom.popup_allowed_events");
-  MOZ_ASSERT(NS_SUCCEEDED(rv),
-             "Failed to observe \"dom.popup_allowed_events\"");
+  sPrefsAlreadyCached = true;
 }
 
 // static
