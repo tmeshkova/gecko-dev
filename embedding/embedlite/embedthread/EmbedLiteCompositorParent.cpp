@@ -89,6 +89,9 @@ EmbedLiteCompositorParent::PrepareOffscreen()
   if (context->IsOffscreen()) {
     GLScreenBuffer* screen = context->Screen();
     if (screen) {
+      SurfaceStreamType streamType =
+        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
+                                          screen->PreserveBuffer());
       UniquePtr<SurfaceFactory> factory;
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
@@ -100,7 +103,7 @@ EmbedLiteCompositorParent::PrepareOffscreen()
         factory = MakeUnique<SurfaceFactory_GLTexture>(context, nullConsGL, screen->mCaps);
       }
       if (factory) {
-        screen->Morph(Move(factory));
+        screen->Morph(Move(factory), streamType);
       }
     }
   }
@@ -231,10 +234,8 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
   NS_ENSURE_TRUE(context, nullptr);
   NS_ENSURE_TRUE(context->IsOffscreen(), nullptr);
 
-  GLScreenBuffer* screen = context->Screen();
-  MOZ_ASSERT(screen);
-  SharedSurface* sharedSurf = screen->Front()->Surf();
-  sharedSurf->WaitSync();
+  SharedSurface* sharedSurf = context->RequestFrame();
+  NS_ENSURE_TRUE(sharedSurf, nullptr);
 
   *width = sharedSurf->mSize.width;
   *height = sharedSurf->mSize.height;
