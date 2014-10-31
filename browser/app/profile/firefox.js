@@ -314,8 +314,8 @@ pref("browser.urlbar.doubleClickSelectsAll", false);
 pref("browser.urlbar.autoFill", true);
 pref("browser.urlbar.autoFill.typed", true);
 
-// Use the new unifiedComplete component
-pref("browser.urlbar.unifiedcomplete", true);
+// Whether to use the new unifiedComplete component
+pref("browser.urlbar.unifiedcomplete", false);
 
 // 0: Match anywhere (e.g., middle of words)
 // 1: Match on word boundaries and then try matching anywhere
@@ -1292,6 +1292,7 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 
 // Developer edition preferences
 pref("browser.devedition.theme.enabled", false);
+pref("browser.devedition.theme.showCustomizeButton", false);
 
 // Disable the error console
 pref("devtools.errorconsole.enabled", false);
@@ -1552,7 +1553,7 @@ pref("browser.newtabpage.rows", 3);
 pref("browser.newtabpage.columns", 5);
 
 // directory tiles download URL
-pref("browser.newtabpage.directory.source", "https://tiles.services.mozilla.com/v2/links/fetch");
+pref("browser.newtabpage.directory.source", "https://tiles.services.mozilla.com/v2/links/fetch/%LOCALE%");
 
 // endpoint to send newtab click and view pings
 pref("browser.newtabpage.directory.ping", "https://tiles.services.mozilla.com/v2/links/");
@@ -1606,7 +1607,7 @@ pref("loop.soft_start_hostname", "soft-start.loop.services.mozilla.com");
 pref("loop.server", "https://loop.services.mozilla.com");
 pref("loop.seenToS", "unseen");
 pref("loop.learnMoreUrl", "https://www.firefox.com/hello/");
-pref("loop.legal.ToS_url", "https://call.mozilla.com/legal/terms/");
+pref("loop.legal.ToS_url", "https://hello.firefox.com/legal/terms/");
 pref("loop.legal.privacy_url", "https://www.mozilla.org/privacy/");
 pref("loop.do_not_disturb", false);
 pref("loop.ringtone", "chrome://browser/content/loop/shared/sounds/Firefox-Long.ogg");
@@ -1685,6 +1686,10 @@ pref("identity.fxaccounts.remote.signin.uri", "https://accounts.firefox.com/sign
 // Note that this will always need to be in the same TLD as the
 // "identity.fxaccounts.remote.signup.uri" pref.
 pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings");
+
+// Migrate any existing Firefox Account data from the default profile to the
+// Developer Edition profile.
+pref("identity.fxaccounts.migrateToDevEdition", false);
 
 // On GTK, we now default to showing the menubar only when alt is pressed:
 #ifdef MOZ_WIDGET_GTK

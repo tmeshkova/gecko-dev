@@ -3898,9 +3898,9 @@ IonBuilder::jsop_try()
     //
     // To handle this, we create two blocks: one for the try block and one
     // for the code following the try-catch statement. Both blocks are
-    // connected to the graph with an MTest instruction that always jumps to
-    // the try block. This ensures the successor block always has a predecessor
-    // and later passes will optimize this MTest to a no-op.
+    // connected to the graph with an MGotoWithFake instruction that always
+    // jumps to the try block. This ensures the successor block always has a
+    // predecessor.
     //
     // If the code after the try block is unreachable (control flow in both the
     // try and catch blocks is terminated), only create the try block, to avoid
@@ -3916,10 +3916,7 @@ IonBuilder::jsop_try()
         if (!successor)
             return false;
 
-        // Add MTest(true, tryBlock, successorBlock).
-        MConstant *true_ = MConstant::New(alloc(), BooleanValue(true));
-        current->add(true_);
-        current->end(newTest(true_, tryBlock, successor));
+        current->end(MGotoWithFake::New(alloc(), tryBlock, successor));
     } else {
         successor = nullptr;
         current->end(MGoto::New(alloc(), tryBlock));
@@ -7684,7 +7681,7 @@ IonBuilder::getElemTryCache(bool *emitted, MDefinition *obj, MDefinition *index)
     if (needsToMonitorMissingProperties(types))
         barrier = BarrierKind::TypeSet;
 
-    MInstruction *ins = MGetElementCache::New(alloc(), obj, index, barrier != BarrierKind::NoBarrier);
+    MInstruction *ins = MGetElementCache::New(alloc(), obj, index, barrier == BarrierKind::TypeSet);
 
     current->add(ins);
     current->push(ins);
@@ -9613,11 +9610,17 @@ IonBuilder::getPropTryCache(bool *emitted, MDefinition *obj, PropertyName *name,
 
     // Caches can read values from prototypes, so update the barrier to
     // reflect such possible values.
-    if (barrier == BarrierKind::NoBarrier)
-        barrier = PropertyReadOnPrototypeNeedsTypeBarrier(constraints(), obj, name, types);
+    if (barrier != BarrierKind::TypeSet) {
+        BarrierKind protoBarrier =
+            PropertyReadOnPrototypeNeedsTypeBarrier(constraints(), obj, name, types);
+        if (protoBarrier != BarrierKind::NoBarrier) {
+            MOZ_ASSERT(barrier <= protoBarrier);
+            barrier = protoBarrier;
+        }
+    }
 
     MGetPropertyCache *load = MGetPropertyCache::New(alloc(), obj, name,
-                                                     barrier != BarrierKind::NoBarrier);
+                                                     barrier == BarrierKind::TypeSet);
 
     // Try to mark the cache as idempotent.
     //

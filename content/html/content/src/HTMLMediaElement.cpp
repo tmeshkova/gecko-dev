@@ -2481,6 +2481,9 @@ nsresult HTMLMediaElement::BindToTree(nsIDocument* aDocument, nsIContent* aParen
     // It's value may have changed, so update it.
     UpdatePreloadAction();
   }
+  if (mDecoder) {
+    mDecoder->SetDormantIfNecessary(false);
+  }
 
   return rv;
 }
@@ -2490,6 +2493,11 @@ void HTMLMediaElement::UnbindFromTree(bool aDeep,
 {
   if (!mPaused && mNetworkState != nsIDOMHTMLMediaElement::NETWORK_EMPTY)
     Pause();
+
+  if (mDecoder) {
+    mDecoder->SetDormantIfNecessary(true);
+  }
+
   nsGenericHTMLElement::UnbindFromTree(aDeep, aNullParent);
 }
 
@@ -3407,6 +3415,11 @@ void HTMLMediaElement::NotifyDecoderPrincipalChanged()
     OutputMediaStream* ms = &mOutputStreams[i];
     ms->mStream->CombineWithPrincipal(principal);
   }
+#ifdef MOZ_EME
+  if (mMediaKeys && NS_FAILED(mMediaKeys->CheckPrincipals())) {
+    mMediaKeys->Shutdown();
+  }
+#endif
 }
 
 void HTMLMediaElement::UpdateMediaSize(nsIntSize size)
@@ -4008,16 +4021,34 @@ HTMLMediaElement::SetMediaKeys(mozilla::dom::MediaKeys* aMediaKeys,
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return nullptr;
   }
-  // TODO: Need to shutdown existing MediaKeys instance? bug 1016709.
   nsRefPtr<Promise> promise = Promise::Create(global, aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
-  if (mMediaKeys != aMediaKeys) {
-    mMediaKeys = aMediaKeys;
+  if (mMediaKeys == aMediaKeys) {
+    promise->MaybeResolve(JS::UndefinedHandleValue);
+    return promise.forget();
   }
-  if (mDecoder) {
-    mDecoder->SetCDMProxy(mMediaKeys->GetCDMProxy());
+  if (aMediaKeys && aMediaKeys->IsBoundToMediaElement()) {
+    promise->MaybeReject(NS_ERROR_DOM_QUOTA_EXCEEDED_ERR);
+    return promise.forget();
+  }
+  if (mMediaKeys) {
+    // Existing MediaKeys object. Shut it down.
+    mMediaKeys->Shutdown();
+    mMediaKeys = nullptr;
+  }
+  
+  mMediaKeys = aMediaKeys;
+  if (mMediaKeys) {
+    if (NS_FAILED(mMediaKeys->Bind(this))) {
+      promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+      mMediaKeys = nullptr;
+      return promise.forget();
+    }
+    if (mDecoder) {
+      mDecoder->SetCDMProxy(mMediaKeys->GetCDMProxy());
+    }
   }
   promise->MaybeResolve(JS::UndefinedHandleValue);
   return promise.forget();
@@ -4062,6 +4093,28 @@ HTMLMediaElement::IsEventAttributeName(nsIAtom* aName)
 {
   return aName == nsGkAtoms::onencrypted ||
          nsGenericHTMLElement::IsEventAttributeName(aName);
+}
+
+already_AddRefed<nsIPrincipal>
+HTMLMediaElement::GetTopLevelPrincipal()
+{
+  nsRefPtr<nsIPrincipal> principal;
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(OwnerDoc()->GetParentObject());
+  nsCOMPtr<nsIDOMWindow> topWindow;
+  if (!window) {
+    return nullptr;
+  }
+  window->GetTop(getter_AddRefs(topWindow));
+  nsCOMPtr<nsPIDOMWindow> top = do_QueryInterface(topWindow);
+  if (!top) {
+    return nullptr;
+  }
+  nsIDocument* doc = top->GetExtantDoc();
+  if (!doc) {
+    return nullptr;
+  }
+  principal = doc->NodePrincipal();
+  return principal.forget();
 }
 #endif // MOZ_EME
 

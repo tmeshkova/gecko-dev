@@ -52,6 +52,7 @@ import org.mozilla.gecko.home.HomePanelsManager;
 import org.mozilla.gecko.home.SearchEngine;
 import org.mozilla.gecko.menu.GeckoMenu;
 import org.mozilla.gecko.menu.GeckoMenuItem;
+import org.mozilla.gecko.mozglue.ContextUtils;
 import org.mozilla.gecko.preferences.ClearOnShutdownPref;
 import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.prompts.Prompt;
@@ -79,7 +80,6 @@ import org.mozilla.gecko.widget.GeckoActionProvider;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -103,6 +103,7 @@ import android.nfc.NfcEvent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.StrictMode;
+import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.content.LocalBroadcastManager;
 import android.text.TextUtils;
@@ -156,6 +157,7 @@ public class BrowserApp extends GeckoApp
     private static final String STATE_ABOUT_HOME_TOP_PADDING = "abouthome_top_padding";
 
     private static final String BROWSER_SEARCH_TAG = "browser_search";
+    private static final String ONBOARD_STARTPANE_TAG = "startpane_dialog";
 
     // Request ID for startActivityForResult.
     private static final int ACTIVITY_REQUEST_PREFERENCES = 1001;
@@ -716,8 +718,8 @@ public class BrowserApp extends GeckoApp
 
             if (prefs.getBoolean(PREF_STARTPANE_ENABLED, false)) {
                 if (!Intent.ACTION_VIEW.equals(intentAction)) {
-                    final Intent startIntent = new Intent(this, StartPane.class);
-                    context.startActivity(startIntent);
+                    final DialogFragment dialog = new StartPane();
+                    dialog.show(getSupportFragmentManager(), ONBOARD_STARTPANE_TAG);
                 }
                 // Don't bother trying again to show the v1 minimal first run.
                 prefs.edit().putBoolean(PREF_STARTPANE_ENABLED, false).apply();
@@ -725,7 +727,7 @@ public class BrowserApp extends GeckoApp
         } finally {
             StrictMode.setThreadPolicy(savedPolicy);
         }
-      }
+    }
 
     private Class<?> getMediaPlayerManager() {
         if (AppConstants.MOZ_MEDIA_PLAYER) {
@@ -770,7 +772,7 @@ public class BrowserApp extends GeckoApp
     public void onResume() {
         super.onResume();
 
-        final String args = StringUtils.getStringExtra(getIntent(), "args");
+        final String args = ContextUtils.getStringExtra(getIntent(), "args");
         // If an external intent tries to start Fennec in guest mode, and it's not already
         // in guest mode, this will change modes before opening the url.
         // NOTE: OnResume is called twice sometimes when showing on the lock screen.
@@ -780,19 +782,6 @@ public class BrowserApp extends GeckoApp
             doRestart(getIntent());
             GeckoAppShell.systemExit();
             return;
-        }
-
-        final KeyguardManager manager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-        // The test machines return null for the KeyguardService, despite running Android 4.2.
-        if (Versions.feature11Plus && manager != null) {
-            // If the keyguard is showing AND we're either in guest mode or the keyguard is insecure,
-            // allow showing this window. We do this in onResume so that we can avoid setting these flags if the keyguard
-            // is not showing since it affects Android's layout of the window.
-            if (manager.isKeyguardLocked() && (GeckoProfile.get(this).inGuestMode() || !manager.isKeyguardSecure())) {
-                GuestSession.configureWindow(getWindow());
-            } else {
-                GuestSession.unconfigureWindow(getWindow());
-            }
         }
 
         EventDispatcher.getInstance().unregisterGeckoThreadListener((GeckoEventListener)this,
@@ -1298,12 +1287,13 @@ public class BrowserApp extends GeckoApp
 
         // Make sure the toolbar is fully hidden or fully shown when the user
         // lifts their finger. If the page is shorter than the viewport or if
-        // the user has reached the end of the page, the toolbar is always
-        // shown.
+        // the user has reached the end of a long (longer than twice the viewport height) page,
+        // the toolbar is always shown.
         ImmutableViewportMetrics metrics = mLayerView.getViewportMetrics();
+        final float height = metrics.viewportRectBottom - metrics.viewportRectTop;
         if (metrics.getPageHeight() < metrics.getHeight()
               || metrics.marginTop >= mToolbarHeight / 2
-              || metrics.pageRectBottom == metrics.viewportRectBottom) {
+              || (metrics.pageRectBottom == metrics.viewportRectBottom && metrics.pageRectBottom > 2*height)) {
             mDynamicToolbar.setVisible(true, VisibilityTransition.ANIMATE);
         } else {
             mDynamicToolbar.setVisible(false, VisibilityTransition.ANIMATE);
@@ -3003,13 +2993,7 @@ public class BrowserApp extends GeckoApp
                             GuestSession.hideNotification(BrowserApp.this);
                         }
 
-                        if (!GuestSession.isSecureKeyguardLocked(BrowserApp.this)) {
-                            doRestart(args);
-                        } else {
-                            // If the secure keyguard is up, we don't want to restart.
-                            // Just clear the guest profile data.
-                            GeckoProfile.maybeCleanupGuestProfile(BrowserApp.this);
-                        }
+                        doRestart(args);
                         GeckoAppShell.systemExit();
                     }
                 } catch(JSONException ex) {

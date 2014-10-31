@@ -22,30 +22,25 @@ if (window.location === "chrome://browser/content/browser.xul") {
 }
 
 Services.prefs.setBoolPref("devtools.webide.enabled", true);
-Services.prefs.setBoolPref("devtools.webide.enableLocalRuntime", true);
 
 Services.prefs.setCharPref("devtools.webide.addonsURL", TEST_BASE + "addons/simulators.json");
 Services.prefs.setCharPref("devtools.webide.simulatorAddonsURL", TEST_BASE + "addons/fxos_#SLASHED_VERSION#_simulator-#OS#.xpi");
 Services.prefs.setCharPref("devtools.webide.adbAddonURL", TEST_BASE + "addons/adbhelper-#OS#.xpi");
+Services.prefs.setCharPref("devtools.webide.adaptersAddonURL", TEST_BASE + "addons/fxdt-adapters-#OS#.xpi");
 Services.prefs.setCharPref("devtools.webide.templatesURL", TEST_BASE + "templates.json");
 
 
 SimpleTest.registerCleanupFunction(() => {
-  Services.prefs.clearUserPref("devtools.webide.templatesURL");
   Services.prefs.clearUserPref("devtools.webide.enabled");
-  Services.prefs.clearUserPref("devtools.webide.enableLocalRuntime");
-  Services.prefs.clearUserPref("devtools.webide.addonsURL");
-  Services.prefs.clearUserPref("devtools.webide.simulatorAddonsURL");
-  Services.prefs.clearUserPref("devtools.webide.adbAddonURL");
-  Services.prefs.clearUserPref("devtools.webide.autoInstallADBHelper", false);
+  Services.prefs.clearUserPref("devtools.webide.autoinstallADBHelper");
+  Services.prefs.clearUserPref("devtools.webide.autoinstallFxdtAdapters");
 });
 
-function openWebIDE(autoInstallADBHelper) {
+function openWebIDE(autoInstallAddons) {
   info("opening WebIDE");
 
-  if (!autoInstallADBHelper) {
-    Services.prefs.setBoolPref("devtools.webide.autoinstallADBHelper", false);
-  }
+  Services.prefs.setBoolPref("devtools.webide.autoinstallADBHelper", !!autoInstallAddons);
+  Services.prefs.setBoolPref("devtools.webide.autoinstallFxdtAdapters", !!autoInstallAddons);
 
   let deferred = promise.defer();
 
@@ -68,6 +63,8 @@ function closeWebIDE(win) {
   info("Closing WebIDE");
 
   let deferred = promise.defer();
+
+  Services.prefs.clearUserPref("devtools.webide.widget.enabled");
 
   win.addEventListener("unload", function onUnload() {
     win.removeEventListener("unload", onUnload);

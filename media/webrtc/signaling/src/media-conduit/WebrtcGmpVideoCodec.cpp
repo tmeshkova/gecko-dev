@@ -171,7 +171,7 @@ WebrtcGmpVideoEncoder::InitEncode_g(const webrtc::VideoCodec* aCodecSettings,
   nsTArray<nsCString> tags;
   tags.AppendElement(NS_LITERAL_CSTRING("h264"));
   if (NS_WARN_IF(NS_FAILED(mMPS->GetGMPVideoEncoder(&tags,
-                                                    NS_LITERAL_STRING(""),
+                                                    NS_LITERAL_CSTRING(""),
                                                     &mHost,
                                                     &mGMP)))) {
     mMPS = nullptr;
@@ -255,7 +255,7 @@ WebrtcGmpVideoEncoder::Encode_g(const webrtc::I420VideoFrame* aInputImage,
     nsTArray<nsCString> tags;
     tags.AppendElement(NS_LITERAL_CSTRING("h264"));
     if (NS_WARN_IF(NS_FAILED(mMPS->GetGMPVideoEncoder(&tags,
-                                                      NS_LITERAL_STRING(""),
+                                                      NS_LITERAL_CSTRING(""),
                                                       &mHost,
                                                       &mGMP)))) {
       mGMP = nullptr;
@@ -558,7 +558,7 @@ WebrtcGmpVideoDecoder::InitDecode_g(const webrtc::VideoCodec* aCodecSettings,
   nsTArray<nsCString> tags;
   tags.AppendElement(NS_LITERAL_CSTRING("h264"));
   if (NS_WARN_IF(NS_FAILED(mMPS->GetGMPVideoDecoder(&tags,
-                                                    NS_LITERAL_STRING(""),
+                                                    NS_LITERAL_CSTRING(""),
                                                     &mHost,
                                                     &mGMP)))) {
     mMPS = nullptr;
@@ -622,6 +622,10 @@ WebrtcGmpVideoDecoder::Decode_g(const webrtc::EncodedImage& aInputImage,
   MOZ_ASSERT(mHost);
   if (!mGMP) {
     // destroyed via Terminate()
+    return WEBRTC_VIDEO_CODEC_ERROR;
+  }
+
+  if (!aInputImage._length) {
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
 

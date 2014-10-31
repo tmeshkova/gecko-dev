@@ -10,7 +10,6 @@
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
-#include "js/OldDebugAPI.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/net/WebSocketChannel.h"
 #include "mozilla/dom/File.h"
@@ -84,13 +83,9 @@ public:
   , mDisconnected(false)
   , mCloseEventWasClean(false)
   , mCloseEventCode(nsIWebSocketChannel::CLOSE_ABNORMAL)
-  , mOutgoingBufferedAmount(0)
-  , mBinaryType(dom::BinaryType::Blob)
   , mScriptLine(0)
   , mInnerWindowID(0)
-  , mMutex("WebSocketImpl::mMutex")
   , mWorkerPrivate(nullptr)
-  , mReadyState(WebSocket::CONNECTING)
   {
     if (!NS_IsMainThread()) {
       mWorkerPrivate = GetCurrentThreadWorkerPrivate();
@@ -105,51 +100,6 @@ public:
 
   bool IsTargetThread() const;
 
-  uint16_t ReadyState()
-  {
-    MutexAutoLock lock(mMutex);
-    return mReadyState;
-  }
-
-  void SetReadyState(uint16_t aReadyState)
-  {
-    MutexAutoLock lock(mMutex);
-    mReadyState = aReadyState;
-  }
-
-  uint32_t BufferedAmount() const
-  {
-    AssertIsOnTargetThread();
-    return mOutgoingBufferedAmount;
-  }
-
-  dom::BinaryType BinaryType() const
-  {
-    AssertIsOnTargetThread();
-    return mBinaryType;
-  }
-
-  void SetBinaryType(dom::BinaryType aData)
-  {
-    AssertIsOnTargetThread();
-    mBinaryType = aData;
-  }
-
-  void GetUrl(nsAString& aURL) const
-  {
-    AssertIsOnTargetThread();
-
-    if (mEffectiveURL.IsEmpty()) {
-      aURL = mOriginalURL;
-    } else {
-      aURL = mEffectiveURL;
-    }
-  }
-
-  void Close(const Optional<uint16_t>& aCode,
-             const Optional<nsAString>& aReason,
-             ErrorResult& aRv);
-
   void Init(JSContext* aCx,
             nsIPrincipal* aPrincipal,
             const nsAString& aURL,
@@ -160,12 +110,6 @@ public:
             bool* aConnectionFailed);
 
   void AsyncOpen(ErrorResult& aRv);
-
-  void Send(nsIInputStream* aMsgStream,
-            const nsACString& aMsgString,
-            uint32_t aMsgLength,
-            bool aIsBinary,
-            ErrorResult& aRv);
 
   nsresult ParseURL(const nsAString& aURL);
   nsresult InitializeConnection();
@@ -213,9 +157,6 @@ public:
 
   nsCOMPtr<nsIWebSocketChannel> mChannel;
 
-  // related to the WebSocket constructor steps
-  nsString mOriginalURL;
-  nsString mEffectiveURL;   // after redirects
   bool mSecure; // if true it is using SSL and the wss scheme,
                 // otherwise it is using the ws scheme with no SSL
 
@@ -235,15 +176,9 @@ public:
 
   nsCString mURI;
   nsCString mRequestedProtocolList;
-  nsCString mEstablishedProtocol;
-  nsCString mEstablishedExtensions;
 
   nsCOMPtr<nsIPrincipal> mPrincipal;
   nsWeakPtr              mOriginDocument;
-
-  uint32_t mOutgoingBufferedAmount;
-
-  dom::BinaryType mBinaryType;
 
   // Web Socket owner information:
   // - the script file name, UTF8 encoded.
@@ -255,12 +190,10 @@ public:
   uint32_t mScriptLine;
   uint64_t mInnerWindowID;
 
-  // This mutex protects mReadyState that is the only variable that is used in
-  // different threads.
-  mozilla::Mutex mMutex;
-
   WorkerPrivate* mWorkerPrivate;
   nsAutoPtr<WorkerFeature> mWorkerFeature;
+
+  nsWeakPtr mWeakLoadGroup;
 
 private:
   ~WebSocketImpl()
@@ -270,9 +203,6 @@ private:
       Disconnect();
     }
   }
-
-  // This value should not be used directly but use ReadyState() instead.
-  uint16_t mReadyState;
 };
 
 NS_IMPL_ISUPPORTS(WebSocketImpl,
@@ -451,7 +381,7 @@ WebSocketImpl::CloseConnection(uint16_t aReasonCode,
 {
   AssertIsOnTargetThread();
 
-  uint16_t readyState = ReadyState();
+  uint16_t readyState = mWebSocket->ReadyState();
   if (readyState == WebSocket::CLOSING ||
       readyState == WebSocket::CLOSED) {
     return NS_OK;
@@ -459,7 +389,7 @@ WebSocketImpl::CloseConnection(uint16_t aReasonCode,
 
   // The common case...
   if (mChannel) {
-    SetReadyState(WebSocket::CLOSING);
+    mWebSocket->SetReadyState(WebSocket::CLOSING);
 
     // The channel has to be closed on the main-thread.
 
@@ -482,7 +412,7 @@ WebSocketImpl::CloseConnection(uint16_t aReasonCode,
   mCloseEventCode = aReasonCode;
   CopyUTF8toUTF16(aReasonString, mCloseEventReason);
 
-  SetReadyState(WebSocket::CLOSING);
+  mWebSocket->SetReadyState(WebSocket::CLOSING);
 
   // Can be called from Cancel() or Init() codepaths, so need to dispatch
   // onerror/onclose asynchronously
@@ -504,7 +434,7 @@ WebSocketImpl::ConsoleError()
   NS_ConvertUTF8toUTF16 specUTF16(mURI);
   const char16_t* formatStrings[] = { specUTF16.get() };
 
-  if (ReadyState() < WebSocket::OPEN) {
+  if (mWebSocket->ReadyState() < WebSocket::OPEN) {
     PrintErrorOnConsole("chrome://global/locale/appstrings.properties",
                         MOZ_UTF16("connectionFailure"),
                         formatStrings, ArrayLength(formatStrings));
@@ -600,8 +530,7 @@ WebSocketImpl::DisconnectInternal()
 {
   AssertIsOnMainThread();
 
-  nsCOMPtr<nsILoadGroup> loadGroup;
-  GetLoadGroup(getter_AddRefs(loadGroup));
+  nsCOMPtr<nsILoadGroup> loadGroup = do_QueryReferent(mWeakLoadGroup);
   if (loadGroup) {
     loadGroup->RemoveRequest(this, nullptr, NS_OK);
   }
@@ -622,7 +551,7 @@ WebSocketImpl::DoOnMessageAvailable(const nsACString& aMsg, bool isBinary)
 {
   AssertIsOnTargetThread();
 
-  int16_t readyState = ReadyState();
+  int16_t readyState = mWebSocket->ReadyState();
   if (readyState == WebSocket::CLOSED) {
     NS_ERROR("Received message after CLOSED");
     return NS_ERROR_UNEXPECTED;
@@ -665,7 +594,7 @@ WebSocketImpl::OnStart(nsISupports* aContext)
 {
   AssertIsOnTargetThread();
 
-  int16_t readyState = ReadyState();
+  int16_t readyState = mWebSocket->ReadyState();
 
   // This is the only function that sets OPEN, and should be called only once
   MOZ_ASSERT(readyState != WebSocket::OPEN,
@@ -684,13 +613,13 @@ WebSocketImpl::OnStart(nsISupports* aContext)
   }
 
   if (!mRequestedProtocolList.IsEmpty()) {
-    mChannel->GetProtocol(mEstablishedProtocol);
+    mChannel->GetProtocol(mWebSocket->mEstablishedProtocol);
   }
 
-  mChannel->GetExtensions(mEstablishedExtensions);
+  mChannel->GetExtensions(mWebSocket->mEstablishedExtensions);
   UpdateURI();
 
-  SetReadyState(WebSocket::OPEN);
+  mWebSocket->SetReadyState(WebSocket::OPEN);
 
   // Call 'onopen'
   rv = mWebSocket->CreateAndDispatchSimpleEvent(NS_LITERAL_STRING("open"));
@@ -711,7 +640,7 @@ WebSocketImpl::OnStop(nsISupports* aContext, nsresult aStatusCode)
   // We can be CONNECTING here if connection failed.
   // We can be OPEN if we have encountered a fatal protocol error
   // We can be CLOSING if close() was called and/or server initiated close.
-  MOZ_ASSERT(ReadyState() != WebSocket::CLOSED,
+  MOZ_ASSERT(mWebSocket->ReadyState() != WebSocket::CLOSED,
              "Shouldn't already be CLOSED when OnStop called");
 
   // called by network stack, not JS, so can dispatch JS events synchronously
@@ -756,11 +685,11 @@ WebSocketImpl::OnAcknowledge(nsISupports *aContext, uint32_t aSize)
 {
   AssertIsOnTargetThread();
 
-  if (aSize > mOutgoingBufferedAmount) {
+  if (aSize > mWebSocket->mOutgoingBufferedAmount) {
     return NS_ERROR_UNEXPECTED;
   }
 
-  mOutgoingBufferedAmount -= aSize;
+  mWebSocket->mOutgoingBufferedAmount -= aSize;
   return NS_OK;
 }
 
@@ -770,7 +699,7 @@ WebSocketImpl::OnServerClose(nsISupports *aContext, uint16_t aCode,
 {
   AssertIsOnTargetThread();
 
-  int16_t readyState = ReadyState();
+  int16_t readyState = mWebSocket->ReadyState();
 
   MOZ_ASSERT(readyState != WebSocket::CONNECTING,
              "Received server close before connected?");
@@ -808,7 +737,7 @@ WebSocketImpl::GetInterface(const nsIID& aIID, void** aResult)
 {
   AssertIsOnMainThread();
 
-  if (ReadyState() == WebSocket::CLOSED) {
+  if (!mWebSocket || mWebSocket->ReadyState() == WebSocket::CLOSED) {
     return NS_ERROR_FAILURE;
   }
 
@@ -842,6 +771,10 @@ WebSocket::WebSocket(nsPIDOMWindow* aOwnerWindow)
   , mWorkerPrivate(nullptr)
   , mKeepingAlive(false)
   , mCheckMustKeepAlive(true)
+  , mOutgoingBufferedAmount(0)
+  , mBinaryType(dom::BinaryType::Blob)
+  , mMutex("WebSocketImpl::mMutex")
+  , mReadyState(CONNECTING)
 {
   mImpl = new WebSocketImpl(this);
   mWorkerPrivate = mImpl->mWorkerPrivate;
@@ -1458,6 +1391,8 @@ WebSocketImpl::InitializeConnection()
     NS_ENSURE_SUCCESS(rv, rv);
     rv = loadGroup->AddRequest(this, nullptr);
     NS_ENSURE_SUCCESS(rv, rv);
+
+    mWeakLoadGroup = do_GetWeakReference(loadGroup);
   }
 
   // manually adding loadinfo to the channel since it
@@ -1491,7 +1426,7 @@ void
 WebSocketImpl::DispatchConnectionCloseEvents()
 {
   AssertIsOnTargetThread();
-  SetReadyState(WebSocket::CLOSED);
+  mWebSocket->SetReadyState(WebSocket::CLOSED);
 
   // Call 'onerror' if needed
   if (mFailed) {
@@ -1517,7 +1452,7 @@ nsresult
 WebSocket::CreateAndDispatchSimpleEvent(const nsAString& aName)
 {
   MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
+  AssertIsOnTargetThread();
 
   nsresult rv = CheckInnerWindowCorrectness();
   if (NS_FAILED(rv)) {
@@ -1542,7 +1477,7 @@ WebSocket::CreateAndDispatchMessageEvent(const nsACString& aData,
                                          bool aIsBinary)
 {
   MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
+  AssertIsOnTargetThread();
 
   AutoJSAPI jsapi;
 
@@ -1566,7 +1501,7 @@ WebSocket::CreateAndDispatchMessageEvent(JSContext* aCx,
                                          bool aIsBinary)
 {
   MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
+  AssertIsOnTargetThread();
 
   nsresult rv = CheckInnerWindowCorrectness();
   if (NS_FAILED(rv)) {
@@ -1576,11 +1511,11 @@ WebSocket::CreateAndDispatchMessageEvent(JSContext* aCx,
   // Create appropriate JS object for message
   JS::Rooted<JS::Value> jsData(aCx);
   if (aIsBinary) {
-    if (mImpl->mBinaryType == dom::BinaryType::Blob) {
+    if (mBinaryType == dom::BinaryType::Blob) {
       nsresult rv = nsContentUtils::CreateBlobBuffer(aCx, GetOwner(), aData,
                                                      &jsData);
       NS_ENSURE_SUCCESS(rv, rv);
-    } else if (mImpl->mBinaryType == dom::BinaryType::Arraybuffer) {
+    } else if (mBinaryType == dom::BinaryType::Arraybuffer) {
       JS::Rooted<JSObject*> arrayBuf(aCx);
       nsresult rv = nsContentUtils::CreateArrayBuffer(aCx, aData,
                                                       arrayBuf.address());
@@ -1626,7 +1561,7 @@ WebSocket::CreateAndDispatchCloseEvent(bool aWasClean,
                                        const nsAString &aReason)
 {
   MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
+  AssertIsOnTargetThread();
 
   nsresult rv = CheckInnerWindowCorrectness();
   if (NS_FAILED(rv)) {
@@ -1768,7 +1703,7 @@ WebSocketImpl::ParseURL(const nsAString& aURL)
     }
   }
 
-  mOriginalURL = aURL;
+  mWebSocket->mOriginalURL = aURL;
 
   rv = parsedURL->GetSpec(mURI);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
@@ -1796,9 +1731,9 @@ WebSocket::UpdateMustKeepAlive()
   bool shouldKeepAlive = false;
 
   if (mListenerManager) {
-    switch (mImpl->ReadyState())
+    switch (ReadyState())
     {
-      case WebSocket::CONNECTING:
+      case CONNECTING:
       {
         if (mListenerManager->HasListenersFor(nsGkAtoms::onopen) ||
             mListenerManager->HasListenersFor(nsGkAtoms::onmessage) ||
@@ -1809,19 +1744,19 @@ WebSocket::UpdateMustKeepAlive()
       }
       break;
 
-      case WebSocket::OPEN:
-      case WebSocket::CLOSING:
+      case OPEN:
+      case CLOSING:
       {
         if (mListenerManager->HasListenersFor(nsGkAtoms::onmessage) ||
             mListenerManager->HasListenersFor(nsGkAtoms::onerror) ||
             mListenerManager->HasListenersFor(nsGkAtoms::onclose) ||
-            mImpl->mOutgoingBufferedAmount != 0) {
+            mOutgoingBufferedAmount != 0) {
           shouldKeepAlive = true;
         }
       }
       break;
 
-      case WebSocket::CLOSED:
+      case CLOSED:
       {
         shouldKeepAlive = false;
       }
@@ -1941,7 +1876,7 @@ WebSocketImpl::UpdateURI()
   channel = static_cast<BaseWebSocketChannel*>(mChannel.get());
   MOZ_ASSERT(channel);
 
-  channel->GetEffectiveURL(mEffectiveURL);
+  channel->GetEffectiveURL(mWebSocket->mEffectiveURL);
   mSecure = channel->IsEncrypted();
 
   return NS_OK;
@@ -1967,62 +1902,70 @@ WebSocket::EventListenerRemoved(nsIAtom* aType)
 
 // webIDL: readonly attribute unsigned short readyState;
 uint16_t
-WebSocket::ReadyState() const
+WebSocket::ReadyState()
 {
-  MOZ_ASSERT(mImpl);
-  return mImpl->ReadyState();
+  MutexAutoLock lock(mMutex);
+  return mReadyState;
+}
+
+void
+WebSocket::SetReadyState(uint16_t aReadyState)
+{
+  MutexAutoLock lock(mMutex);
+  mReadyState = aReadyState;
 }
 
 // webIDL: readonly attribute unsigned long bufferedAmount;
 uint32_t
 WebSocket::BufferedAmount() const
 {
-  MOZ_ASSERT(mImpl);
-  return mImpl->BufferedAmount();
+  AssertIsOnTargetThread();
+  return mOutgoingBufferedAmount;
 }
 
 // webIDL: attribute BinaryType binaryType;
 dom::BinaryType
 WebSocket::BinaryType() const
 {
-  MOZ_ASSERT(mImpl);
-  return mImpl->BinaryType();
+  AssertIsOnTargetThread();
+  return mBinaryType;
 }
 
 // webIDL: attribute BinaryType binaryType;
 void
 WebSocket::SetBinaryType(dom::BinaryType aData)
 {
-  MOZ_ASSERT(mImpl);
-  mImpl->SetBinaryType(aData);
+  AssertIsOnTargetThread();
+  mBinaryType = aData;
 }
 
 // webIDL: readonly attribute DOMString url
 void
 WebSocket::GetUrl(nsAString& aURL)
 {
-  MOZ_ASSERT(mImpl);
-  mImpl->GetUrl(aURL);
+  AssertIsOnTargetThread();
+
+  if (mEffectiveURL.IsEmpty()) {
+    aURL = mOriginalURL;
+  } else {
+    aURL = mEffectiveURL;
+  }
 }
 
 // webIDL: readonly attribute DOMString extensions;
 void
 WebSocket::GetExtensions(nsAString& aExtensions)
 {
-  MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
-
-  CopyUTF8toUTF16(mImpl->mEstablishedExtensions, aExtensions);
+  AssertIsOnTargetThread();
+  CopyUTF8toUTF16(mEstablishedExtensions, aExtensions);
 }
 
 // webIDL: readonly attribute DOMString protocol;
 void
 WebSocket::GetProtocol(nsAString& aProtocol)
 {
-  MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
-
-  CopyUTF8toUTF16(mImpl->mEstablishedProtocol, aProtocol);
+  AssertIsOnTargetThread();
+  CopyUTF8toUTF16(mEstablishedProtocol, aProtocol);
 }
 
 // webIDL: void send(DOMString data);
@@ -2030,16 +1973,17 @@ void
 WebSocket::Send(const nsAString& aData,
                 ErrorResult& aRv)
 {
-  MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
+  AssertIsOnTargetThread();
 
   NS_ConvertUTF16toUTF8 msgString(aData);
-  mImpl->Send(nullptr, msgString, msgString.Length(), false, aRv);
+  Send(nullptr, msgString, msgString.Length(), false, aRv);
 }
 
 void
 WebSocket::Send(File& aData, ErrorResult& aRv)
 {
+  AssertIsOnTargetThread();
+
   nsCOMPtr<nsIInputStream> msgStream;
   nsresult rv = aData.GetInternalStream(getter_AddRefs(msgStream));
   if (NS_FAILED(rv)) {
@@ -2059,15 +2003,14 @@ WebSocket::Send(File& aData, ErrorResult& aRv)
     return;
   }
 
-  mImpl->Send(msgStream, EmptyCString(), msgLength, true, aRv);
+  Send(msgStream, EmptyCString(), msgLength, true, aRv);
 }
 
 void
 WebSocket::Send(const ArrayBuffer& aData,
                 ErrorResult& aRv)
 {
-  MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
+  AssertIsOnTargetThread();
 
   aData.ComputeLengthAndData();
 
@@ -2077,15 +2020,14 @@ WebSocket::Send(const ArrayBuffer& aData,
   char* data = reinterpret_cast<char*>(aData.Data());
 
   nsDependentCSubstring msgString(data, len);
-  mImpl->Send(nullptr, msgString, len, true, aRv);
+  Send(nullptr, msgString, len, true, aRv);
 }
 
 void
 WebSocket::Send(const ArrayBufferView& aData,
                 ErrorResult& aRv)
 {
-  MOZ_ASSERT(mImpl);
-  mImpl->AssertIsOnTargetThread();
+  AssertIsOnTargetThread();
 
   aData.ComputeLengthAndData();
 
@@ -2095,20 +2037,20 @@ WebSocket::Send(const ArrayBufferView& aData,
   char* data = reinterpret_cast<char*>(aData.Data());
 
   nsDependentCSubstring msgString(data, len);
-  mImpl->Send(nullptr, msgString, len, true, aRv);
+  Send(nullptr, msgString, len, true, aRv);
 }
 
 void
-WebSocketImpl::Send(nsIInputStream* aMsgStream,
-                    const nsACString& aMsgString,
-                    uint32_t aMsgLength,
-                    bool aIsBinary,
-                    ErrorResult& aRv)
+WebSocket::Send(nsIInputStream* aMsgStream,
+                const nsACString& aMsgString,
+                uint32_t aMsgLength,
+                bool aIsBinary,
+                ErrorResult& aRv)
 {
   AssertIsOnTargetThread();
 
   int64_t readyState = ReadyState();
-  if (readyState == WebSocket::CONNECTING) {
+  if (readyState == CONNECTING) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
@@ -2116,22 +2058,23 @@ WebSocketImpl::Send(nsIInputStream* aMsgStream,
   // Always increment outgoing buffer len, even if closed
   mOutgoingBufferedAmount += aMsgLength;
 
-  if (readyState == WebSocket::CLOSING ||
-      readyState == WebSocket::CLOSED) {
+  if (readyState == CLOSING ||
+      readyState == CLOSED) {
     return;
   }
 
-  MOZ_ASSERT(readyState == WebSocket::OPEN,
-             "Unknown state in WebSocket::Send");
+  // We must have mImpl when connected.
+  MOZ_ASSERT(mImpl);
+  MOZ_ASSERT(readyState == OPEN, "Unknown state in WebSocket::Send");
 
   nsresult rv;
   if (aMsgStream) {
-    rv = mChannel->SendBinaryStream(aMsgStream, aMsgLength);
+    rv = mImpl->mChannel->SendBinaryStream(aMsgStream, aMsgLength);
   } else {
     if (aIsBinary) {
-      rv = mChannel->SendBinaryMsg(aMsgString);
+      rv = mImpl->mChannel->SendBinaryMsg(aMsgString);
     } else {
-      rv = mChannel->SendMsg(aMsgString);
+      rv = mImpl->mChannel->SendMsg(aMsgString);
     }
   }
 
@@ -2140,7 +2083,7 @@ WebSocketImpl::Send(nsIInputStream* aMsgStream,
     return;
   }
 
-  mWebSocket->UpdateMustKeepAlive();
+  UpdateMustKeepAlive();
 }
 
 // webIDL: void close(optional unsigned short code, optional DOMString reason):
@@ -2148,15 +2091,6 @@ void
 WebSocket::Close(const Optional<uint16_t>& aCode,
                  const Optional<nsAString>& aReason,
                  ErrorResult& aRv)
-{
-  MOZ_ASSERT(mImpl);
-  mImpl->Close(aCode, aReason, aRv);
-}
-
-void
-WebSocketImpl::Close(const Optional<uint16_t>& aCode,
-                     const Optional<nsAString>& aReason,
-                     ErrorResult& aRv)
 {
   AssertIsOnTargetThread();
 
@@ -2182,18 +2116,21 @@ WebSocketImpl::Close(const Optional<uint16_t>& aCode,
   }
 
   int64_t readyState = ReadyState();
-  if (readyState == WebSocket::CLOSING ||
-      readyState == WebSocket::CLOSED) {
+  if (readyState == CLOSING ||
+      readyState == CLOSED) {
     return;
   }
 
-  if (readyState == WebSocket::CONNECTING) {
-    FailConnection(closeCode, closeReason);
+  // If the webSocket is not closed we MUST have a mImpl.
+  MOZ_ASSERT(mImpl);
+
+  if (readyState == CONNECTING) {
+    mImpl->FailConnection(closeCode, closeReason);
     return;
   }
 
-  MOZ_ASSERT(readyState == WebSocket::OPEN);
-  CloseConnection(closeCode, closeReason);
+  MOZ_ASSERT(readyState == OPEN);
+  mImpl->CloseConnection(closeCode, closeReason);
 }
 
 //-----------------------------------------------------------------------------
@@ -2207,7 +2144,7 @@ WebSocketImpl::Observe(nsISupports* aSubject,
 {
   AssertIsOnMainThread();
 
-  int64_t readyState = ReadyState();
+  int64_t readyState = mWebSocket->ReadyState();
   if ((readyState == WebSocket::CLOSING) ||
       (readyState == WebSocket::CLOSED)) {
     return NS_OK;
@@ -2236,7 +2173,7 @@ WebSocketImpl::GetName(nsACString& aName)
 {
   AssertIsOnMainThread();
 
-  CopyUTF16toUTF8(mOriginalURL, aName);
+  CopyUTF16toUTF8(mWebSocket->mOriginalURL, aName);
   return NS_OK;
 }
 
@@ -2245,7 +2182,7 @@ WebSocketImpl::IsPending(bool* aValue)
 {
   AssertIsOnTargetThread();
 
-  int64_t readyState = ReadyState();
+  int64_t readyState = mWebSocket->ReadyState();
   *aValue = (readyState != WebSocket::CLOSED);
   return NS_OK;
 }
@@ -2324,7 +2261,7 @@ WebSocketImpl::CancelInternal()
 {
   AssertIsOnTargetThread();
 
-  int64_t readyState = ReadyState();
+  int64_t readyState = mWebSocket->ReadyState();
   if (readyState == WebSocket::CLOSING || readyState == WebSocket::CLOSED) {
     return NS_OK;
   }
@@ -2483,6 +2420,12 @@ bool
 WebSocketImpl::IsTargetThread() const
 {
   return NS_IsMainThread() == !mWorkerPrivate;
+}
+
+void
+WebSocket::AssertIsOnTargetThread() const
+{
+  MOZ_ASSERT(NS_IsMainThread() == !mWorkerPrivate);
 }
 
 } // dom namespace

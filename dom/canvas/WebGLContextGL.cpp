@@ -48,6 +48,7 @@
 #include "mozilla/dom/ImageData.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/Endian.h"
+#include "mozilla/fallible.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -2283,8 +2284,12 @@ WebGLContext::ReadPixels(GLint x, GLint y, GLsizei width,
         uint32_t subrect_byteLength = (subrect_height-1)*subrect_alignedRowSize + subrect_plainRowSize;
 
         // create subrect buffer, call glReadPixels, copy pixels into destination buffer, delete subrect buffer
-        GLubyte *subrect_data = new GLubyte[subrect_byteLength];
-        gl->fReadPixels(subrect_x, subrect_y, subrect_width, subrect_height, format, type, subrect_data);
+        UniquePtr<GLubyte> subrect_data(new ((fallible_t())) GLubyte[subrect_byteLength]);
+        if (!subrect_data)
+            return ErrorOutOfMemory("readPixels: subrect_data");
+
+        gl->fReadPixels(subrect_x, subrect_y, subrect_width, subrect_height,
+                        format, type, subrect_data.get());
 
         // notice that this for loop terminates because we already checked that subrect_height is at most height
         for (GLint y_inside_subrect = 0; y_inside_subrect < subrect_height; ++y_inside_subrect) {
@@ -2293,10 +2298,9 @@ WebGLContext::ReadPixels(GLint x, GLint y, GLsizei width,
             memcpy(static_cast<GLubyte*>(data)
                      + checked_alignedRowSize.value() * (subrect_y_in_dest_buffer + y_inside_subrect)
                      + bytesPerPixel * subrect_x_in_dest_buffer, // destination
-                   subrect_data + subrect_alignedRowSize * y_inside_subrect, // source
+                   subrect_data.get() + subrect_alignedRowSize * y_inside_subrect, // source
                    subrect_plainRowSize); // size
         }
-        delete [] subrect_data;
     }
 
     // if we're reading alpha, we may need to do fixup.  Note that we don't allow
@@ -3755,7 +3759,12 @@ WebGLContext::TexImage2D_base(TexImageTarget texImageTarget, GLint level,
         else
         {
             size_t convertedDataSize = height * dstStride;
-            convertedData = new uint8_t[convertedDataSize];
+            convertedData = new ((fallible_t())) uint8_t[convertedDataSize];
+            if (!convertedData) {
+                ErrorOutOfMemory("texImage2D: Ran out of memory when allocating"
+                                 " a buffer for doing format conversion.");
+                return;
+            }
             if (!ConvertImage(width, height, srcStride, dstStride,
                               static_cast<uint8_t*>(data), convertedData,
                               actualSrcFormat, srcPremultiplied,
@@ -3945,7 +3954,12 @@ WebGLContext::TexSubImage2D_base(TexImageTarget texImageTarget, GLint level,
 
     if (!noConversion) {
         size_t convertedDataSize = height * dstStride;
-        convertedData = new uint8_t[convertedDataSize];
+        convertedData = new ((fallible_t())) uint8_t[convertedDataSize];
+        if (!convertedData) {
+            ErrorOutOfMemory("texImage2D: Ran out of memory when allocating"
+                             " a buffer for doing format conversion.");
+            return;
+        }
         if (!ConvertImage(width, height, srcStride, dstStride,
                           static_cast<const uint8_t*>(data), convertedData,
                           actualSrcFormat, srcPremultiplied,

@@ -107,6 +107,11 @@ XPCOMUtils.defineLazyModuleGetter(this, "SignInToWebsiteUX",
 XPCOMUtils.defineLazyModuleGetter(this, "ContentSearch",
                                   "resource:///modules/ContentSearch.jsm");
 
+#ifdef E10S_TESTING_ONLY
+XPCOMUtils.defineLazyModuleGetter(this, "UpdateChannel",
+                                  "resource://gre/modules/UpdateChannel.jsm");
+#endif
+
 XPCOMUtils.defineLazyGetter(this, "ShellService", function() {
   try {
     return Cc["@mozilla.org/browser/shell-service;1"].
@@ -803,7 +808,7 @@ BrowserGlue.prototype = {
 
       if (shouldCheck && !isDefault && !willRecoverSession) {
         Services.tm.mainThread.dispatch(function() {
-          DefaultBrowserCheck.prompt(this.getMostRecentBrowserWindow());
+          DefaultBrowserCheck.prompt(this.getMostRecentBrowserWindow(), shouldCheck);
         }.bind(this), Ci.nsIThread.DISPATCH_NORMAL);
       }
     }
@@ -1339,7 +1344,7 @@ BrowserGlue.prototype = {
   },
 
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 23;
+    const UI_VERSION = 24;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
     let currentUIVersion = 0;
     try {
@@ -1417,15 +1422,6 @@ BrowserGlue.prototype = {
       }
     }
 
-    if (currentUIVersion < 8) {
-      // Reset homepage pref for users who have it set to google.com/firefox
-      let uri = Services.prefs.getComplexValue("browser.startup.homepage",
-                                               Ci.nsIPrefLocalizedString).data;
-      if (uri && /^https?:\/\/(www\.)?google(\.\w{2,3}){1,2}\/firefox\/?$/.test(uri)) {
-        Services.prefs.clearUserPref("browser.startup.homepage");
-      }
-    }
-
     if (currentUIVersion < 9) {
       // This code adds the customizable downloads buttons.
       let currentset = xulStore.getValue(BROWSER_DOCURL, "nav-bar", "currentset");
@@ -1488,10 +1484,6 @@ BrowserGlue.prototype = {
           xulStore.setValue(BROWSER_DOCURL, "nav-bar", "currentset", currentset);
         }
       }
-    }
-
-    if (currentUIVersion < 13) {
-      /* Obsolete */
     }
 
     if (currentUIVersion < 14) {
@@ -1585,6 +1577,32 @@ BrowserGlue.prototype = {
                                                     Ci.nsIPrefLocalizedString).data;
           Services.search.currentEngine = Services.search.getEngineByName(name);
         } catch (ex) {}
+      }
+    }
+
+    if (currentUIVersion < 24) {
+      // Reset homepage pref for users who have it set to start.mozilla.org
+      // or google.com/firefox.
+      const HOMEPAGE_PREF = "browser.startup.homepage";
+      if (Services.prefs.prefHasUserValue(HOMEPAGE_PREF)) {
+        const DEFAULT =
+          Services.prefs.getDefaultBranch(HOMEPAGE_PREF)
+                        .getComplexValue("", Ci.nsIPrefLocalizedString).data;
+        let value =
+          Services.prefs.getComplexValue(HOMEPAGE_PREF, Ci.nsISupportsString);
+        let updated =
+          value.data.replace(/https?:\/\/start\.mozilla\.org[^|]*/i, DEFAULT)
+                    .replace(/https?:\/\/(www\.)?google\.[a-z.]+\/firefox[^|]*/i,
+                             DEFAULT);
+        if (updated != value.data) {
+          if (updated == DEFAULT) {
+            Services.prefs.clearUserPref(HOMEPAGE_PREF);
+          } else {
+            value.data = updated;
+            Services.prefs.setComplexValue(HOMEPAGE_PREF,
+                                           Ci.nsISupportsString, value);
+          }
+        }
       }
     }
 
@@ -2138,14 +2156,6 @@ ContentPermissionPrompt.prototype = {
 };
 
 let DefaultBrowserCheck = {
-  get OPTIONPOPUP() { return "defaultBrowserNotificationPopup" },
-
-  closePrompt: function(aNode) {
-    if (this._notification) {
-      this._notification.close();
-    }
-  },
-
   setAsDefault: function() {
     let claimAllTypes = true;
 #ifdef XP_WIN
@@ -2163,96 +2173,32 @@ let DefaultBrowserCheck = {
     } catch (ex) {
       Cu.reportError(ex);
     }
-    this.closePrompt();
   },
 
-  _createPopup: function(win, bundle) {
-    let doc = win.document;
-    let popup = doc.createElement("menupopup");
-    popup.id = this.OPTIONPOPUP;
-
-    let notNowItem = doc.createElement("menuitem");
-    notNowItem.id = "defaultBrowserNotNow";
-    let label = bundle.getString("setDefaultBrowserNotNow.label");
-    notNowItem.setAttribute("label", label);
-    let accesskey = bundle.getString("setDefaultBrowserNotNow.accesskey");
-    notNowItem.setAttribute("accesskey", accesskey);
-    popup.appendChild(notNowItem);
-
-    let neverItem = doc.createElement("menuitem");
-    neverItem.id = "defaultBrowserNever";
-    label = bundle.getString("setDefaultBrowserNever.label");
-    neverItem.setAttribute("label", label);
-    accesskey = bundle.getString("setDefaultBrowserNever.accesskey");
-    neverItem.setAttribute("accesskey", accesskey);
-    popup.appendChild(neverItem);
-
-    popup.addEventListener("command", this);
-
-    let popupset = doc.getElementById("mainPopupSet");
-    popupset.appendChild(popup);
-  },
-
-  handleEvent: function(event) {
-    if (event.type == "command") {
-      if (event.target.id == "defaultBrowserNever") {
-        ShellService.shouldCheckDefaultBrowser = false;
-      }
-      this.closePrompt();
-    }
-  },
-
-  prompt: function(win) {
+  prompt: function(win, shouldCheck) {
     let brandBundle = win.document.getElementById("bundle_brand");
     let shellBundle = win.document.getElementById("bundle_shell");
 
     let brandShortName = brandBundle.getString("brandShortName");
     let promptMessage = shellBundle.getFormattedString("setDefaultBrowserMessage2",
                                                        [brandShortName]);
+    let checkboxLabel = shellBundle.getString("setDefaultBrowserNever.label");
 
-    let confirmMessage = shellBundle.getFormattedString("setDefaultBrowserConfirm.label",
-                                                        [brandShortName]);
-    let confirmKey = shellBundle.getString("setDefaultBrowserConfirm.accesskey");
+    let yesLabel = shellBundle.getFormattedString("setDefaultBrowserConfirm.label",
+                                                  [brandShortName]);
+    let notNowLabel = shellBundle.getString("setDefaultBrowserNotNow.label");
 
-    let optionsMessage = shellBundle.getString("setDefaultBrowserOptions.label");
-    let optionsKey = shellBundle.getString("setDefaultBrowserOptions.accesskey");
-
-    let selectedBrowser = win.gBrowser.selectedBrowser;
-    let notificationBox = win.document.getElementById("high-priority-global-notificationbox");
-
-    this._createPopup(win, shellBundle);
-
-    let buttons = [
-      {
-        label: confirmMessage,
-        accessKey: confirmKey,
-        callback: this.setAsDefault.bind(this)
-      },
-      {
-        label: optionsMessage,
-        accessKey: optionsKey,
-        popup: this.OPTIONPOPUP
-      }
-    ];
-
-
-    let iconPixels = win.devicePixelRatio > 1 ? "32" : "16";
-    let iconURL = "chrome://branding/content/icon" + iconPixels + ".png";
-    const priority = notificationBox.PRIORITY_WARNING_HIGH;
-    let callback = this._onNotificationEvent.bind(this);
-    this._notification = notificationBox.appendNotification(promptMessage, "default-browser",
-                                                            iconURL, priority, buttons,
-                                                            callback);
-    this._notification.persistence = -1;
-  },
-
-  _onNotificationEvent: function(eventType) {
-    if (eventType == "removed") {
-      let doc = this._notification.ownerDocument;
-      let popup = doc.getElementById(this.OPTIONPOPUP);
-      popup.removeEventListener("command", this);
-      popup.remove();
-      delete this._notification;
+    let ps = Services.prompt;
+    let dontAskAgain = { value: !shouldCheck };
+    let buttonFlags = (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0) +
+                      (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1) +
+                      ps.BUTTON_POS_0_DEFAULT;
+    let rv = ps.confirmEx(win, null, promptMessage, buttonFlags,
+                          yesLabel, notNowLabel, null, checkboxLabel, dontAskAgain);
+    if (rv == 0) {
+      this.setAsDefault();
+    } else if (dontAskAgain.value) {
+      ShellService.shouldCheckDefaultBrowser = false;
     }
   },
 };
@@ -2261,12 +2207,15 @@ let DefaultBrowserCheck = {
 let E10SUINotification = {
   // Increase this number each time we want to roll out an
   // e10s testing period to Nightly users.
-  CURRENT_NOTICE_COUNT: 0,
+  CURRENT_NOTICE_COUNT: 1,
+  CURRENT_PROMPT_PREF: "browser.displayedE10SPrompt.1",
+  PREVIOUS_PROMPT_PREF: "browser.displayedE10SPrompt",
 
   checkStatus: function() {
     let skipE10sChecks = false;
     try {
-      skipE10sChecks = Services.prefs.getBoolPref("browser.tabs.remote.autostart.disabled-because-using-a11y");
+      skipE10sChecks = (UpdateChannel.get() != "nightly") ||
+                       Services.prefs.getBoolPref("browser.tabs.remote.autostart.disabled-because-using-a11y");
     } catch(e) {}
 
     if (skipE10sChecks) {
@@ -2312,17 +2261,26 @@ let E10SUINotification = {
 
       let e10sPromptShownCount = 0;
       try {
-        e10sPromptShownCount = Services.prefs.getIntPref("browser.displayedE10SPrompt");
+        e10sPromptShownCount = Services.prefs.getIntPref(this.CURRENT_PROMPT_PREF);
       } catch(e) {}
+
+      let isHardwareAccelerated = true;
+      try {
+        let win = RecentWindow.getMostRecentBrowserWindow();
+        let winutils = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+        isHardwareAccelerated = winutils.layerManagerType != "Basic";
+      } catch (e) {}
 
       if (!Services.appinfo.inSafeMode &&
           !Services.appinfo.accessibilityEnabled &&
           !Services.appinfo.keyboardMayHaveIME &&
+          isHardwareAccelerated &&
           e10sPromptShownCount < 5) {
         Services.tm.mainThread.dispatch(() => {
           try {
             this._showE10SPrompt();
-            Services.prefs.setIntPref("browser.displayedE10SPrompt", e10sPromptShownCount + 1);
+            Services.prefs.setIntPref(this.CURRENT_PROMPT_PREF, e10sPromptShownCount + 1);
+            Services.prefs.clearUserPref(this.PREVIOUS_PROMPT_PREF);
           } catch (ex) {
             Cu.reportError("Failed to show e10s prompt: " + ex);
           }
@@ -2369,7 +2327,7 @@ let E10SUINotification = {
 
     let browser = win.gBrowser.selectedBrowser;
 
-    let promptMessage = "Would you like to help us test multiprocess Nightly (e10s)? You can also enable e10s in Nightly preferences.";
+    let promptMessage = "Would you like to help us test multiprocess Nightly (e10s)? You can also enable e10s in Nightly preferences. Notable fixes:";
     let mainAction = {
       label: "Enable and Restart",
       accessKey: "E",
@@ -2389,7 +2347,7 @@ let E10SUINotification = {
         label: "No thanks",
         accessKey: "N",
         callback: function () {
-          Services.prefs.setIntPref("browser.displayedE10SPrompt", 5);
+          Services.prefs.setIntPref(E10SUINotification.CURRENT_PROMPT_PREF, 5);
         }
       }
     ];
@@ -2399,7 +2357,21 @@ let E10SUINotification = {
       persistWhileVisible: true
     };
 
-    win.PopupNotifications.show(browser, "enable_e10s", promptMessage, null, mainAction, secondaryActions, options);
+    win.PopupNotifications.show(browser, "enable-e10s", promptMessage, null, mainAction, secondaryActions, options);
+
+    let highlights = [
+      "Less crashing!",
+      "Improved add-on compatibility and DevTools",
+      "PDF.js, Web Console, Spellchecking, WebRTC now work"
+    ];
+
+    let doorhangerExtraContent = win.document.getElementById("enable-e10s-notification")
+                                             .querySelector("popupnotificationcontent");
+    for (let highlight of highlights) {
+      let highlightLabel = win.document.createElement("label");
+      highlightLabel.setAttribute("value", highlight);
+      doorhangerExtraContent.appendChild(highlightLabel);
+    }
   },
 
   _warnedAboutAccessibility: false,

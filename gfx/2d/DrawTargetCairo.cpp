@@ -510,6 +510,7 @@ NeedIntermediateSurface(const Pattern& aPattern, const DrawOptions& aOptions)
 
 DrawTargetCairo::DrawTargetCairo()
   : mContext(nullptr)
+  , mSurface(nullptr)
   , mLockedBits(nullptr)
 {
 }
@@ -1275,7 +1276,14 @@ TemporaryRef<SourceSurface>
 DrawTargetCairo::OptimizeSourceSurface(SourceSurface *aSurface) const
 {
 #ifdef CAIRO_HAS_XLIB_SURFACE
-  if (cairo_surface_get_type(mSurface) != CAIRO_SURFACE_TYPE_XLIB) {
+  cairo_surface_type_t ctype = cairo_surface_get_type(mSurface);
+  if (aSurface->GetType() == SurfaceType::CAIRO &&
+      cairo_surface_get_type(
+        static_cast<SourceSurfaceCairo*>(aSurface)->GetSurface()) == ctype) {
+    return aSurface;
+  }
+
+  if (ctype != CAIRO_SURFACE_TYPE_XLIB) {
     return aSurface;
   }
 

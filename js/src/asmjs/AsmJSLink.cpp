@@ -472,6 +472,14 @@ LinkModuleToHeap(JSContext *cx, AsmJSModule &module, Handle<ArrayBufferObjectMay
         return LinkFail(cx, msg.get());
     }
 
+    if (heapLength > module.maxHeapLength()) {
+        ScopedJSFreePtr<char> msg(
+            JS_smprintf("ArrayBuffer byteLength 0x%x is greater than maximum length of 0x%x",
+                        heapLength,
+                        module.maxHeapLength()));
+        return LinkFail(cx, msg.get());
+    }
+
     // If we've generated the code with signal handlers in mind (for bounds
     // checks on x64 and for interrupt callback requesting on all platforms),
     // we need to be able to use signals at runtime. In particular, a module
@@ -571,7 +579,10 @@ ChangeHeap(JSContext *cx, AsmJSModule &module, CallArgs args)
 
     Rooted<ArrayBufferObject*> newBuffer(cx, &bufferArg.toObject().as<ArrayBufferObject>());
     uint32_t heapLength = newBuffer->byteLength();
-    if (heapLength & module.heapLengthMask() || heapLength < module.minHeapLength()) {
+    if (heapLength & module.heapLengthMask() ||
+        heapLength < module.minHeapLength() ||
+        heapLength > module.maxHeapLength())
+    {
         args.rval().set(BooleanValue(false));
         return true;
     }
@@ -806,7 +817,8 @@ HandleDynamicLinkFailure(JSContext *cx, CallArgs args, AsmJSModule &module, Hand
                                               ? SourceBufferHolder::GiveOwnership
                                               : SourceBufferHolder::NoOwnership;
     SourceBufferHolder srcBuf(chars, end - begin, ownership);
-    if (!frontend::CompileFunctionBody(cx, &fun, options, formals, srcBuf))
+    if (!frontend::CompileFunctionBody(cx, &fun, options, formals, srcBuf,
+                                       /* enclosingScope = */ NullPtr()))
         return false;
 
     // Call the function we just recompiled.
