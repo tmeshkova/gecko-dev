@@ -90,7 +90,7 @@ protected:
                               const ViewID& aViewId,
                               const CSSRect& aRect);
   virtual bool RecvSetBackgroundColor(const nscolor& aColor);
-  virtual bool RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault);
+  virtual bool RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault);
 
   // IME
   virtual bool RecvGetInputContext(int32_t* aIMEEnabled,

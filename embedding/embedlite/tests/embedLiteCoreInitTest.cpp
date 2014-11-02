@@ -5,26 +5,28 @@
 
 #include "mozilla/embedlite/EmbedInitGlue.h"
 #include "mozilla/embedlite/EmbedLiteApp.h"
+#include "qmessagepump.h"
 
 #ifdef MOZ_WIDGET_QT
 #include <QGuiApplication>
-#elif defined(MOZ_WIDGET_GTK2)
-#include <glib-object.h>
 #endif
 
 using namespace mozilla::embedlite;
 
-static bool sDoExit = getenv("NORMAL_EXIT") != 0;
-static bool sNoProfile = getenv("NO_PROFILE") != 0;
-
 class MyListener : public EmbedLiteAppListener
 {
 public:
-  MyListener(EmbedLiteApp* aApp) : mApp(aApp) {}
+  MyListener(EmbedLiteApp* aApp) : mApp(aApp) {
+  }
   virtual ~MyListener() { }
   virtual void Initialized() {
-    printf("Embedding initialized, let's make view");
+    printf("Embedding initialized\n");
     mApp->Stop();
+    printf("Embedding stop finished\n");
+  }
+  virtual void Destroyed() {
+    printf("Embedding  destroyed\n");
+    qApp->quit();
   }
 
 private:
@@ -35,9 +37,6 @@ int main(int argc, char** argv)
 {
 #ifdef MOZ_WIDGET_QT
   QGuiApplication app(argc, argv);
-#elif defined(MOZ_WIDGET_GTK2)
-  g_type_init();
-  g_thread_init(NULL);
 #endif
 
   printf("Load XUL Symbols\n");
@@ -46,13 +45,16 @@ int main(int argc, char** argv)
     EmbedLiteApp* mapp = XRE_GetEmbedLite();
     MyListener* listener = new MyListener(mapp);
     mapp->SetListener(listener);
-    if (sNoProfile) {
-      mapp->SetProfilePath(nullptr);
-    }
-    bool res = mapp->Start(EmbedLiteApp::EMBED_THREAD);
+    MessagePumpQt* mQtPump = new MessagePumpQt(mapp);
+    bool res = mapp->StartWithCustomPump(EmbedLiteApp::EMBED_THREAD, mQtPump->EmbedLoop());
     printf("XUL Symbols loaded: init res:%i\n", res);
+    app.exec();
+    delete mQtPump;
+    printf("Execution stopped\n");
     delete listener;
+    printf("Listener destroyed\n");
     delete mapp;
+    printf("App destroyed\n");
   } else {
     printf("XUL Symbols failed to load\n");
   }

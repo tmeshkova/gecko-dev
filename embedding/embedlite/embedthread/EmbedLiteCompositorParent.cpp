@@ -146,7 +146,7 @@ EmbedLiteCompositorParent::Invalidate()
 
   UpdateTransformState();
 
-  if (!view->GetListener()->Invalidate()) {
+  if (view->GetListener() && !view->GetListener()->Invalidate()) {
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL);
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, 16);
     return true;

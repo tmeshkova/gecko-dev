@@ -6,7 +6,7 @@
 #ifndef MOZ_EMBED_CONTENT_CONTROLLER_H
 #define MOZ_EMBED_CONTENT_CONTROLLER_H
 
-#include "mozilla/layers/AsyncPanZoomController.h"
+#include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/layers/GeckoContentController.h"
 #include "FrameMetrics.h"
 
@@ -34,7 +34,7 @@ public:
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
   virtual void HandleDoubleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
   virtual void HandleSingleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
-  virtual void HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
+  virtual void HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) MOZ_OVERRIDE;
   virtual void HandleLongTapUp(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
   virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
                                        const CSSRect& aContentRect,
@@ -48,7 +48,8 @@ public:
                                   LayoutDeviceIntPoint* aRefPointOut);
   void ContentReceivedTouch(const ScrollableLayerGuid& aGuid, bool aPreventDefault);
   nsEventStatus ReceiveInputEvent(InputData& aEvent,
-                                  mozilla::layers::ScrollableLayerGuid* aOutTargetGuid);
+                                  mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
+                                  uint64_t* aOutInputBlockId);
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
 

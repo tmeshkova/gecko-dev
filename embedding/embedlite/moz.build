@@ -64,4 +64,9 @@ IPDL_SOURCES += [
     'PEmbedLiteView.ipdl'
 ]
 
+LOCAL_INCLUDES += [
+     '/gfx/layers',
+     '/widget',
+]
+
 include('/ipc/chromium/chromium-config.mozbuild')

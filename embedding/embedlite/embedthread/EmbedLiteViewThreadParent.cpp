@@ -281,7 +281,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault)
+EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
   if (mController->GetManager()) {
     mController->GetManager()->ContentReceivedTouch(aGuid, aPreventDefault);
@@ -430,7 +430,7 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
-    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid);
+    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, nullptr);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       LayoutDeviceIntPoint lpt;
@@ -443,9 +443,9 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
         translatedEvent.mTouches.AppendElement(newData);
       }
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        unused << SendInputDataTouchMoveEvent(guid, translatedEvent);
+        unused << SendInputDataTouchMoveEvent(guid, translatedEvent, 0);
       } else {
-        unused << SendInputDataTouchEvent(guid, translatedEvent);
+        unused << SendInputDataTouchEvent(guid, translatedEvent, 0);
       }
     }
   }
@@ -507,7 +507,7 @@ EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int but
                                                mozilla::ScreenSize(1, 1),
                                                180.0f,
                                                1.0f));
-  mController->ReceiveInputEvent(event, nullptr);
+  mController->ReceiveInputEvent(event, nullptr, nullptr);
   unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
                            x, y, buttons, 1, modifiers,
                            true);
@@ -524,7 +524,7 @@ EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int b
                                                mozilla::ScreenSize(1, 1),
                                                180.0f,
                                                1.0f));
-  mController->ReceiveInputEvent(event, nullptr);
+  mController->ReceiveInputEvent(event, nullptr, nullptr);
   unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
                            x, y, buttons, 1, modifiers,
                            true);
@@ -542,7 +542,7 @@ EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int butt
                                                mozilla::ScreenSize(1, 1),
                                                180.0f,
                                                1.0f));
-  mController->ReceiveInputEvent(event, nullptr);
+  mController->ReceiveInputEvent(event, nullptr, nullptr);
   unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
                            x, y, buttons, 1, modifiers,
                            true);

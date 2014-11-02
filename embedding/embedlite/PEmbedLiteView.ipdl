@@ -47,7 +47,7 @@ child:
     UpdateFrame(FrameMetrics frame) compress;
     HandleDoubleTap(nsIntPoint point);
     HandleSingleTap(nsIntPoint point);
-    HandleLongTap(nsIntPoint point);
+    HandleLongTap(nsIntPoint point, uint64_t aInputBlockId);
     AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
     HandleTextEvent(nsString commit, nsString preEdit);
     HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
@@ -56,10 +56,10 @@ child:
                int32_t aButton, int32_t aClickCount,
                int32_t aModifiers, bool aIgnoreRootScrollFrame);
 
-    InputDataTouchEvent(ScrollableLayerGuid aGuid, MultiTouchInput event);
+    InputDataTouchEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId);
     // We use a separate message for touchmove events only to apply
     // compression to them.
-    InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event) compress;
+    InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId) compress;
     AddMessageListener(nsCString name);
     RemoveMessageListener(nsCString name);
     AddMessageListeners(nsString [] messageNames);
@@ -97,7 +97,7 @@ parent:
      */
     ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
     async SetBackgroundColor(nscolor color);
-    ContentReceivedTouch(ScrollableLayerGuid aGuid, bool aPreventDefault);
+    ContentReceivedTouch(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
     sync GetGLViewSize()
       returns (gfxSize aSize);
 
