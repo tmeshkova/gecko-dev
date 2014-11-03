@@ -10,7 +10,7 @@
 
 #include "TabChild.h"
 #include "EmbedLiteViewThreadChild.h"
-#include "mozilla/layers/AsyncPanZoomController.h"
+#include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
 
@@ -317,7 +317,7 @@ TabChildHelper::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
 }
 
 static bool
-JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
+JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
 {
   nsAString* result = static_cast<nsAString*>(aData);
   result->Append(static_cast<const char16_t*>(aBuf),

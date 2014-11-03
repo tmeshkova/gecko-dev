@@ -77,7 +77,7 @@ EmbedLiteAppThreadChild::Init(MessageChannel* aParentChannel)
   Open(aParentChannel, mParentLoop, ipc::ChildSide);
   RecvSetBoolPref(nsDependentCString("layers.offmainthreadcomposition.enabled"), true);
 
-  nsresult rv = InitAppService();
+  mozilla::DebugOnly<nsresult> rv = InitAppService();
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   SendInitialized();

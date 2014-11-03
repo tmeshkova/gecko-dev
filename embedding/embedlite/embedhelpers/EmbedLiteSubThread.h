@@ -9,6 +9,8 @@
 #define mozilla_ipc_EmbedLiteSubThread_h
 
 #include "base/thread.h"
+#include "nsISupportsImpl.h"
+#include "nsAutoPtr.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -16,13 +18,11 @@ namespace embedlite {
 class EmbedLiteApp;
 
 // Copied from browser_process_impl.cc, modified slightly.
-class EmbedLiteSubThread : public base::Thread,
-  public base::RefCounted<EmbedLiteSubThread>
+class EmbedLiteSubThread : public base::Thread
 {
   public:
+    NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteSubThread)
     explicit EmbedLiteSubThread(EmbedLiteApp*);
-    ~EmbedLiteSubThread();
-
     bool StartEmbedThread();
 
   protected:
@@ -30,6 +30,8 @@ class EmbedLiteSubThread : public base::Thread,
     virtual void CleanUp();
 
   private:
+    virtual ~EmbedLiteSubThread();
+
     MessageLoop* mParentLoop;
     EmbedLiteApp* mApp;
 };

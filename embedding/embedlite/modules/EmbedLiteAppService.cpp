@@ -26,7 +26,7 @@
 #include "EmbedLiteViewThreadChild.h"
 #include "nsIBaseWindow.h"
 #include "nsIWebBrowser.h"
-#include "mozilla/layers/AsyncPanZoomController.h"
+#include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/embedlite/EmbedLog.h"
 #include "nsCxPusher.h"
 #include "xpcprivate.h"
@@ -284,7 +284,7 @@ EmbedLiteAppService::ContentReceivedTouch(uint32_t aWinId, bool aPreventDefault)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->SendContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault);
+  view->SendContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault, 0);
   return NS_OK;
 }
 

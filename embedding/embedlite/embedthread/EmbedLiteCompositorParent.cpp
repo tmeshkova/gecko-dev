@@ -20,7 +20,6 @@
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
 #include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
 #include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
-#include "SurfaceStream.h"              // for SurfaceStream, etc
 #include "SurfaceTypes.h"               // for SurfaceStreamType
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 
@@ -203,8 +202,11 @@ bool EmbedLiteCompositorParent::RenderGL()
   }
 
   if (context->IsOffscreen()) {
-    if (!context->PublishFrame()) {
+    GLScreenBuffer* screen = context->Screen();
+    MOZ_ASSERT(screen);
+    if (!screen->PublishFrame(screen->Size())) {
       NS_ERROR("Failed to publish context frame");
+      return false;
     }
     // Temporary hack, we need two extra paints in order to get initial picture
     if (mInitialPaintCount < 2) {

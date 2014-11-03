@@ -85,7 +85,7 @@ protected:
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
   virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint);
   virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint);
-  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint);
+  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint, const uint64_t& aInputBlockId);
   virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration);
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
@@ -97,8 +97,8 @@ protected:
   virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit);
   virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
   virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
-  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
-  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
+  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId);
+  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId);
 
   virtual bool
   RecvAddMessageListener(const nsCString&);
