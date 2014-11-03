@@ -19,3 +19,4 @@ SOURCES += [
     'qmessagepump.cpp',
 ]
 
+IS_COMPONENT = True

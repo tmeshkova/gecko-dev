@@ -5,6 +5,7 @@
 
 TOOL_DIRS += ['tests']
 
+DIRS += ['tests/shared']
 if CONFIG['ENABLE_TESTS']:
     DIRS += ['tests/gtest']
 
