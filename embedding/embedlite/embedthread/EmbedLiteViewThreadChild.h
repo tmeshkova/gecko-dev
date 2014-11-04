@@ -16,11 +16,9 @@
 #include "TabChildHelper.h"
 
 namespace mozilla {
-namespace layers {
-class GeckoContentController;
-}
 namespace embedlite {
 
+class EmbedLiteContentController;
 class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
@@ -46,8 +44,8 @@ public:
                                 const char16_t* aMessage,
                                 InfallibleTArray<nsString>* aJSONRetVal);
   bool HasMessageListener(const nsAString& aMessageName);
-  void AddGeckoContentListener(mozilla::layers::GeckoContentController* listener);
-  void RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener);
+  void AddGeckoContentListener(EmbedLiteContentController* listener);
+  void RemoveGeckoContentListener(EmbedLiteContentController* listener);
 
   nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
@@ -144,7 +142,7 @@ private:
   CancelableTask* mInitWindowTask;
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
-  nsTArray<mozilla::layers::GeckoContentController*> mControllerListeners;
+  nsTArray<EmbedLiteContentController*> mControllerListeners;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadChild);
 };

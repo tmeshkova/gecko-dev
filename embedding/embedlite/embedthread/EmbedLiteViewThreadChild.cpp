@@ -541,13 +541,13 @@ EmbedLiteViewThreadChild::RecvSetGLViewSize(const gfxSize& aSize)
 }
 
 void
-EmbedLiteViewThreadChild::AddGeckoContentListener(mozilla::layers::GeckoContentController* listener)
+EmbedLiteViewThreadChild::AddGeckoContentListener(EmbedLiteContentController* listener)
 {
   mControllerListeners.AppendElement(listener);
 }
 
 void
-EmbedLiteViewThreadChild::RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener)
+EmbedLiteViewThreadChild::RemoveGeckoContentListener(EmbedLiteContentController* listener)
 {
   mControllerListeners.RemoveElement(listener);
 }

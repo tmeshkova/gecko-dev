@@ -247,7 +247,7 @@ NS_IMETHODIMP EmbedLiteAppService::LeaveSecureJSContext()
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::AddContentListener(uint32_t aWinId, mozilla::layers::GeckoContentController* listener)
+EmbedLiteAppService::AddContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
@@ -256,7 +256,7 @@ EmbedLiteAppService::AddContentListener(uint32_t aWinId, mozilla::layers::GeckoC
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::RemoveContentListener(uint32_t aWinId, mozilla::layers::GeckoContentController* listener)
+EmbedLiteAppService::RemoveContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);

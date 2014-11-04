@@ -26,6 +26,7 @@ EXPORTS.mozilla.embedlite += [
     'EmbedInitGlue.h',
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
+    'EmbedLiteContentController.h',
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
     'utils/EmbedLog.h',
