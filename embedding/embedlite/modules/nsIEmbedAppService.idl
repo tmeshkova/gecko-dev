@@ -21,12 +21,12 @@
 
 %{C++
 #include "nsStringGlue.h" // needed for AString -> nsAString, unfortunately
-#include "mozilla/layers/GeckoContentController.h"
+#include "mozilla/embedlite/EmbedLiteContentController.h"
 #include "FrameMetrics.h"
 %}
 
 [ref] native nsConstFrameMetrics(const mozilla::layers::FrameMetrics);
-[ptr] native GeckoContentController(mozilla::layers::GeckoContentController);
+[ptr] native EmbedLiteContentController(mozilla::embedlite::EmbedLiteContentController);
 
 [scriptable, uuid(99d60536-e1a7-11e2-b76e-ff454ce9029f)]
 interface nsIEmbedMessageListener : nsISupports
@@ -52,8 +52,8 @@ interface nsIEmbedAppService : nsISupports
     void enterSecureJSContext();
     void leaveSecureJSContext();
     // Add listener for AZPC Gecko notifications (single/long/double tap..)
-    [noscript] void addContentListener(in uint32_t aId, in GeckoContentController listener);
-    [noscript] void removeContentListener(in uint32_t aId, in GeckoContentController listener);
+    [noscript] void addContentListener(in uint32_t aId, in EmbedLiteContentController listener);
+    [noscript] void removeContentListener(in uint32_t aId, in EmbedLiteContentController listener);
     // Get EmbedLite nsIWebBrowser by unique ID C++ only
     void getBrowserByID(in uint32_t aId, out nsIWebBrowser outBrowser);
     void getContentWindowByID(in uint32_t aId, [retval] out nsIDOMWindow outWindow);
