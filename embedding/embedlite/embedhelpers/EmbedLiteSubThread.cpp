@@ -21,7 +21,6 @@ namespace embedlite {
 
 EmbedLiteSubThread::EmbedLiteSubThread(EmbedLiteApp* aApp)
   : base::Thread("EmbedLiteSubThread")
-  , mParentLoop(MessageLoop::current())
   , mApp(aApp)
 {
   LOGT();

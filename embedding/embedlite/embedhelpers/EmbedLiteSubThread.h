@@ -32,7 +32,6 @@ class EmbedLiteSubThread : public base::Thread
   private:
     virtual ~EmbedLiteSubThread();
 
-    MessageLoop* mParentLoop;
     EmbedLiteApp* mApp;
 };
 
