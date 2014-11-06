@@ -128,6 +128,7 @@ void
 EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
 {
   if (Invalidate()) {
+    task->Cancel();
     CancelCurrentCompositeTask();
   } else {
     CompositorParent::ScheduleTask(task, time);
@@ -141,7 +142,7 @@ EmbedLiteCompositorParent::Invalidate()
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
   if (!view) {
     LOGE("view not available.. forgot SuspendComposition call?");
-    return false;
+    return true;
   }
 
   UpdateTransformState();
