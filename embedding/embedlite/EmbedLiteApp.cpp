@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -50,7 +50,7 @@ EmbedLiteApp::EmbedLiteApp()
   , mAppChild(NULL)
   , mEmbedType(EMBED_INVALID)
   , mViewCreateID(0)
-  , mDestroying(false)
+  , mState(STOPPED)
   , mRenderType(RENDER_AUTO)
   , mProfilePath(strdup("mozembed"))
   , mIsAsyncLoop(false)
@@ -64,6 +64,7 @@ EmbedLiteApp::~EmbedLiteApp()
   LOGT();
   NS_ASSERTION(!mUILoop, "Main Loop not stopped before destroy");
   NS_ASSERTION(!mSubThread, "Thread not stopped/destroyed before destroy");
+  NS_ASSERTION(mState == STOPPED, "Pre-mature deletion of still running application");
   sSingleton = NULL;
   if (mProfilePath) {
     free(mProfilePath);
@@ -124,9 +125,11 @@ void
 EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
 {
   LOGT();
+  NS_ASSERTION(aApp->mState == STARTING, "Wrong timing");
   if (aApp->mEmbedType == EMBED_THREAD) {
     if (!aApp->mListener ||
         !aApp->mListener->ExecuteChildThread()) {
+      // If toolkit hasn't started a child thread we have to create the thread on our own
       aApp->mSubThread = new EmbedLiteSubThread(aApp);
       if (!aApp->mSubThread->StartEmbedThread()) {
         LOGE("Failed to start child thread");
@@ -138,7 +141,7 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
 void
 EmbedLiteApp::SetProfilePath(const char* aPath)
 {
-  NS_ASSERTION(mEmbedType == EMBED_INVALID, "SetProfilePath must be called before Start");
+  NS_ASSERTION(mState == STOPPED, "SetProfilePath must be called before Start");
   if (mProfilePath)
     free(mProfilePath);
 
@@ -155,7 +158,9 @@ bool
 EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aEventLoop)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
+  NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
+  SetState(STARTING);
   mEmbedType = aEmbedType;
   mUILoop = aEventLoop->GetMessageLoop();
   mUILoop->PostTask(FROM_HERE,
@@ -169,7 +174,9 @@ bool
 EmbedLiteApp::Start(EmbedType aEmbedType)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
+  NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
+  SetState(STARTING);
   mEmbedType = aEmbedType;
   base::AtExitManager exitManager;
   mUILoop = new EmbedLiteUILoop();
@@ -198,10 +205,10 @@ EmbedLiteApp::Start(EmbedType aEmbedType)
 void
 EmbedLiteApp::AddManifestLocation(const char* manifest)
 {
-  if (!mAppParent) {
-    sComponentDirs.AppendElement(nsCString(manifest));
-  } else {
+  if (mState == INITIALIZED) {
     unused << mAppParent->SendLoadComponentManifest(nsDependentCString(manifest));
+  } else {
+    sComponentDirs.AppendElement(nsCString(manifest));
   }
 }
 
@@ -256,7 +263,7 @@ EmbedLiteApp::StopChildThread()
 
 void _FinalStop(EmbedLiteApp* app)
 {
-  app->Stop();
+  app->Shutdown();
 }
 
 void
@@ -269,56 +276,75 @@ void
 EmbedLiteApp::Stop()
 {
   LOGT();
-  if (!mViews.empty()) {
-    std::map<uint32_t, EmbedLiteView*>::iterator it;
-    for (it = mViews.begin(); it != mViews.end(); it++) {
-      EmbedLiteView* view = it->second;
-      delete view;
-      it->second = nullptr;
-    }
-    mDestroying = true;
-  } else if (!mDestroying) {
-    mDestroying = true;
-    mUILoop->PostTask(FROM_HERE,
-                      NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
-  } else {
-    NS_ASSERTION(mUILoop, "Start was not called before stop");
-    mUILoop->DoQuit();
-    if (mIsAsyncLoop) {
-      if (mSubThread) {
-        mSubThread->Stop();
-        mSubThread = NULL;
-      } else if (mListener) {
-        NS_ABORT_IF_FALSE(mListener->StopChildThread(),
-                          "StopChildThread must be implemented when ExecuteChildThread defined");
-      }
-      if (mUILoop && !mIsAsyncLoop) {
-        delete mUILoop;
-      }
-      mUILoop = NULL;
+  NS_ASSERTION(mState == STARTING || mState == INITIALIZED, "Wrong timing");
 
-      if (mListener) {
-        mListener->Destroyed();
+  if (mState == INITIALIZED) {
+    if (mViews.empty()) {
+      mUILoop->PostTask(FROM_HERE,
+                        NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+    } else {
+      std::map<uint32_t, EmbedLiteView*>::iterator it;
+      for (it = mViews.begin(); it != mViews.end(); it++) {
+        EmbedLiteView* view = it->second;
+        delete view;
+        it->second = nullptr;
+        // NOTE: we still keep dangling keys here. They are supposed to be erased in ViewDestroyed().
       }
     }
   }
+
+  SetState(DESTROYING);
+}
+
+void
+EmbedLiteApp::Shutdown()
+{
+  LOGT();
+  NS_ASSERTION(mState == DESTROYING, "Wrong timing");
+
+  if (mIsAsyncLoop) {
+    if (mSubThread) {
+      mSubThread->Stop();
+      mSubThread = NULL;
+    } else if (mListener) {
+      NS_ABORT_IF_FALSE(mListener->StopChildThread(),
+          "StopChildThread must be implemented when ExecuteChildThread defined");
+    }
+  }
+
+  mUILoop->DoQuit();
+
+  if (mIsAsyncLoop) {
+    delete mUILoop;
+    mUILoop = nullptr;
+  }
+
+  if (mListener) {
+    mListener->Destroyed();
+  }
+
+  SetState(STOPPED);
 }
 
 void
 EmbedLiteApp::SetBoolPref(const char* aName, bool aValue)
 {
+  NS_ENSURE_TRUE(mState == INITIALIZED, );
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendSetBoolPref(nsDependentCString(aName), aValue);
 }
 
 void
 EmbedLiteApp::SetCharPref(const char* aName, const char* aValue)
 {
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
 }
 
 void
 EmbedLiteApp::SetIntPref(const char* aName, int aValue)
 {
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
 }
 
@@ -326,6 +352,7 @@ void
 EmbedLiteApp::LoadGlobalStyleSheet(const char* aUri, bool aEnable)
 {
   LOGT();
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendLoadGlobalStyleSheet(nsDependentCString(aUri), aEnable);
 }
 
@@ -333,7 +360,7 @@ void
 EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
 {
   LOGT("topic:%s", aMessageName);
-  NS_ENSURE_TRUE(mAppParent, );
+  NS_ENSURE_TRUE(mState == INITIALIZED, );
   unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
 }
 
@@ -341,6 +368,7 @@ void
 EmbedLiteApp::AddObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendAddObserver(nsDependentCString(aMessageName));
 }
 
@@ -348,16 +376,19 @@ void
 EmbedLiteApp::RemoveObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
 }
 
 void EmbedLiteApp::AddObservers(nsTArray<nsCString>& observersList)
 {
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendAddObservers(observersList);
 }
 
 void EmbedLiteApp::RemoveObservers(nsTArray<nsCString>& observersList)
 {
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendRemoveObservers(observersList);
 }
 
@@ -365,6 +396,7 @@ EmbedLiteView*
 EmbedLiteApp::CreateView(uint32_t aParent)
 {
   LOGT();
+  NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
   mViewCreateID++;
   EmbedLiteView* view = new EmbedLiteView(this, mViewCreateID, aParent);
   mViews[mViewCreateID] = view;
@@ -386,7 +418,7 @@ void
 EmbedLiteApp::ChildReadyToDestroy()
 {
   LOGT();
-  if (mDestroying) {
+  if (mState == DESTROYING) {
     mUILoop->PostTask(FROM_HERE,
                       NewRunnableFunction(&_FinalStop, this));
   }
@@ -416,7 +448,7 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
   if (it != mViews.end()) {
     mViews.erase(it);
   }
-  if (mDestroying && mViews.empty()) {
+  if (mState == DESTROYING && mViews.empty()) {
     mUILoop->PostTask(FROM_HERE,
                       NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
   }
@@ -425,6 +457,7 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
 void EmbedLiteApp::DestroyView(EmbedLiteView* aView)
 {
   LOGT();
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   std::map<uint32_t, EmbedLiteView*>::iterator it;
   for (it = mViews.begin(); it != mViews.end(); it++) {
     if (it->second == aView) {
@@ -453,9 +486,26 @@ EmbedLiteApp::SetIsAccelerated(bool aIsAccelerated)
 void
 EmbedLiteApp::Initialized()
 {
+  LOGT();
+  NS_ASSERTION(mState == STARTING || mState == DESTROYING, "Wrong timing");
+
+  if (mState == DESTROYING) {
+    mUILoop->PostTask(FROM_HERE,
+                      NewRunnableMethod(mAppParent.get(), &EmbedLiteAppThreadParent::SendPreDestroy));
+    return;
+  }
+
+  SetState(INITIALIZED);
   if (mListener) {
     mListener->Initialized();
   }
+}
+
+void
+EmbedLiteApp::SetState(State aState)
+{
+  LOGT("State transition: %d -> %d", mState, aState);
+  mState = aState;
 }
 
 } // namespace embedlite
