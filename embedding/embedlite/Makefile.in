@@ -12,6 +12,7 @@ LOCAL_INCLUDES += \
     -I$(topsrcdir)/dom/ipc \
     -I$(topsrcdir)/js/xpconnect/src \
     -I$(topsrcdir)/gfx/layers/apz/util \
+    -I$(topsrcdir)/gfx/layers \
     $(NULL)
 
 DEFINES += -DEMBED_LITE_INTERNAL=1

@@ -15,6 +15,7 @@
 #include "nsJSUtils.h"
 #include "nsDOMJSUtils.h"
 #include "nsContentUtils.h"
+#include "mozilla/dom/BindingUtils.h"
 
 using namespace mozilla;
 
@@ -194,7 +195,7 @@ static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aOb
   aProp->GetValue(getter_AddRefs(aVariant));
   aProp->GetName(name);
 
-  if (!xpc_qsVariantToJsval(aCx, aVariant, &rval)) {
+  if (!VariantToJsval(aCx, aVariant, &rval)) {
     NS_ERROR("Failed to convert nsIVariant to jsval");
     return false;
   }

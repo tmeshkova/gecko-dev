@@ -112,7 +112,7 @@ void vp8_short_walsh4x4_neon(
     q0s16 = vcombine_s16(d0s16, d1s16);
     q1s16 = vcombine_s16(d2s16, d3s16);
 
-    vst1q_s16(output, q0s16);
-    vst1q_s16(output + 8, q1s16);
+//    vst1q_s16(output, q0s16);
+//    vst1q_s16(output + 8, q1s16);
     return;
 }

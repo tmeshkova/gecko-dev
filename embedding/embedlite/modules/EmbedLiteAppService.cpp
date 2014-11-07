@@ -26,7 +26,7 @@
 #include "EmbedLiteViewThreadChild.h"
 #include "nsIBaseWindow.h"
 #include "nsIWebBrowser.h"
-#include "mozilla/layers/AsyncPanZoomController.h"
+#include "apz/src/AsyncPanZoomController.h"
 #include "mozilla/embedlite/EmbedLog.h"
 #include "xpcprivate.h"
 #include "nsPIDOMWindow.h"

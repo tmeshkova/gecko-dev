@@ -5,7 +5,7 @@
 
 #include "ContextStateTracker.h"
 #include "GLContext.h"
-#include "ProfilerMarkers.h"
+//#include "ProfilerMarkers.h"
 
 namespace mozilla {
 

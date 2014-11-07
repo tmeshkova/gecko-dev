@@ -6,7 +6,7 @@
 #ifndef MOZ_EMBED_CONTENT_CONTROLLER_H
 #define MOZ_EMBED_CONTENT_CONTROLLER_H
 
-#include "mozilla/layers/AsyncPanZoomController.h"
+#include "apz/src/AsyncPanZoomController.h"
 #include "mozilla/layers/GeckoContentController.h"
 #include "FrameMetrics.h"
 

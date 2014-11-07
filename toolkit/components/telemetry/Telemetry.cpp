@@ -281,7 +281,7 @@ HangReports::SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {
   n += mAnnotationInfo.capacity() * sizeof(AnnotationInfo);
   for (std::vector<AnnotationInfo>::const_iterator i = mAnnotationInfo.begin(),
        e = mAnnotationInfo.end(); i != e; ++i) {
-    n += i->mAnnotations->SizeOfIncludingThis(aMallocSizeOf);
+//    n += i->mAnnotations->SizeOfIncludingThis(aMallocSizeOf);
   }
   return n;
 }
@@ -1829,6 +1829,7 @@ TelemetryImpl::GetMaximalNumberOfConcurrentThreads(uint32_t *ret)
 NS_IMETHODIMP
 TelemetryImpl::GetChromeHangs(JSContext *cx, JS::MutableHandle<JS::Value> ret)
 {
+/*
   MutexAutoLock hangReportMutex(mHangReportsMutex);
 
   const CombinedStacks& stacks = mHangReports.GetStacks();
@@ -1928,7 +1929,7 @@ TelemetryImpl::GetChromeHangs(JSContext *cx, JS::MutableHandle<JS::Value> ret)
       }
     }
   }
-
+*/
   return NS_OK;
 }
 

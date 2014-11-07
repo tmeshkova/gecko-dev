@@ -10,7 +10,7 @@
 
 #include "TabChild.h"
 #include "EmbedLiteViewThreadChild.h"
-#include "mozilla/layers/AsyncPanZoomController.h"
+#include "apz/src/AsyncPanZoomController.h"
 #include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
 
