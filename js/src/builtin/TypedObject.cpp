@@ -1578,10 +1578,12 @@ OutlineTypedObject::setOwnerAndData(JSObject *owner, uint8_t *data)
     owner_ = owner;
     data_ = data;
 
+#ifdef JSGC_GENERATIONAL
     // Trigger a post barrier when attaching an object outside the nursery to
     // one that is inside it.
     if (owner && !IsInsideNursery(this) && IsInsideNursery(owner))
         runtimeFromMainThread()->gc.storeBuffer.putWholeCellFromMainThread(this);
+#endif
 }
 
 /*static*/ OutlineTypedObject *
