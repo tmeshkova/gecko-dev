@@ -14,6 +14,6 @@ LOCAL_INCLUDES = [
     '../..',
 ]
 
-LIBRARY_NAME = 'embedlitetest'
+Library('embedlitetest')
 
 FINAL_LIBRARY = 'xul-gtest'
