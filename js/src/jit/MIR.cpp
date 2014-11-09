@@ -1241,14 +1241,14 @@ MPhi::foldsTernary()
     MTest *test = pred->lastIns()->toTest();
 
     // True branch may only dominate one edge of MPhi.
-    if (test->ifTrue()->dominates(block()->getPredecessor(0)) &&
+    if (test->ifTrue()->dominates(block()->getPredecessor(0)) ==
         test->ifTrue()->dominates(block()->getPredecessor(1)))
     {
         return nullptr;
     }
 
     // False branch may only dominate one edge of MPhi.
-    if (test->ifFalse()->dominates(block()->getPredecessor(0)) &&
+    if (test->ifFalse()->dominates(block()->getPredecessor(0)) ==
         test->ifFalse()->dominates(block()->getPredecessor(1)))
     {
         return nullptr;
@@ -1276,6 +1276,23 @@ MPhi::foldsTernary()
     MDefinition *testArg = (trueDef == c) ? falseDef : trueDef;
     if (testArg != test->input())
         return nullptr;
+
+    // This check should be a tautology, except that the constant might be the
+    // result of the removal of a branch.  In such case the domination scope of
+    // the block which is holding the constant might be incomplete. This
+    // condition is used to prevent doing this optimization based on incomplete
+    // information.
+    //
+    // As GVN removed a branch, it will update the dominations rules before
+    // trying to fold this MPhi again. Thus, this condition does not inhibit
+    // this optimization.
+    MBasicBlock *truePred = block()->getPredecessor(firstIsTrueBranch ? 0 : 1);
+    MBasicBlock *falsePred = block()->getPredecessor(firstIsTrueBranch ? 1 : 0);
+    if (!trueDef->block()->dominates(truePred) ||
+        !falseDef->block()->dominates(falsePred))
+    {
+        return nullptr;
+    }
 
     // If testArg is an int32 type we can:
     // - fold testArg ? testArg : 0 to testArg

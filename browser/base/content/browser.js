@@ -396,6 +396,33 @@ const gSessionHistoryObserver = {
   }
 };
 
+const gGatherTelemetryObserver = {
+  observe: function(subject, topic, data) {
+    if (topic != "gather-telemetry") {
+      return;
+    }
+
+    let engine;
+    try {
+      engine = Services.search.defaultEngine;
+    } catch (e) {}
+    let name;
+
+    if (!engine) {
+      name = "NONE";
+    } else if (engine.identifier) {
+      name = engine.identifier;
+    } else if (engine.name) {
+      name = "other-" + engine.name;
+    } else {
+      name = "UNDEFINED";
+    }
+
+    let engines = Services.telemetry.getKeyedHistogramById("SEARCH_DEFAULT_ENGINE");
+    engines.add(name, true)
+  },
+};
+
 /**
  * Given a starting docshell and a URI to look up, find the docshell the URI
  * is loaded in.
@@ -1121,13 +1148,16 @@ var gBrowserInit = {
     Services.obs.addObserver(gXPInstallObserver, "addon-install-blocked", false);
     Services.obs.addObserver(gXPInstallObserver, "addon-install-failed", false);
     Services.obs.addObserver(gXPInstallObserver, "addon-install-complete", false);
+    Services.obs.addObserver(gGatherTelemetryObserver, "gather-telemetry", false);
     window.messageManager.addMessageListener("Browser:URIFixup", gKeywordURIFixup);
     window.messageManager.addMessageListener("Browser:LoadURI", RedirectLoad);
 
     BrowserOffline.init();
     OfflineApps.init();
     IndexedDBPromptHelper.init();
+#ifdef E10S_TESTING_ONLY
     gRemoteTabsUI.init();
+#endif
 
     // Initialize the full zoom setting.
     // We do this before the session restore service gets initialized so we can
@@ -1251,11 +1281,26 @@ var gBrowserInit = {
 #endif
 
     LoopUI.init();
+    // Loop throttling support.
+    const kWidgetId = "loop-button-throttled";
+    // If we're throttled, check to see if it's our turn to be unthrottled
+    if (Services.prefs.getBoolPref("loop.throttled2")) {
+      MozLoopService.checkSoftStart(() => {
+        // If the check unthrottled us and the button was not customized to an
+        // area by the user, move it to the nav-bar.
+        let widget = CustomizableUI.getWidget(kWidgetId);
+        if (!Services.prefs.getBoolPref("loop.throttled2") && !widget.areaType) {
+          CustomizableUI.addWidgetToArea(kWidgetId, CustomizableUI.AREA_NAVBAR);
+        }
+      });
+    }
 
     gBrowserThumbnails.init();
 
     // Add Devtools menuitems and listeners
     gDevToolsBrowser.registerBrowserWindow(window);
+
+    gMenuButtonUpdateBadge.init();
 
     window.addEventListener("mousemove", MousePosTracker, false);
     window.addEventListener("dragover", MousePosTracker, false);
@@ -1403,6 +1448,8 @@ var gBrowserInit = {
 
     DevEdition.uninit();
 
+    gMenuButtonUpdateBadge.uninit();
+
     var enumerator = Services.wm.getEnumerator(null);
     enumerator.getNext();
     if (!enumerator.hasMoreElements()) {
@@ -1434,6 +1481,7 @@ var gBrowserInit = {
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-blocked");
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-failed");
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-complete");
+      Services.obs.removeObserver(gGatherTelemetryObserver, "gather-telemetry");
       window.messageManager.removeMessageListener("Browser:URIFixup", gKeywordURIFixup);
       window.messageManager.removeMessageListener("Browser:LoadURI", RedirectLoad);
 
@@ -2368,6 +2416,118 @@ function PageProxyClickHandler(aEvent)
     middleMousePaste(aEvent);
 }
 
+// Setup the hamburger button badges for updates, if enabled.
+let gMenuButtonUpdateBadge = {
+  enabled: false,
+
+  init: function () {
+    try {
+      this.enabled = Services.prefs.getBoolPref("app.update.badge");
+    } catch (e) {}
+    if (this.enabled) {
+      PanelUI.menuButton.classList.add("badged-button");
+      Services.obs.addObserver(this, "update-staged", false);
+    }
+  },
+
+  uninit: function () {
+    if (this.enabled) {
+      Services.obs.removeObserver(this, "update-staged");
+      PanelUI.panel.removeEventListener("popupshowing", this, true);
+      this.enabled = false;
+    }
+  },
+
+  onMenuPanelCommand: function(event) {
+    if (event.originalTarget.getAttribute("update-status") === "succeeded") {
+      // restart the app
+      let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
+                       .createInstance(Ci.nsISupportsPRBool);
+      Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+
+      if (!cancelQuit.data) {
+        Services.startup.quit(Services.startup.eAttemptQuit | Services.startup.eRestart);
+      }
+    } else {
+      // open the page for manual update
+      let url = Services.urlFormatter.formatURLPref("app.update.url.manual");
+      openUILinkIn(url, "tab");
+    }
+  },
+
+  observe: function (subject, topic, status) {
+    const STATE_DOWNLOADING     = "downloading";
+    const STATE_PENDING         = "pending";
+    const STATE_PENDING_SVC     = "pending-service";
+    const STATE_APPLIED         = "applied";
+    const STATE_APPLIED_SVC     = "applied-service";
+    const STATE_FAILED          = "failed";
+
+    let updateButton = document.getElementById("PanelUI-update-status");
+
+    let updateButtonText;
+    let stringId;
+
+    // Update the UI when the background updater is finished.
+    switch (status) {
+      case STATE_APPLIED:
+      case STATE_APPLIED_SVC:
+      case STATE_PENDING:
+      case STATE_PENDING_SVC:
+        // If the update is successfully applied, or if the updater has fallen back
+        // to non-staged updates, add a badge to the hamburger menu to indicate an
+        // update will be applied once the browser restarts.
+        let badge = document.getAnonymousElementByAttribute(PanelUI.menuButton,
+                                                            "class",
+                                                            "toolbarbutton-badge");
+        badge.style.backgroundColor = 'green';
+        PanelUI.menuButton.setAttribute("badge", "\u2605");
+
+        let brandBundle = document.getElementById("bundle_brand");
+        let brandShortName = brandBundle.getString("brandShortName");
+        stringId = "appmenu.restartNeeded.description";
+        updateButtonText = gNavigatorBundle.getFormattedString(stringId,
+                                                               [brandShortName]);
+
+        updateButton.label = updateButtonText;
+        updateButton.hidden = false;
+        updateButton.setAttribute("update-status", "succeeded");
+
+        PanelUI.panel.addEventListener("popupshowing", this, true);
+
+        break;
+      case STATE_FAILED:
+        // Background update has failed, let's show the UI responsible for
+        // prompting the user to update manually.
+        PanelUI.menuButton.setAttribute("badge", "!");
+
+        stringId = "appmenu.updateFailed.description";
+        updateButtonText = gNavigatorBundle.getString(stringId);
+
+        updateButton.label = updateButtonText;
+        updateButton.hidden = false;
+        updateButton.setAttribute("update-status", "failed");
+
+        PanelUI.panel.addEventListener("popupshowing", this, true);
+
+        break;
+      case STATE_DOWNLOADING:
+        // We've fallen back to downloading the full update because the partial
+        // update failed to get staged in the background. Therefore we need to keep
+        // our observer.
+        return;
+    }
+    this.uninit();
+  },
+
+  handleEvent: function(e) {
+    if (e.type === "popupshowing") {
+      PanelUI.menuButton.removeAttribute("badge");
+      PanelUI.panel.removeEventListener("popupshowing", this, true);
+    }
+  }
+};
+
 /**
  * Handle command events bubbling up from error page content
  * or from about:newtab or from remote error pages that invoke
@@ -3195,6 +3355,7 @@ const BrowserSearch = {
    */
   recordSearchInHealthReport: function (engine, source, selection) {
     BrowserUITelemetry.countSearchEvent(source, null, selection);
+    this.recordSearchInTelemetry(engine, source);
 #ifdef MOZ_SERVICES_HEALTHREPORT
     let reporter = Cc["@mozilla.org/datareporting/service;1"]
                      .getService()
@@ -3215,6 +3376,38 @@ const BrowserSearch = {
       }
     });
 #endif
+  },
+
+  _getSearchEngineId: function (engine) {
+    if (!engine) {
+      return "other";
+    }
+
+    if (engine.identifier) {
+      return engine.identifier;
+    }
+
+    return "other-" + engine.name;
+  },
+
+  recordSearchInTelemetry: function (engine, source) {
+    const SOURCES = [
+      "abouthome",
+      "contextmenu",
+      "newtab",
+      "searchbar",
+      "urlbar",
+    ];
+
+    if (SOURCES.indexOf(source) == -1) {
+      Cu.reportError("Unknown source for search: " + source);
+      return;
+    }
+
+    let countId = this._getSearchEngineId(engine) + "." + source;
+
+    let count = Services.telemetry.getKeyedHistogramById("SEARCH_COUNTS");
+    count.add(countId);
   },
 };
 
@@ -3629,7 +3822,7 @@ var XULBrowserWindow = {
                            .chromeEventHandler;
 
     // Ignore loads that aren't in the main tabbrowser
-    if (browser.localName != "browser" || browser.getTabBrowser() != gBrowser)
+    if (browser.localName != "browser" || !browser.getTabBrowser || browser.getTabBrowser() != gBrowser)
       return true;
 
     if (!E10SUtils.shouldLoadURI(aDocShell, aURI, aReferrer)) {
@@ -6974,14 +7167,9 @@ let gRemoteTabsUI = {
 
     let newRemoteWindow = document.getElementById("menu_newRemoteWindow");
     let newNonRemoteWindow = document.getElementById("menu_newNonRemoteWindow");
-#ifdef E10S_TESTING_ONLY
     let autostart = Services.appinfo.browserTabsRemoteAutostart;
     newRemoteWindow.hidden = autostart;
     newNonRemoteWindow.hidden = !autostart;
-#else
-    newRemoteWindow.hidden = true;
-    newNonRemoteWindow.hidden = true;
-#endif
   }
 };
 
