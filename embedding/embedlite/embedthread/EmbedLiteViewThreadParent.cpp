@@ -410,6 +410,7 @@ EmbedLiteViewThreadParent::ResumeRendering()
 {
   if (mCompositor) {
     mCompositor->ResumeRendering();
+    mCompositor->ScheduleRenderOnCompositorThread();
   }
 
   return NS_OK;
