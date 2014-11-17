@@ -21,6 +21,7 @@
   var IncomingCallView = loop.conversation.IncomingCallView;
   var DesktopPendingConversationView = loop.conversationViews.PendingConversationView;
   var CallFailedView = loop.conversationViews.CallFailedView;
+  var DesktopRoomConversationView = loop.roomViews.DesktopRoomConversationView;
 
   // 2. Standalone webapp
   var HomeView = loop.webapp.HomeView;
@@ -31,11 +32,15 @@
   var StartConversationView   = loop.webapp.StartConversationView;
   var FailedConversationView  = loop.webapp.FailedConversationView;
   var EndedConversationView   = loop.webapp.EndedConversationView;
+  var StandaloneRoomView      = loop.standaloneRoomViews.StandaloneRoomView;
 
   // 3. Shared components
   var ConversationToolbar = loop.shared.views.ConversationToolbar;
   var ConversationView = loop.shared.views.ConversationView;
   var FeedbackView = loop.shared.views.FeedbackView;
+
+  // Room constants
+  var ROOM_STATES = loop.store.ROOM_STATES;
 
   // Local helpers
   function returnTrue() {
@@ -57,9 +62,14 @@
   );
 
   var dispatcher = new loop.Dispatcher();
-  var roomListStore = new loop.store.RoomListStore({
+  var activeRoomStore = new loop.store.ActiveRoomStore({
     dispatcher: dispatcher,
-    mozLoop: {}
+    mozLoop: navigator.mozLoop,
+    sdkDriver: {}
+  });
+  var roomStore = new loop.store.RoomStore({
+    dispatcher: dispatcher,
+    mozLoop: navigator.mozLoop
   });
 
   // Local mocks
@@ -99,6 +109,41 @@
     message: "Could Not Authenticate",
     details: "Did you change your password?",
     detailsButtonLabel: "Retry",
+  });
+
+  var SVGIcon = React.createClass({displayName: 'SVGIcon',
+    render: function() {
+      return (
+        React.DOM.span({className: "svg-icon", style: {
+          "background-image": "url(/content/shared/img/icons-16x16.svg#" + this.props.shapeId + ")"
+        }})
+      );
+    }
+  });
+
+  var SVGIcons = React.createClass({displayName: 'SVGIcons',
+    shapes: [
+      "audio", "audio-hover", "audio-active", "block",
+      "block-red", "block-hover", "block-active", "contacts", "contacts-hover",
+      "contacts-active", "copy", "checkmark", "google", "google-hover",
+      "google-active", "history", "history-hover", "history-active",
+      "precall", "precall-hover", "precall-active", "settings", "settings-hover",
+      "settings-active", "tag", "tag-hover", "tag-active", "trash", "unblock",
+      "unblock-hover", "unblock-active", "video", "video-hover", "video-active"
+    ],
+
+    render: function() {
+      return (
+        React.DOM.div({className: "svg-icon-list"}, 
+          this.shapes.map(function(shapeId, i) {
+            return React.DOM.div({key: i, className: "svg-icon-entry"}, 
+              React.DOM.p(null, SVGIcon({shapeId: shapeId})), 
+              React.DOM.p(null, shapeId)
+            );
+          }, this)
+        )
+      );
+    }
   });
 
   var Example = React.createClass({displayName: 'Example',
@@ -168,42 +213,42 @@
               PanelView({client: mockClient, notifications: notifications, 
                          callUrl: "http://invalid.example.url/", 
                          dispatcher: dispatcher, 
-                         roomListStore: roomListStore})
+                         roomStore: roomStore})
             ), 
             Example({summary: "Call URL retrieved - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          callUrl: "http://invalid.example.url/", 
                          userProfile: {email: "test@example.com"}, 
                          dispatcher: dispatcher, 
-                         roomListStore: roomListStore})
+                         roomStore: roomStore})
             ), 
             Example({summary: "Pending call url retrieval", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          dispatcher: dispatcher, 
-                         roomListStore: roomListStore})
+                         roomStore: roomStore})
             ), 
             Example({summary: "Pending call url retrieval - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          userProfile: {email: "test@example.com"}, 
                          dispatcher: dispatcher, 
-                         roomListStore: roomListStore})
+                         roomStore: roomStore})
             ), 
             Example({summary: "Error Notification", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: errNotifications, 
                          dispatcher: dispatcher, 
-                         roomListStore: roomListStore})
+                         roomStore: roomStore})
             ), 
             Example({summary: "Error Notification - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: errNotifications, 
                          userProfile: {email: "test@example.com"}, 
                          dispatcher: dispatcher, 
-                         roomListStore: roomListStore})
+                         roomStore: roomStore})
             ), 
             Example({summary: "Room list tab", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          userProfile: {email: "test@example.com"}, 
                          dispatcher: dispatcher, 
-                         roomListStore: roomListStore, 
+                         roomStore: roomStore, 
                          selectedTab: "rooms"})
             )
           ), 
@@ -490,6 +535,96 @@
                 UnsupportedDeviceView(null)
               )
             )
+          ), 
+
+          Section({name: "DesktopRoomConversationView"}, 
+            Example({summary: "Desktop room conversation (invitation)", dashed: "true", 
+                     style: {width: "260px", height: "265px"}}, 
+              React.DOM.div({className: "fx-embedded"}, 
+                DesktopRoomConversationView({
+                  roomStore: roomStore, 
+                  dispatcher: dispatcher, 
+                  roomState: ROOM_STATES.INIT})
+              )
+            ), 
+
+            Example({summary: "Desktop room conversation", dashed: "true", 
+                     style: {width: "260px", height: "265px"}}, 
+              React.DOM.div({className: "fx-embedded"}, 
+                DesktopRoomConversationView({
+                  roomStore: roomStore, 
+                  dispatcher: dispatcher, 
+                  roomState: ROOM_STATES.HAS_PARTICIPANTS})
+              )
+            )
+          ), 
+
+          Section({name: "StandaloneRoomView"}, 
+            Example({summary: "Standalone room conversation (ready)"}, 
+              React.DOM.div({className: "standalone"}, 
+                StandaloneRoomView({
+                  dispatcher: dispatcher, 
+                  activeRoomStore: activeRoomStore, 
+                  roomState: ROOM_STATES.READY, 
+                  helper: {isFirefox: returnTrue}})
+              )
+            ), 
+
+            Example({summary: "Standalone room conversation (joined)"}, 
+              React.DOM.div({className: "standalone"}, 
+                StandaloneRoomView({
+                  dispatcher: dispatcher, 
+                  activeRoomStore: activeRoomStore, 
+                  roomState: ROOM_STATES.JOINED, 
+                  helper: {isFirefox: returnTrue}})
+              )
+            ), 
+
+            Example({summary: "Standalone room conversation (has-participants)"}, 
+              React.DOM.div({className: "standalone"}, 
+                StandaloneRoomView({
+                  dispatcher: dispatcher, 
+                  activeRoomStore: activeRoomStore, 
+                  roomState: ROOM_STATES.HAS_PARTICIPANTS, 
+                  helper: {isFirefox: returnTrue}})
+              )
+            ), 
+
+            Example({summary: "Standalone room conversation (full - FFx user)"}, 
+              React.DOM.div({className: "standalone"}, 
+                StandaloneRoomView({
+                  dispatcher: dispatcher, 
+                  activeRoomStore: activeRoomStore, 
+                  roomState: ROOM_STATES.FULL, 
+                  helper: {isFirefox: returnTrue}})
+              )
+            ), 
+
+            Example({summary: "Standalone room conversation (full - non FFx user)"}, 
+              React.DOM.div({className: "standalone"}, 
+                StandaloneRoomView({
+                  dispatcher: dispatcher, 
+                  activeRoomStore: activeRoomStore, 
+                  roomState: ROOM_STATES.FULL, 
+                  helper: {isFirefox: returnFalse}})
+              )
+            ), 
+
+            Example({summary: "Standalone room conversation (failed)"}, 
+              React.DOM.div({className: "standalone"}, 
+                StandaloneRoomView({
+                  dispatcher: dispatcher, 
+                  activeRoomStore: activeRoomStore, 
+                  roomState: ROOM_STATES.FAILED, 
+                  helper: {isFirefox: returnFalse}})
+              )
+            )
+          ), 
+
+          Section({name: "SVG icons preview"}, 
+            Example({summary: "16x16"}, 
+              SVGIcons(null)
+            )
           )
 
         )
@@ -537,10 +672,7 @@
   }
 
   window.addEventListener("DOMContentLoaded", function() {
-    var body = document.body;
-    body.className = loop.shared.utils.getTargetPlatform();
-
-    React.renderComponent(App(null), body);
+    React.renderComponent(App(null), document.body);
 
     _renderComponentsInIframes();
 

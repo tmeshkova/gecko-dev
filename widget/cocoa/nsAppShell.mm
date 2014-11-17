@@ -221,6 +221,11 @@ RemoveScreenWakeLockListener()
     sWakeLockListener = nullptr;
   }
 }
+
+// An undocumented CoreGraphics framework method, present in the same form
+// since at least OS X 10.5.
+extern "C" CGError CGSSetDebugOptions(int options);
+
 // Init
 //
 // Loads the nib (see bug 316076c21) and sets up the CFRunLoopSource used to
@@ -302,6 +307,16 @@ nsAppShell::Init()
                                 @selector(nsAppShell_NSApplication_terminate:));
     }
     gAppShellMethodsSwizzled = true;
+  }
+
+  if (nsCocoaFeatures::OnYosemiteOrLater()) {
+    // Explicitly turn off CGEvent logging.  This works around bug 1092855.
+    // If there are already CGEvents in the log, turning off logging also
+    // causes those events to be written to disk.  But at this point no
+    // CGEvents have yet been processed.  CGEvents are events (usually
+    // input events) pulled from the WindowServer.  An option of 0x80000008
+    // turns on CGEvent logging.
+    CGSSetDebugOptions(0x80000007);
   }
 
   [localPool release];
@@ -563,14 +578,15 @@ nsAppShell::ProcessNextNativeEvent(bool aMayWait)
       UInt32 eventKind = GetEventKind(currentEvent);
       UInt32 eventClass = GetEventClass(currentEvent);
       bool osCocoaEvent =
-        ((eventClass == 'appl') ||
+        ((eventClass == 'appl') || (eventClass == kEventClassAppleEvent) ||
          ((eventClass == 'cgs ') && (eventKind != NSApplicationDefined)));
       // If attrs is kEventAttributeUserEvent or kEventAttributeMonitored
       // (i.e. a user input event), we shouldn't process it here while
       // aMayWait is false.  Likewise if currentEvent will eventually be
-      // turned into an OS-defined Cocoa event.  Doing otherwise risks
-      // doing too much work here, and preventing the event from being
-      // properly processed as a Cocoa event.
+      // turned into an OS-defined Cocoa event, or otherwise needs AppKit
+      // processing.  Doing otherwise risks doing too much work here, and
+      // preventing the event from being properly processed by the AppKit
+      // framework.
       if ((attrs != kEventAttributeNone) || osCocoaEvent) {
         // Since we can't process the next event here (while aMayWait is false),
         // we want moreEvents to be false on return.

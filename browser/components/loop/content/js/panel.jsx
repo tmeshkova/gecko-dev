@@ -399,18 +399,21 @@ loop.panel = (function(_, mozL10n) {
       // readOnly attr will suppress a warning regarding this issue
       // from the react lib.
       var cx = React.addons.classSet;
-      var inputCSSClass = cx({
-        "pending": this.state.pending,
-        // Used in functional testing, signals that
-        // call url was received from loop server
-        "callUrl": !this.state.pending
-      });
       return (
         <div className="generate-url">
           <header>{__("share_link_header_text")}</header>
-          <input type="url" value={this.state.callUrl} readOnly="true"
-                 onCopy={this.handleLinkExfiltration}
-                 className={inputCSSClass} />
+          <div className="generate-url-stack">
+            <input type="url" value={this.state.callUrl} readOnly="true"
+                   onCopy={this.handleLinkExfiltration}
+                   className={cx({"generate-url-input": true,
+                                  pending: this.state.pending,
+                                  // Used in functional testing, signals that
+                                  // call url was received from loop server
+                                  callUrl: !this.state.pending})} />
+            <div className={cx({"generate-url-spinner": true,
+                                spinner: true,
+                                busy: this.state.pending})} />
+          </div>
           <ButtonGroup additionalClass="url-actions">
             <Button additionalClass="button-email"
                     disabled={!this.state.callUrl}
@@ -467,22 +470,48 @@ loop.panel = (function(_, mozL10n) {
    */
   var RoomEntry = React.createClass({
     propTypes: {
-      openRoom: React.PropTypes.func.isRequired,
-      room:     React.PropTypes.instanceOf(loop.store.Room).isRequired
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
+      room:       React.PropTypes.instanceOf(loop.store.Room).isRequired
+    },
+
+    getInitialState: function() {
+      return { urlCopied: false };
     },
 
     shouldComponentUpdate: function(nextProps, nextState) {
-      return nextProps.room.ctime > this.props.room.ctime;
+      return (nextProps.room.ctime > this.props.room.ctime) ||
+        (nextState.urlCopied !== this.state.urlCopied);
     },
 
-    handleClickRoom: function(event) {
+    handleClickRoomUrl: function(event) {
       event.preventDefault();
-      this.props.openRoom(this.props.room);
+      this.props.dispatcher.dispatch(new sharedActions.OpenRoom({
+        roomToken: this.props.room.roomToken
+      }));
+    },
+
+    handleCopyButtonClick: function(event) {
+      event.preventDefault();
+      this.props.dispatcher.dispatch(new sharedActions.CopyRoomUrl({
+        roomUrl: this.props.room.roomUrl
+      }));
+      this.setState({urlCopied: true});
+    },
+
+    handleDeleteButtonClick: function(event) {
+      event.preventDefault();
+      // XXX We should prompt end user for confirmation; see bug 1092953.
+      this.props.dispatcher.dispatch(new sharedActions.DeleteRoom({
+        roomToken: this.props.room.roomToken
+      }));
+    },
+
+    handleMouseLeave: function(event) {
+      this.setState({urlCopied: false});
     },
 
     _isActive: function() {
-      // XXX bug 1074679 will implement this properly
-      return this.props.room.currSize > 0;
+      return this.props.room.participants.length > 0;
     },
 
     render: function() {
@@ -491,15 +520,23 @@ loop.panel = (function(_, mozL10n) {
         "room-entry": true,
         "room-active": this._isActive()
       });
+      var copyButtonClasses = React.addons.classSet({
+        "copy-link": true,
+        "checked": this.state.urlCopied
+      });
 
       return (
-        <div className={roomClasses}>
+        <div className={roomClasses} onMouseLeave={this.handleMouseLeave}>
           <h2>
             <span className="room-notification" />
             {room.roomName}
+            <button className={copyButtonClasses}
+              onClick={this.handleCopyButtonClick} />
+            <button className="delete-link"
+              onClick={this.handleDeleteButtonClick} />
           </h2>
           <p>
-            <a ref="room" href="#" onClick={this.handleClickRoom}>
+            <a href="#" onClick={this.handleClickRoomUrl}>
               {room.roomUrl}
             </a>
           </p>
@@ -515,22 +552,21 @@ loop.panel = (function(_, mozL10n) {
     mixins: [Backbone.Events],
 
     propTypes: {
-      store: React.PropTypes.instanceOf(loop.store.RoomListStore).isRequired,
+      store: React.PropTypes.instanceOf(loop.store.RoomStore).isRequired,
       dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
-      rooms: React.PropTypes.array
+      userDisplayName: React.PropTypes.string.isRequired  // for room creation
     },
 
     getInitialState: function() {
-      var storeState = this.props.store.getStoreState();
-      return {
-        error: this.props.error || storeState.error,
-        rooms: this.props.rooms || storeState.rooms,
-      };
+      return this.props.store.getStoreState();
     },
 
-    componentWillMount: function() {
-      this.listenTo(this.props.store, "change", this._onRoomListChanged);
+    componentDidMount: function() {
+      this.listenTo(this.props.store, "change", this._onStoreStateChanged);
 
+      // XXX this should no longer be necessary once have a better mechanism
+      // for updating the list (possibly as part of the content side of bug
+      // 1074665.
       this.props.dispatcher.dispatch(new sharedActions.GetAllRooms());
     },
 
@@ -538,12 +574,8 @@ loop.panel = (function(_, mozL10n) {
       this.stopListening(this.props.store);
     },
 
-    _onRoomListChanged: function() {
-      var storeState = this.props.store.getStoreState();
-      this.setState({
-        error: storeState.error,
-        rooms: storeState.rooms
-      });
+    _onStoreStateChanged: function() {
+      this.setState(this.props.store.getStoreState());
     },
 
     _getListHeading: function() {
@@ -554,24 +586,42 @@ loop.panel = (function(_, mozL10n) {
       return mozL10n.get("rooms_list_current_conversations", {num: numRooms});
     },
 
-    openRoom: function(room) {
-      // XXX implement me; see bug 1074678
+    _hasPendingOperation: function() {
+      return this.state.pendingCreation || this.state.pendingInitialRetrieval;
+    },
+
+    handleCreateButtonClick: function() {
+      this.props.dispatcher.dispatch(new sharedActions.CreateRoom({
+        nameTemplate: mozL10n.get("rooms_default_room_name_template"),
+        roomOwner: this.props.userDisplayName
+      }));
     },
 
     render: function() {
       if (this.state.error) {
         // XXX Better end user reporting of errors.
-        console.error(this.state.error);
+        console.error("RoomList error", this.state.error);
       }
 
       return (
-        <div className="room-list">
+        <div className="rooms">
           <h1>{this._getListHeading()}</h1>
-          {
+          <div className="room-list">{
             this.state.rooms.map(function(room, i) {
-              return <RoomEntry key={i} room={room} openRoom={this.openRoom} />;
+              return <RoomEntry
+                key={room.roomToken}
+                dispatcher={this.props.dispatcher}
+                room={room}
+              />;
             }, this)
-          }
+          }</div>
+          <p>
+            <button className="btn btn-info"
+                    onClick={this.handleCreateButtonClick}
+                    disabled={this._hasPendingOperation()}>
+              {mozL10n.get("rooms_new_room_button_label")}
+            </button>
+          </p>
         </div>
       );
     }
@@ -590,8 +640,8 @@ loop.panel = (function(_, mozL10n) {
       showTabButtons: React.PropTypes.bool,
       selectedTab: React.PropTypes.string,
       dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
-      roomListStore:
-        React.PropTypes.instanceOf(loop.store.RoomListStore).isRequired
+      roomStore:
+        React.PropTypes.instanceOf(loop.store.RoomStore).isRequired
     },
 
     getInitialState: function() {
@@ -621,6 +671,7 @@ loop.panel = (function(_, mozL10n) {
           message: serviceError.error.friendlyMessage,
           details: serviceError.error.friendlyDetails,
           detailsButtonLabel: serviceError.error.friendlyDetailsButtonLabel,
+          detailsButtonCallback: serviceError.error.friendlyDetailsButtonCallback,
         });
       } else {
         this.props.notifications.remove(this.props.notifications.get("service-error"));
@@ -634,8 +685,8 @@ loop.panel = (function(_, mozL10n) {
       if (currUid != newUid) {
         // On profile change (login, logout), switch back to the default tab.
         this.selectTab("call");
+        this.setState({userProfile: profile});
       }
-      this.setState({userProfile: profile});
       this.updateServiceErrors();
     },
 
@@ -650,7 +701,8 @@ loop.panel = (function(_, mozL10n) {
       return (
         <Tab name="rooms">
           <RoomList dispatcher={this.props.dispatcher}
-                    store={this.props.roomListStore} />
+                    store={this.props.roomStore}
+                    userDisplayName={this._getUserDisplayName()}/>
         </Tab>
       );
     },
@@ -676,10 +728,13 @@ loop.panel = (function(_, mozL10n) {
       window.removeEventListener("LoopStatusChanged", this._onStatusChanged);
     },
 
+    _getUserDisplayName: function() {
+      return this.state.userProfile && this.state.userProfile.email ||
+             __("display_name_guest");
+    },
+
     render: function() {
       var NotificationListView = sharedViews.NotificationListView;
-      var displayName = this.state.userProfile && this.state.userProfile.email ||
-                        __("display_name_guest");
       return (
         <div>
           <NotificationListView notifications={this.props.notifications}
@@ -714,7 +769,7 @@ loop.panel = (function(_, mozL10n) {
           </TabView>
           <div className="footer">
             <div className="user-details">
-              <UserIdentity displayName={displayName} />
+              <UserIdentity displayName={this._getUserDisplayName()} />
               <AvailabilityDropdown />
             </div>
             <div className="signin-details">
@@ -739,7 +794,7 @@ loop.panel = (function(_, mozL10n) {
     var client = new loop.Client();
     var notifications = new sharedModels.NotificationCollection();
     var dispatcher = new loop.Dispatcher();
-    var roomListStore = new loop.store.RoomListStore({
+    var roomStore = new loop.store.RoomStore({
       mozLoop: navigator.mozLoop,
       dispatcher: dispatcher
     });
@@ -747,11 +802,10 @@ loop.panel = (function(_, mozL10n) {
     React.renderComponent(<PanelView
       client={client}
       notifications={notifications}
-      roomListStore={roomListStore}
+      roomStore={roomStore}
       dispatcher={dispatcher}
     />, document.querySelector("#main"));
 
-    document.body.classList.add(loop.shared.utils.getTargetPlatform());
     document.body.setAttribute("dir", mozL10n.getDirection());
 
     // Notify the window that we've finished initalization and initial layout
@@ -767,6 +821,7 @@ loop.panel = (function(_, mozL10n) {
     AvailabilityDropdown: AvailabilityDropdown,
     CallUrlResult: CallUrlResult,
     PanelView: PanelView,
+    RoomEntry: RoomEntry,
     RoomList: RoomList,
     SettingsDropdown: SettingsDropdown,
     ToSView: ToSView

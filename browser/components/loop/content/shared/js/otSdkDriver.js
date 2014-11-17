@@ -8,6 +8,7 @@ var loop = loop || {};
 loop.OTSdkDriver = (function() {
 
   var sharedActions = loop.shared.actions;
+  var FAILURE_REASONS = loop.shared.utils.FAILURE_REASONS;
 
   /**
    * This is a wrapper for the OT sdk. It is used to translate the SDK events into
@@ -47,8 +48,11 @@ loop.OTSdkDriver = (function() {
       // the initial connect of the session. This saves time when setting up
       // the media.
       this.publisher = this.sdk.initPublisher(this.getLocalElement(),
-        this.publisherConfig,
-        this._onPublishComplete.bind(this));
+        this.publisherConfig);
+      this.publisher.on("accessAllowed", this._onPublishComplete.bind(this));
+      this.publisher.on("accessDenied", this._onPublishDenied.bind(this));
+      this.publisher.on("accessDialogOpened",
+        this._onAccessDialogOpened.bind(this));
     },
 
     /**
@@ -79,6 +83,7 @@ loop.OTSdkDriver = (function() {
     connectSession: function(sessionData) {
       this.session = this.sdk.initSession(sessionData.sessionId);
 
+      this.session.on("connectionCreated", this._onConnectionCreated.bind(this));
       this.session.on("streamCreated", this._onRemoteStreamCreated.bind(this));
       this.session.on("connectionDestroyed",
         this._onConnectionDestroyed.bind(this));
@@ -95,16 +100,12 @@ loop.OTSdkDriver = (function() {
      */
     disconnectSession: function() {
       if (this.session) {
-        this.session.off("streamCreated", this._onRemoteStreamCreated.bind(this));
-        this.session.off("connectionDestroyed",
-          this._onConnectionDestroyed.bind(this));
-        this.session.off("sessionDisconnected",
-          this._onSessionDisconnected.bind(this));
-
+        this.session.off("streamCreated connectionDestroyed sessionDisconnected");
         this.session.disconnect();
         delete this.session;
       }
       if (this.publisher) {
+        this.publisher.off("accessAllowed accessDenied accessDialogOpened");
         this.publisher.destroy();
         delete this.publisher;
       }
@@ -125,11 +126,12 @@ loop.OTSdkDriver = (function() {
       if (error) {
         console.error("Failed to complete connection", error);
         this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
-          reason: "couldNotConnect"
+          reason: FAILURE_REASONS.COULD_NOT_CONNECT
         }));
         return;
       }
 
+      this.dispatcher.dispatch(new sharedActions.ConnectedToSdkServers());
       this._sessionConnected = true;
       this._maybePublishLocalStream();
     },
@@ -141,18 +143,9 @@ loop.OTSdkDriver = (function() {
      * https://tokbox.com/opentok/libraries/client/js/reference/SessionDisconnectEvent.html
      */
     _onConnectionDestroyed: function(event) {
-      var action;
-      if (event.reason === "clientDisconnected") {
-        action = new sharedActions.PeerHungupCall();
-      } else {
-        // Strictly speaking this isn't a failure on our part, but since our
-        // flow requires a full reconnection, then we just treat this as
-        // if a failure of our end had occurred.
-        action = new sharedActions.ConnectionFailure({
-          reason: "peerNetworkDisconnected"
-        });
-      }
-      this.dispatcher.dispatch(action);
+      this.dispatcher.dispatch(new sharedActions.RemotePeerDisconnected({
+        peerHungup: event.reason === "clientDisconnected"
+      }));
     },
 
     /**
@@ -166,9 +159,17 @@ loop.OTSdkDriver = (function() {
       // We only need to worry about the network disconnected reason here.
       if (event.reason === "networkDisconnected") {
         this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
-          reason: "networkDisconnected"
+          reason: FAILURE_REASONS.NETWORK_DISCONNECTED
         }));
       }
+    },
+
+    _onConnectionCreated: function(event) {
+      if (this.session.connection.id === event.connection.id) {
+        return;
+      }
+
+      this.dispatcher.dispatch(new sharedActions.RemotePeerConnected());
     },
 
     /**
@@ -188,21 +189,39 @@ loop.OTSdkDriver = (function() {
     },
 
     /**
+     * Called from the sdk when the media access dialog is opened.
+     * Prevents the default action, to prevent the SDK's "allow access"
+     * dialog from being shown.
+     *
+     * @param {OT.Event} event
+     */
+    _onAccessDialogOpened: function(event) {
+      event.preventDefault();
+    },
+
+    /**
      * Handles the publishing being complete.
      *
-     * @param {Error} error An OT error object, null if there was no error.
+     * @param {OT.Event} event
      */
-    _onPublishComplete: function(error) {
-      if (error) {
-        console.error("Failed to initialize publisher", error);
-        this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
-          reason: "noMedia"
-        }));
-        return;
-      }
-
+    _onPublishComplete: function(event) {
+      event.preventDefault();
       this._publisherReady = true;
       this._maybePublishLocalStream();
+    },
+
+    /**
+     * Handles publishing of media being denied.
+     *
+     * @param {OT.Event} event
+     */
+    _onPublishDenied: function(event) {
+      // This prevents the SDK's "access denied" dialog showing.
+      event.preventDefault();
+
+      this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
+        reason: FAILURE_REASONS.MEDIA_DENIED
+      }));
     },
 
     /**

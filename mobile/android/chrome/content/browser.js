@@ -277,16 +277,19 @@ function resolveGeckoURI(aURI) {
 /**
  * Cache of commonly used string bundles.
  */
-var Strings = {};
-[
-  ["brand",      "chrome://branding/locale/brand.properties"],
-  ["browser",    "chrome://browser/locale/browser.properties"]
-].forEach(function (aStringBundle) {
-  let [name, bundle] = aStringBundle;
-  XPCOMUtils.defineLazyGetter(Strings, name, function() {
-    return Services.strings.createBundle(bundle);
-  });
-});
+let Strings = {
+  init: function () {
+    XPCOMUtils.defineLazyGetter(Strings, "brand", () => Services.strings.createBundle("chrome://branding/locale/brand.properties"));
+    XPCOMUtils.defineLazyGetter(Strings, "browser", () => Services.strings.createBundle("chrome://browser/locale/browser.properties"));
+  },
+
+  flush: function () {
+    Services.strings.flushBundles();
+    this.init();
+  },
+};
+
+Strings.init();
 
 const kFormHelperModeDisabled = 0;
 const kFormHelperModeEnabled = 1;
@@ -503,6 +506,15 @@ var BrowserApp = {
       }
     }
 
+    try {
+      // Set the tiles click observer only if tiles reporting is enabled (that
+      // is, a report URL is set in prefs).
+      gTilesReportURL = Services.prefs.getCharPref("browser.tiles.reportURL");
+      Services.obs.addObserver(this, "Tiles:Click", false);
+    } catch (e) {
+      // Tiles reporting is disabled.
+    }
+
     // Notify Java that Gecko has loaded.
     Messaging.sendRequest({ type: "Gecko:Ready" });
   },
@@ -540,9 +552,14 @@ var BrowserApp = {
     WebappRT.init(status, url, callback);
   },
 
-  initContextMenu: function ba_initContextMenu() {
+  initContextMenu: function () {
+    // We pass a thunk in place of a raw label string. This allows the
+    // context menu to automatically accommodate locale changes without
+    // having to be rebuilt.
+    let stringGetter = name => () => Strings.browser.GetStringFromName(name);
+
     // TODO: These should eventually move into more appropriate classes
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.openInNewTab"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.openInNewTab"),
       NativeWindow.contextmenus.linkOpenableNonPrivateContext,
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_open_new_tab");
@@ -564,7 +581,7 @@ var BrowserApp = {
         });
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.openInPrivateTab"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.openInPrivateTab"),
       NativeWindow.contextmenus.linkOpenableContext,
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_open_private_tab");
@@ -586,7 +603,7 @@ var BrowserApp = {
         });
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyLink"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.copyLink"),
       NativeWindow.contextmenus.linkCopyableContext,
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_link");
@@ -595,7 +612,7 @@ var BrowserApp = {
         NativeWindow.contextmenus._copyStringToDefaultClipboard(url);
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyEmailAddress"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.copyEmailAddress"),
       NativeWindow.contextmenus.emailLinkContext,
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_email");
@@ -605,7 +622,7 @@ var BrowserApp = {
         NativeWindow.contextmenus._copyStringToDefaultClipboard(emailAddr);
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyPhoneNumber"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.copyPhoneNumber"),
       NativeWindow.contextmenus.phoneNumberLinkContext,
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_phone");
@@ -616,7 +633,7 @@ var BrowserApp = {
       });
 
     NativeWindow.contextmenus.add({
-      label: Strings.browser.GetStringFromName("contextmenu.shareLink"),
+      label: stringGetter("contextmenu.shareLink"),
       order: NativeWindow.contextmenus.DEFAULT_HTML5_ORDER - 1, // Show above HTML5 menu items
       selector: NativeWindow.contextmenus._disableRestricted("SHARE", NativeWindow.contextmenus.linkShareableContext),
       showAsActions: function(aElement) {
@@ -632,7 +649,7 @@ var BrowserApp = {
     });
 
     NativeWindow.contextmenus.add({
-      label: Strings.browser.GetStringFromName("contextmenu.shareEmailAddress"),
+      label: stringGetter("contextmenu.shareEmailAddress"),
       order: NativeWindow.contextmenus.DEFAULT_HTML5_ORDER - 1,
       selector: NativeWindow.contextmenus._disableRestricted("SHARE", NativeWindow.contextmenus.emailLinkContext),
       showAsActions: function(aElement) {
@@ -651,7 +668,7 @@ var BrowserApp = {
     });
 
     NativeWindow.contextmenus.add({
-      label: Strings.browser.GetStringFromName("contextmenu.sharePhoneNumber"),
+      label: stringGetter("contextmenu.sharePhoneNumber"),
       order: NativeWindow.contextmenus.DEFAULT_HTML5_ORDER - 1,
       selector: NativeWindow.contextmenus._disableRestricted("SHARE", NativeWindow.contextmenus.phoneNumberLinkContext),
       showAsActions: function(aElement) {
@@ -669,7 +686,7 @@ var BrowserApp = {
       }
     });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.addToContacts"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.addToContacts"),
       NativeWindow.contextmenus._disableRestricted("ADD_CONTACT", NativeWindow.contextmenus.emailLinkContext),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_contact_email");
@@ -681,7 +698,7 @@ var BrowserApp = {
         });
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.addToContacts"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.addToContacts"),
       NativeWindow.contextmenus._disableRestricted("ADD_CONTACT", NativeWindow.contextmenus.phoneNumberLinkContext),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_contact_phone");
@@ -693,7 +710,7 @@ var BrowserApp = {
         });
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.bookmarkLink"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.bookmarkLink"),
       NativeWindow.contextmenus._disableRestricted("BOOKMARK", NativeWindow.contextmenus.linkBookmarkableContext),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_bookmark");
@@ -707,21 +724,21 @@ var BrowserApp = {
         });
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.playMedia"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.playMedia"),
       NativeWindow.contextmenus.mediaContext("media-paused"),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_play");
         aTarget.play();
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.pauseMedia"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.pauseMedia"),
       NativeWindow.contextmenus.mediaContext("media-playing"),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_pause");
         aTarget.pause();
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.showControls2"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.showControls2"),
       NativeWindow.contextmenus.mediaContext("media-hidingcontrols"),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_controls_media");
@@ -729,7 +746,7 @@ var BrowserApp = {
       });
 
     NativeWindow.contextmenus.add({
-      label: Strings.browser.GetStringFromName("contextmenu.shareMedia"),
+      label: stringGetter("contextmenu.shareMedia"),
       order: NativeWindow.contextmenus.DEFAULT_HTML5_ORDER - 1,
       selector: NativeWindow.contextmenus._disableRestricted("SHARE", NativeWindow.contextmenus.SelectorContext("video")),
       showAsActions: function(aElement) {
@@ -747,28 +764,28 @@ var BrowserApp = {
       }
     });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.fullScreen"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.fullScreen"),
       NativeWindow.contextmenus.SelectorContext("video:not(:-moz-full-screen)"),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_fullscreen");
         aTarget.mozRequestFullScreen();
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.mute"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.mute"),
       NativeWindow.contextmenus.mediaContext("media-unmuted"),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_mute");
         aTarget.muted = true;
       });
   
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.unmute"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.unmute"),
       NativeWindow.contextmenus.mediaContext("media-muted"),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_unmute");
         aTarget.muted = false;
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyImageLocation"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.copyImageLocation"),
       NativeWindow.contextmenus.imageLocationCopyableContext,
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_image");
@@ -778,7 +795,7 @@ var BrowserApp = {
       });
 
     NativeWindow.contextmenus.add({
-      label: Strings.browser.GetStringFromName("contextmenu.shareImage"),
+      label: stringGetter("contextmenu.shareImage"),
       selector: NativeWindow.contextmenus._disableRestricted("SHARE", NativeWindow.contextmenus.imageSaveableContext),
       order: NativeWindow.contextmenus.DEFAULT_HTML5_ORDER - 1, // Show above HTML5 menu items
       showAsActions: function(aTarget) {
@@ -800,7 +817,7 @@ var BrowserApp = {
       }
     });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.saveImage"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.saveImage"),
       NativeWindow.contextmenus.imageSaveableContext,
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_save_image");
@@ -810,7 +827,7 @@ var BrowserApp = {
                                       aTarget.ownerDocument);
       });
 
-    NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.setImageAs"),
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.setImageAs"),
       NativeWindow.contextmenus._disableRestricted("SET_IMAGE", NativeWindow.contextmenus.imageSaveableContext),
       function(aTarget) {
         UITelemetry.addEvent("action.1", "contextmenu", null, "web_background_image");
@@ -1859,7 +1876,7 @@ var BrowserApp = {
 
         // Blow away the string cache so that future lookups get the
         // correct locale.
-        Services.strings.flushBundles();
+        Strings.flush();
 
         // Make sure we use the right Accept-Language header.
         let osLocale;
@@ -1870,6 +1887,13 @@ var BrowserApp = {
         }
 
         this.computeAcceptLanguages(osLocale, aData);
+        break;
+
+      case "Tiles:Click":
+        // Set the click data for the given tab to be handled on the next page load.
+        let data = JSON.parse(aData);
+        let tab = this.getTabForId(data.tabId);
+        tab.tilesData = data.payload;
         break;
 
       default:
@@ -2523,8 +2547,9 @@ var NativeWindow = {
         return;
       }
 
-      // Use the highlighted element for the context menu target.
-      this._target = BrowserEventHandler._highlightElement;
+      // Use the highlighted element for the context menu target. When accessibility is
+      // enabled, elements may not be highlighted so use the event target instead.
+      this._target = BrowserEventHandler._highlightElement || event.target;
       if (!this._target) {
         return;
       }
@@ -3189,6 +3214,9 @@ let gReflowPending = null;
 // into account said browser chrome.
 let gViewportMargins = { top: 0, right: 0, bottom: 0, left: 0};
 
+// The URL where suggested tile clicks are posted.
+let gTilesReportURL = null;
+
 function Tab(aURL, aParams) {
   this.browser = null;
   this.id = 0;
@@ -3217,6 +3245,7 @@ function Tab(aURL, aParams) {
   this.hasTouchListener = false;
   this.browserWidth = 0;
   this.browserHeight = 0;
+  this.tilesData = null;
 
   this.create(aURL, aParams);
 }
@@ -4242,6 +4271,27 @@ Tab.prototype = {
           }
         }
 
+        // Upload any pending tile click events.
+        // Tiles data will be non-null for this tab only if:
+        // 1) the user just clicked a suggested site with a tracking ID, and
+        // 2) tiles reporting is enabled (gTilesReportURL != null).
+        if (this.tilesData) {
+          let xhr = new XMLHttpRequest();
+          xhr.open("POST", gTilesReportURL, true);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.onload = function (e) {
+            // Broadcast reply if X-Robocop header is set. Used for testing only.
+            if (this.status == 200 && this.getResponseHeader("X-Robocop")) {
+              Messaging.sendRequest({
+                type: "Robocop:TilesResponse",
+                response: this.response
+              });
+            }
+          };
+          xhr.send(this.tilesData);
+          this.tilesData = null;
+        }
+
         if (!Reader.isEnabledForParseOnLoad)
           return;
 
@@ -4318,6 +4368,14 @@ Tab.prototype = {
         // If the request does not handle the nsIHttpChannel interface, use nsIRequest's success
         // status. Used for local files. See bug 948849.
         success = aRequest.status == 0;
+      }
+
+      // At this point, either:
+      // 1) the page loaded, the pageshow event fired, and the tilesData XHR has been posted, or
+      // 2) the page did not load, and we're loading a new page.
+      // Either way, we're done with the tiles data, so clear it out.
+      if (this.tilesData && (aStateFlags & Ci.nsIWebProgressListener.STATE_STOP)) {
+        this.tilesData = null;
       }
 
       // Check to see if we restoring the content from a previous presentation (session)

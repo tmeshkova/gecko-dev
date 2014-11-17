@@ -15,7 +15,7 @@ describe("loop.shared.views", function() {
   var sharedModels = loop.shared.models,
       sharedViews = loop.shared.views,
       getReactElementByClass = TestUtils.findRenderedDOMComponentWithClass,
-      sandbox;
+      sandbox, fakeAudioXHR;
 
   beforeEach(function() {
     sandbox = sinon.sandbox.create();
@@ -23,6 +23,18 @@ describe("loop.shared.views", function() {
     sandbox.stub(l10n, "get", function(x) {
       return "translated:" + x;
     });
+    fakeAudioXHR = {
+      open: sinon.spy(),
+      send: function() {},
+      abort: function() {},
+      getResponseHeader: function(header) {
+        if (header === "Content-Type")
+          return "audio/ogg";
+      },
+      responseType: null,
+      response: new ArrayBuffer(10),
+      onload: null
+    };
   });
 
   afterEach(function() {
@@ -87,6 +99,28 @@ describe("loop.shared.views", function() {
     beforeEach(function() {
       hangup = sandbox.stub();
       publishStream = sandbox.stub();
+    });
+
+    it("should accept a hangupButtonLabel optional prop", function() {
+      var comp = mountTestComponent({
+        hangupButtonLabel: "foo",
+        hangup: hangup,
+        publishStream: publishStream
+      });
+
+      expect(comp.getDOMNode().querySelector("button.btn-hangup").textContent)
+            .eql("foo");
+    });
+
+    it("should accept a enableHangup optional prop", function() {
+      var comp = mountTestComponent({
+        enableHangup: false,
+        hangup: hangup,
+        publishStream: publishStream
+      });
+
+      expect(comp.getDOMNode().querySelector("button.btn-hangup").disabled)
+            .eql(true);
     });
 
     it("should hangup when hangup button is clicked", function() {
@@ -161,13 +195,20 @@ describe("loop.shared.views", function() {
   });
 
   describe("ConversationView", function() {
-    var fakeSDK, fakeSessionData, fakeSession, fakePublisher, model;
+    var fakeSDK, fakeSessionData, fakeSession, fakePublisher, model, fakeAudio;
 
     function mountTestComponent(props) {
       return TestUtils.renderIntoDocument(sharedViews.ConversationView(props));
     }
 
     beforeEach(function() {
+      fakeAudio = {
+        play: sinon.spy(),
+        pause: sinon.spy(),
+        removeAttribute: sinon.spy()
+      };
+      sandbox.stub(window, "Audio").returns(fakeAudio);
+
       fakeSessionData = {
         sessionId:    "sessionId",
         sessionToken: "sessionToken",
@@ -350,46 +391,108 @@ describe("loop.shared.views", function() {
       });
 
       describe("Model events", function() {
-        it("should start streaming on session:connected", function() {
-          model.trigger("session:connected");
 
-          sinon.assert.calledOnce(fakeSDK.initPublisher);
-        });
+        describe("for standalone", function() {
 
-        it("should publish remote stream on session:stream-created",
-          function() {
-            var s1 = {connection: {connectionId: 42}};
-
-            model.trigger("session:stream-created", {stream: s1});
-
-            sinon.assert.calledOnce(fakeSession.subscribe);
-            sinon.assert.calledWith(fakeSession.subscribe, s1);
+          beforeEach(function() {
+            // In standalone, navigator.mozLoop does not exists
+            if (navigator.hasOwnProperty("mozLoop"))
+              sandbox.stub(navigator, "mozLoop", undefined);
           });
 
-        it("should unpublish local stream on session:ended", function() {
-          comp.startPublishing();
+          it("should play a connected sound, once, on session:connected",
+             function() {
+               var url = "shared/sounds/connected.ogg";
+               sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
+               model.trigger("session:connected");
 
-          model.trigger("session:ended");
+               fakeAudioXHR.onload();
 
-          sinon.assert.calledOnce(fakeSession.unpublish);
+               sinon.assert.called(fakeAudioXHR.open);
+               sinon.assert.calledWithExactly(fakeAudioXHR.open, "GET", url, true);
+
+               sinon.assert.calledOnce(fakeAudio.play);
+               expect(fakeAudio.loop).to.not.equal(true);
+             });
         });
 
-        it("should unpublish local stream on session:peer-hungup", function() {
-          comp.startPublishing();
+        describe("for desktop", function() {
+          var origMozLoop;
 
-          model.trigger("session:peer-hungup");
+          beforeEach(function() {
+            origMozLoop = navigator.mozLoop;
+            navigator.mozLoop = {
+              getAudioBlob: sinon.spy(function(name, callback) {
+                var data = new ArrayBuffer(10);
+                callback(null, new Blob([data], {type: "audio/ogg"}));
+              })
+            };
+          });
 
-          sinon.assert.calledOnce(fakeSession.unpublish);
+          afterEach(function() {
+            navigator.mozLoop = origMozLoop;
+          });
+
+          it("should play a connected sound, once, on session:connected",
+             function() {
+               var url = "chrome://browser/content/loop/shared/sounds/connected.ogg";
+               model.trigger("session:connected");
+
+               sinon.assert.calledOnce(navigator.mozLoop.getAudioBlob);
+               sinon.assert.calledWithExactly(navigator.mozLoop.getAudioBlob,
+                                              "connected", sinon.match.func);
+               sinon.assert.calledOnce(fakeAudio.play);
+               expect(fakeAudio.loop).to.not.equal(true);
+             });
         });
 
-        it("should unpublish local stream on session:network-disconnected",
-          function() {
+        describe("for both (standalone and desktop)", function() {
+          beforeEach(function() {
+            sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
+          });
+
+          it("should start streaming on session:connected", function() {
+            model.trigger("session:connected");
+
+            sinon.assert.calledOnce(fakeSDK.initPublisher);
+          });
+
+          it("should publish remote stream on session:stream-created",
+             function() {
+               var s1 = {connection: {connectionId: 42}};
+
+               model.trigger("session:stream-created", {stream: s1});
+
+               sinon.assert.calledOnce(fakeSession.subscribe);
+               sinon.assert.calledWith(fakeSession.subscribe, s1);
+             });
+
+          it("should unpublish local stream on session:ended", function() {
             comp.startPublishing();
 
-            model.trigger("session:network-disconnected");
+            model.trigger("session:ended");
 
             sinon.assert.calledOnce(fakeSession.unpublish);
           });
+
+          it("should unpublish local stream on session:peer-hungup", function() {
+            comp.startPublishing();
+
+            model.trigger("session:peer-hungup");
+
+            sinon.assert.calledOnce(fakeSession.unpublish);
+          });
+
+          it("should unpublish local stream on session:network-disconnected",
+             function() {
+               comp.startPublishing();
+
+               model.trigger("session:network-disconnected");
+
+               sinon.assert.calledOnce(fakeSession.unpublish);
+             });
+        });
+
       });
 
       describe("Publisher events", function() {
@@ -428,6 +531,7 @@ describe("loop.shared.views", function() {
 
     beforeEach(function() {
       fakeFeedbackApiClient = {send: sandbox.stub()};
+      sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
       comp = TestUtils.renderIntoDocument(sharedViews.FeedbackView({
         feedbackApiClient: fakeFeedbackApiClient
       }));
@@ -526,7 +630,7 @@ describe("loop.shared.views", function() {
           fillSadFeedbackForm(comp, "confusing");
 
           expect(comp.getDOMNode()
-                     .querySelector("form input[type='text']").value).eql("");
+                     .querySelector(".feedback-description").value).eql("");
         });
 
       it("should enable the form submit button once a predefined category is " +

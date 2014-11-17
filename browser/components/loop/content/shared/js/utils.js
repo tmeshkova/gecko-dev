@@ -17,6 +17,14 @@ loop.shared.utils = (function(mozL10n) {
     AUDIO_ONLY: "audio"
   };
 
+  var FAILURE_REASONS = {
+    MEDIA_DENIED: "reason-media-denied",
+    COULD_NOT_CONNECT: "reason-could-not-connect",
+    NETWORK_DISCONNECTED: "reason-network-disconnected",
+    EXPIRED_OR_INVALID: "reason-expired-or-invalid",
+    UNKNOWN: "reason-unknown"
+  };
+
   /**
    * Format a given date into an l10n-friendly string.
    *
@@ -27,26 +35,6 @@ loop.shared.utils = (function(mozL10n) {
     var date = (new Date(timestamp * 1000));
     var options = {year: "numeric", month: "long", day: "numeric"};
     return date.toLocaleDateString(navigator.language, options);
-  }
-
-  /**
-   * Used for adding different styles to the panel
-   * @returns {String} Corresponds to the client platform
-   * */
-  function getTargetPlatform() {
-    var platform="unknown_platform";
-
-    if (navigator.platform.indexOf("Win") !== -1) {
-      platform = "windows";
-    }
-    if (navigator.platform.indexOf("Mac") !== -1) {
-      platform = "mac";
-    }
-    if (navigator.platform.indexOf("Linux") !== -1) {
-      platform = "linux";
-    }
-
-    return platform;
   }
 
   /**
@@ -91,8 +79,15 @@ loop.shared.utils = (function(mozL10n) {
       return this._iOSRegex.test(platform);
     },
 
-    locationHash: function() {
-      return window.location.hash;
+    /**
+     * Helper to allow getting some of the location data in a way that's compatible
+     * with stubbing for unit tests.
+     */
+    locationData: function() {
+      return {
+        hash: window.location.hash,
+        pathname: window.location.pathname
+      };
     }
   };
 
@@ -123,10 +118,10 @@ loop.shared.utils = (function(mozL10n) {
 
   return {
     CALL_TYPES: CALL_TYPES,
+    FAILURE_REASONS: FAILURE_REASONS,
     Helper: Helper,
     composeCallUrlEmail: composeCallUrlEmail,
     formatDate: formatDate,
-    getTargetPlatform: getTargetPlatform,
     getBoolPreference: getBoolPreference
   };
 })(document.mozL10n || navigator.mozL10n);

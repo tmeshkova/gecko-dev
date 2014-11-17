@@ -13,10 +13,12 @@ browser.jar:
   # Desktop script
   content/browser/loop/js/client.js                 (content/js/client.js)
   content/browser/loop/js/conversation.js           (content/js/conversation.js)
+  content/browser/loop/js/conversationAppStore.js   (content/js/conversationAppStore.js)
   content/browser/loop/js/otconfig.js               (content/js/otconfig.js)
   content/browser/loop/js/panel.js                  (content/js/panel.js)
   content/browser/loop/js/contacts.js               (content/js/contacts.js)
   content/browser/loop/js/conversationViews.js      (content/js/conversationViews.js)
+  content/browser/loop/js/roomViews.js              (content/js/roomViews.js)
 
   # Shared styles
   content/browser/loop/shared/css/reset.css         (content/shared/css/reset.css)
@@ -30,7 +32,8 @@ browser.jar:
   content/browser/loop/shared/img/sad.png                       (content/shared/img/sad.png)
   content/browser/loop/shared/img/icon_32.png                   (content/shared/img/icon_32.png)
   content/browser/loop/shared/img/icon_64.png                   (content/shared/img/icon_64.png)
-  content/browser/loop/shared/img/loading-icon.gif              (content/shared/img/loading-icon.gif)
+  content/browser/loop/shared/img/spinner.png                   (content/shared/img/spinner.png)
+  content/browser/loop/shared/img/spinner@2x.png                (content/shared/img/spinner@2x.png)
   content/browser/loop/shared/img/audio-inverse-14x14.png       (content/shared/img/audio-inverse-14x14.png)
   content/browser/loop/shared/img/audio-inverse-14x14@2x.png    (content/shared/img/audio-inverse-14x14@2x.png)
   content/browser/loop/shared/img/facemute-14x14.png            (content/shared/img/facemute-14x14.png)
@@ -56,7 +59,8 @@ browser.jar:
   # Shared scripts
   content/browser/loop/shared/js/actions.js           (content/shared/js/actions.js)
   content/browser/loop/shared/js/conversationStore.js (content/shared/js/conversationStore.js)
-  content/browser/loop/shared/js/roomListStore.js     (content/shared/js/roomListStore.js)
+  content/browser/loop/shared/js/roomStore.js         (content/shared/js/roomStore.js)
+  content/browser/loop/shared/js/activeRoomStore.js   (content/shared/js/activeRoomStore.js)
   content/browser/loop/shared/js/dispatcher.js        (content/shared/js/dispatcher.js)
   content/browser/loop/shared/js/feedbackApiClient.js (content/shared/js/feedbackApiClient.js)
   content/browser/loop/shared/js/models.js            (content/shared/js/models.js)
@@ -78,7 +82,11 @@ browser.jar:
   content/browser/loop/shared/libs/backbone-1.1.2.js  (content/shared/libs/backbone-1.1.2.js)
 
   # Shared sounds
-  content/browser/loop/shared/sounds/Firefox-Long.ogg (content/shared/sounds/Firefox-Long.ogg)
+  content/browser/loop/shared/sounds/ringtone.ogg     (content/shared/sounds/ringtone.ogg)
+  content/browser/loop/shared/sounds/connecting.ogg   (content/shared/sounds/connecting.ogg)
+  content/browser/loop/shared/sounds/connected.ogg    (content/shared/sounds/connected.ogg)
+  content/browser/loop/shared/sounds/terminated.ogg   (content/shared/sounds/terminated.ogg)
+  content/browser/loop/shared/sounds/failure.ogg      (content/shared/sounds/failure.ogg)
 
   # Partner SDK assets
   content/browser/loop/libs/sdk.js                                                    (content/shared/libs/sdk.js)

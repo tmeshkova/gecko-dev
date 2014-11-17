@@ -3352,6 +3352,10 @@ CheckHasNoSuchProperty(JSContext *cx, HandleObject obj, HandlePropertyName name,
         if (!curObj->isNative())
             return false;
 
+        // Don't handle proto chains with resolve hooks.
+        if (curObj->getClass()->resolve != JS_ResolveStub)
+            return false;
+
         Shape *shape = curObj->as<NativeObject>().lookup(cx, NameToId(name));
         if (shape)
             return false;
@@ -8536,10 +8540,11 @@ CopyArray(JSContext *cx, HandleArrayObject obj, MutableHandleValue result)
     if (!type)
         return false;
 
-    RootedArrayObject newObj(cx, NewDenseArray(cx, length, type, NewArray_FullyAllocating));
+    RootedArrayObject newObj(cx, NewDenseFullyAllocatedArray(cx, length, nullptr, TenuredObject));
     if (!newObj)
         return false;
 
+    newObj->setType(type);
     newObj->setDenseInitializedLength(length);
     newObj->initDenseElements(0, obj->getDenseElements(), length);
     result.setObject(*newObj);

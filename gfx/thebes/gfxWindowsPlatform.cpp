@@ -1521,6 +1521,13 @@ bool DoesD3D11DeviceWork(ID3D11Device *device)
       return result;
   checked = true;
 
+  if (gfxPrefs::Direct2DForceEnabled() ||
+      gfxPrefs::LayersAccelerationForceEnabled())
+  {
+    result = true;
+    return true;
+  }
+
   if (GetModuleHandleW(L"dlumd32.dll") && GetModuleHandleW(L"igd10umd32.dll")) {
     nsString displayLinkModuleVersionString;
     gfxWindowsPlatform::GetDLLVersion(L"dlumd32.dll", displayLinkModuleVersionString);
@@ -1531,7 +1538,7 @@ bool DoesD3D11DeviceWork(ID3D11Device *device)
 #endif
       return false;
     }
-    if (displayLinkModuleVersion <= GFX_DRIVER_VERSION(8,6,1,36484)) {
+    if (displayLinkModuleVersion <= V(8,6,1,36484)) {
 #if defined(MOZ_CRASHREPORTER)
       CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("DisplayLink: too old version\n"));
 #endif

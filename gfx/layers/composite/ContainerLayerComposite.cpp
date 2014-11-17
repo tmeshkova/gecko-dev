@@ -397,6 +397,7 @@ RenderIntermediate(ContainerT* aContainer,
   if (!surface) {
     return;
   }
+
   compositor->SetRenderTarget(surface);
   // pre-render all of the layers into our temporary
   RenderLayers(aContainer, aManager, RenderTargetPixel::FromUntyped(aClipRect));

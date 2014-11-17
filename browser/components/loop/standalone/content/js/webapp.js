@@ -14,16 +14,20 @@ loop.webapp = (function($, _, OT, mozL10n) {
   loop.config = loop.config || {};
   loop.config.serverUrl = loop.config.serverUrl || "http://localhost:5000";
 
+  var sharedActions = loop.shared.actions;
   var sharedMixins = loop.shared.mixins;
   var sharedModels = loop.shared.models;
   var sharedViews = loop.shared.views;
   var sharedUtils = loop.shared.utils;
+
+  var multiplexGum = loop.standaloneMedia.multiplexGum;
 
   /**
    * Homepage view.
    */
   var HomeView = React.createClass({displayName: 'HomeView',
     render: function() {
+      multiplexGum.reset();
       return (
         React.DOM.p(null, mozL10n.get("welcome", {clientShortname: mozL10n.get("clientShortname2")}))
       );
@@ -37,7 +41,9 @@ loop.webapp = (function($, _, OT, mozL10n) {
     render: function() {
       var useLatestFF = mozL10n.get("use_latest_firefox", {
         "firefoxBrandNameLink": React.renderComponentToStaticMarkup(
-          React.DOM.a({target: "_blank", href: mozL10n.get("brand_website")}, mozL10n.get("brandShortname"))
+          React.DOM.a({target: "_blank", href: loop.config.brandWebsiteUrl}, 
+            mozL10n.get("brandShortname")
+          )
         )
       });
       return (
@@ -82,8 +88,10 @@ loop.webapp = (function($, _, OT, mozL10n) {
           React.DOM.h3(null, mozL10n.get("promote_firefox_hello_heading", {brandShortname: mozL10n.get("brandShortname")})), 
           React.DOM.p(null, 
             React.DOM.a({className: "btn btn-large btn-accept", 
-               href: mozL10n.get("brand_website")}, 
-              mozL10n.get("get_firefox_button", {brandShortname: mozL10n.get("brandShortname")})
+               href: loop.config.brandWebsiteUrl}, 
+              mozL10n.get("get_firefox_button", {
+                brandShortname: mozL10n.get("brandShortname")
+              })
             )
           )
         )
@@ -258,9 +266,11 @@ loop.webapp = (function($, _, OT, mozL10n) {
   });
 
   var PendingConversationView = React.createClass({displayName: 'PendingConversationView',
+    mixins: [sharedMixins.AudioMixin],
+
     getInitialState: function() {
       return {
-        callState: this.props.callState || "connecting"
+        callState: "connecting"
       };
     },
 
@@ -270,15 +280,18 @@ loop.webapp = (function($, _, OT, mozL10n) {
     },
 
     componentDidMount: function() {
+      this.play("connecting", {loop: true});
       this.props.websocket.listenTo(this.props.websocket, "progress:alerting",
                                     this._handleRingingProgress);
     },
 
     _handleRingingProgress: function() {
+      this.play("ringtone", {loop: true});
       this.setState({callState: "ringing"});
     },
 
     _cancelOutgoingCall: function() {
+      multiplexGum.reset();
       this.props.websocket.cancel();
     },
 
@@ -436,8 +449,15 @@ loop.webapp = (function($, _, OT, mozL10n) {
      */
     startCall: function(callType) {
       return function() {
-        this.props.conversation.setupOutgoingCall(callType);
-        this.setState({disableCallButton: true});
+        multiplexGum.getPermsAndCacheMedia({audio:true, video:true},
+          function(localStream) {
+            this.props.conversation.setupOutgoingCall(callType);
+            this.setState({disableCallButton: true});
+          }.bind(this),
+          function(errorCode) {
+            multiplexGum.reset();
+          }.bind(this)
+        );
       }.bind(this);
     },
 
@@ -458,10 +478,10 @@ loop.webapp = (function($, _, OT, mozL10n) {
       var tosHTML = mozL10n.get("legal_text_and_links", {
         "clientShortname": mozL10n.get("clientShortname2"),
         "terms_of_use_url": "<a target=_blank href='" +
-          mozL10n.get("legal_website") + "'>" +
+          loop.config.legalWebsiteUrl + "'>" +
           tosLinkName + "</a>",
         "privacy_notice_url": "<a target=_blank href='" +
-          mozL10n.get("privacy_website") + "'>" + privacyNoticeName + "</a>"
+          loop.config.privacyWebsiteUrl + "'>" + privacyNoticeName + "</a>"
       });
 
       var tosClasses = React.addons.classSet({
@@ -548,6 +568,12 @@ loop.webapp = (function($, _, OT, mozL10n) {
   });
 
   var FailedConversationView = React.createClass({displayName: 'FailedConversationView',
+    mixins: [sharedMixins.AudioMixin],
+
+    componentDidMount: function() {
+      this.play("failure");
+    },
+
     render: function() {
       return this.transferPropsTo(
         InitiateConversationView({
@@ -806,6 +832,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
      *                        timeout, cancel, media-fail, user-unknown, closed)
      */
     _handleCallTerminated: function(reason) {
+      multiplexGum.reset();
+
       if (reason === "cancel") {
         this.setState({callStatus: "start"});
         return;
@@ -830,6 +858,11 @@ loop.webapp = (function($, _, OT, mozL10n) {
    * of the webapp page.
    */
   var WebappRootView = React.createClass({displayName: 'WebappRootView',
+
+    mixins: [sharedMixins.UrlHashChangeMixin,
+             sharedMixins.DocumentLocationMixin,
+             Backbone.Events],
+
     propTypes: {
       client: React.PropTypes.instanceOf(loop.StandaloneClient).isRequired,
       conversation: React.PropTypes.oneOfType([
@@ -840,34 +873,71 @@ loop.webapp = (function($, _, OT, mozL10n) {
       notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
                           .isRequired,
       sdk: React.PropTypes.object.isRequired,
-      feedbackApiClient: React.PropTypes.object.isRequired
+      feedbackApiClient: React.PropTypes.object.isRequired,
+
+      // XXX New types for flux style
+      standaloneAppStore: React.PropTypes.instanceOf(
+        loop.store.StandaloneAppStore).isRequired,
+      activeRoomStore: React.PropTypes.instanceOf(
+        loop.store.ActiveRoomStore).isRequired,
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired
     },
 
     getInitialState: function() {
-      return {
-        unsupportedDevice: this.props.helper.isIOS(navigator.platform),
-        unsupportedBrowser: !this.props.sdk.checkSystemRequirements(),
-      };
+      return this.props.standaloneAppStore.getStoreState();
+    },
+
+    componentWillMount: function() {
+      this.listenTo(this.props.standaloneAppStore, "change", function() {
+        this.setState(this.props.standaloneAppStore.getStoreState());
+      }, this);
+    },
+
+    componentWillUnmount: function() {
+      this.stopListening(this.props.standaloneAppStore);
+    },
+
+    onUrlHashChange: function() {
+      this.locationReload();
     },
 
     render: function() {
-      if (this.state.unsupportedDevice) {
-        return UnsupportedDeviceView(null);
-      } else if (this.state.unsupportedBrowser) {
-        return UnsupportedBrowserView(null);
-      } else if (this.props.conversation.get("loopToken")) {
-        return (
-          OutgoingConversationView({
-             client: this.props.client, 
-             conversation: this.props.conversation, 
-             helper: this.props.helper, 
-             notifications: this.props.notifications, 
-             sdk: this.props.sdk, 
-             feedbackApiClient: this.props.feedbackApiClient}
-          )
-        );
-      } else {
-        return HomeView(null);
+      switch (this.state.windowType) {
+        case "unsupportedDevice": {
+          return UnsupportedDeviceView(null);
+        }
+        case "unsupportedBrowser": {
+          return UnsupportedBrowserView(null);
+        }
+        case "outgoing": {
+          return (
+            OutgoingConversationView({
+               client: this.props.client, 
+               conversation: this.props.conversation, 
+               helper: this.props.helper, 
+               notifications: this.props.notifications, 
+               sdk: this.props.sdk, 
+               feedbackApiClient: this.props.feedbackApiClient}
+            )
+          );
+        }
+        case "room": {
+          return (
+            loop.standaloneRoomViews.StandaloneRoomView({
+              activeRoomStore: this.props.activeRoomStore, 
+              dispatcher: this.props.dispatcher, 
+              helper: this.props.helper}
+            )
+          );
+        }
+        case "home": {
+          return HomeView(null);
+        }
+        default: {
+          // The state hasn't been initialised yet, so don't display
+          // anything to avoid flicker.
+          return null;
+        }
       }
     }
   });
@@ -877,9 +947,11 @@ loop.webapp = (function($, _, OT, mozL10n) {
    */
   function init() {
     var helper = new sharedUtils.Helper();
-    var client = new loop.StandaloneClient({
+    var standaloneMozLoop = new loop.StandaloneMozLoop({
       baseServerUrl: loop.config.serverUrl
     });
+
+    // Older non-flux based items.
     var notifications = new sharedModels.NotificationCollection();
     var conversation
     if (helper.isFirefoxOS(navigator.userAgent)) {
@@ -897,11 +969,31 @@ loop.webapp = (function($, _, OT, mozL10n) {
         url: document.location.origin
       });
 
-    // Obtain the loopToken and pass it to the conversation
-    var locationHash = helper.locationHash();
-    if (locationHash) {
-      conversation.set("loopToken", locationHash.match(/\#call\/(.*)/)[1]);
-    }
+    // New flux items.
+    var dispatcher = new loop.Dispatcher();
+    var client = new loop.StandaloneClient({
+      baseServerUrl: loop.config.serverUrl
+    });
+    var sdkDriver = new loop.OTSdkDriver({
+      dispatcher: dispatcher,
+      sdk: OT
+    });
+
+    var standaloneAppStore = new loop.store.StandaloneAppStore({
+      conversation: conversation,
+      dispatcher: dispatcher,
+      helper: helper,
+      sdk: OT
+    });
+    var activeRoomStore = new loop.store.ActiveRoomStore({
+      dispatcher: dispatcher,
+      mozLoop: standaloneMozLoop,
+      sdkDriver: sdkDriver
+    });
+
+    window.addEventListener("unload", function() {
+      dispatcher.dispatch(new sharedActions.WindowUnload());
+    });
 
     React.renderComponent(WebappRootView({
       client: client, 
@@ -909,13 +1001,22 @@ loop.webapp = (function($, _, OT, mozL10n) {
       helper: helper, 
       notifications: notifications, 
       sdk: OT, 
-      feedbackApiClient: feedbackApiClient}
+      feedbackApiClient: feedbackApiClient, 
+      standaloneAppStore: standaloneAppStore, 
+      activeRoomStore: activeRoomStore, 
+      dispatcher: dispatcher}
     ), document.querySelector("#main"));
 
     // Set the 'lang' and 'dir' attributes to <html> when the page is translated
     document.documentElement.lang = mozL10n.language.code;
     document.documentElement.dir = mozL10n.language.direction;
     document.title = mozL10n.get("clientShortname2");
+
+    dispatcher.dispatch(new sharedActions.ExtractTokenInfo({
+      // We pass the hash or the pathname - the hash was used for the original
+      // urls, the pathname for later ones.
+      windowPath: helper.locationData().hash || helper.locationData().pathname
+    }));
   }
 
   return {

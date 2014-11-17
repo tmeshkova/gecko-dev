@@ -46,7 +46,7 @@ body {
   flex: 1;
   text-align: center;
   color: #ccc;
-  border-right: 1px solid #ccc;
+  -moz-border-end: 1px solid #ccc;
   padding: 0 10px;
   height: 16px;
   cursor: pointer;
@@ -56,7 +56,7 @@ body {
 }
 
 .tab-view > li:last-child {
-  border-right-style: none;
+  -moz-border-end-style: none;
 }
 
 .tab-view > li[data-tab-name="call"],
@@ -139,15 +139,35 @@ body {
 }
 
 /* Rooms */
-.room-list {
+.rooms {
   background: #f5f5f5;
+  min-height: 100px;
 }
 
-.room-list > h1 {
+.rooms > h1 {
   font-weight: bold;
   color: #999;
   padding: .5rem 1rem;
   border-bottom: 1px solid #ddd;
+}
+
+.rooms > p {
+  border-top: 1px solid #ddd;
+  padding: 1rem 0;
+  margin: 0;
+}
+
+.rooms > p > .btn {
+  display: block;
+  font-size: 1rem;
+  margin: 0 auto;
+  padding: .5rem 1rem;
+  border-radius: 3px;
+}
+
+.room-list {
+  max-height: 335px; /* XXX better computation needed */
+  overflow: auto;
 }
 
 .room-list > .room-entry {
@@ -202,6 +222,60 @@ body {
   text-decoration: underline;
 }
 
+@keyframes drop-and-fade-in {
+  0%   {opacity: 0; top: -15px;}
+  25%  {opacity: 0; top: -15px;}
+  100% {opacity: 1; top: 0px;}
+}
+
+.room-list > .room-entry > h2 > button {
+  display: inline-block;
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border: none;
+  margin: .1em .1em .1em .5em; /* relative to _this_ line's font, not the document's */
+  background-color: transparent;  /* override browser default for button tags */
+  top: -15px;
+}
+
+.room-list > .room-entry:hover > h2 > button {
+  animation: drop-and-fade-in 0.250s;
+  animation-fill-mode: forwards;
+  cursor: pointer;
+}
+
+.room-list > .room-entry:hover > h2 > .copy-link {
+  background-image: url(../img/icons-16x16.svg#copy);
+}
+
+.room-list > .room-entry:hover > h2 > .delete-link {
+  background-image: url(../img/icons-16x16.svg#trash);
+}
+
+/* scale this up to 1.1x and then back to the original size */
+@keyframes pulse {
+  0%, 100% { transform: scale(1.0); }
+  50%      { transform: scale(1.1); }
+}
+
+.room-list > .room-entry > h2 > .copy-link.checked {
+  background: transparent url(../img/icons-16x16.svg#checkmark);
+  animation: pulse .150s;
+  animation-timing-function: ease-in-out;
+  top: 0px;
+}
+
+.room-list > .room-entry > h2 {
+  display: inline-block;
+}
+
+/* keep the various room-entry row pieces aligned with each other */
+.room-list > .room-entry > h2 > button,
+.room-list > .room-entry > h2 > span {
+  vertical-align: middle;
+}
+
 /* Buttons */
 
 .button-group {
@@ -231,6 +305,10 @@ body {
   border-radius: 2px;
   height: 26px;
   font-size: 12px;
+}
+
+.button > .button-caption {
+  vertical-align: middle;
 }
 
 .button:hover {
@@ -298,10 +376,41 @@ body[dir=rtl] .dropdown-menu-item {
   background-color: #eee;
 }
 
+/* Spinner */
+
+@keyframes spinnerRotate {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+}
+
+.spinner.busy {
+  background-image: url(../img/spinner.png);
+  animation-name: spinnerRotate;
+  animation-duration: 1s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@media (min-resolution: 2dppx) {
+  .spinner.busy {
+    background-image: url(../img/spinner@2x.png);
+  }
+}
+
 /* Share tab */
 
-.generate-url input {
+.generate-url-stack {
   margin: 14px 0;
+  position: relative;
+}
+
+.generate-url-input {
   outline: 0;
   border: 1px solid #ccc; /* Overriding background style for a text input (see
                              below) resets its borders to a weird beveled style;
@@ -312,10 +421,18 @@ body[dir=rtl] .dropdown-menu-item {
   font-size: 1em;
 }
 
-.generate-url input.pending {
-  background-image: url(../img/loading-icon.gif);
-  background-repeat: no-repeat;
-  background-position: right;
+.generate-url-spinner {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+  top: 4px;
+  left: auto;
+  right: 4px;
+}
+
+body[dir=rtl] .generate-url-spinner {
+  left: 4px;
+  right: auto;
 }
 
 .generate-url .button {

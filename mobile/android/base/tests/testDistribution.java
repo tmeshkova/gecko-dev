@@ -12,9 +12,12 @@ import java.util.jar.JarInputStream;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
 import org.mozilla.gecko.Actions;
 import org.mozilla.gecko.AppConstants;
 import org.mozilla.gecko.db.BrowserContract;
+import org.mozilla.gecko.db.BrowserDB;
+import org.mozilla.gecko.db.SuggestedSites;
 import org.mozilla.gecko.distribution.Distribution;
 import org.mozilla.gecko.distribution.ReferrerDescriptor;
 import org.mozilla.gecko.distribution.ReferrerReceiver;
@@ -39,6 +42,10 @@ import android.util.Log;
  *     searchplugins/
  *       common/
  *         engine.xml
+ *     suggestedsites/
+ *       locales/
+ *         en-US/
+ *           suggestedsites.json
  */
 public class testDistribution extends ContentProviderTest {
     private static final String CLASS_REFERRER_RECEIVER = "org.mozilla.gecko.distribution.ReferrerReceiver";
@@ -116,6 +123,13 @@ public class testDistribution extends ContentProviderTest {
         // Wait for any startup-related background distribution shenanigans to
         // finish. This reduces the chance of us racing with startup pref writes.
         waitForBackgroundHappiness();
+
+        // Pre-clear distribution pref, override suggested sites and run tiles tests.
+        clearDistributionPref();
+        Distribution dist = initDistribution(mockPackagePath);
+        SuggestedSites suggestedSites = new SuggestedSites(mActivity, dist);
+        BrowserDB.setSuggestedSites(suggestedSites);
+        checkTilesReporting();
 
         // Pre-clear distribution pref, run basic preferences and en-US localized preferences Tests
         clearDistributionPref();
@@ -229,12 +243,13 @@ public class testDistribution extends ContentProviderTest {
     }
 
     // Initialize the distribution from the mock package.
-    private void initDistribution(String aPackagePath) {
+    private Distribution initDistribution(String aPackagePath) {
         // Call Distribution.init with the mock package.
         Actions.EventExpecter distributionSetExpecter = mActions.expectGeckoEvent("Distribution:Set:OK");
-        Distribution.init(mActivity, aPackagePath, "prefs-" + System.currentTimeMillis());
+        Distribution dist = Distribution.init(mActivity, aPackagePath, "prefs-" + System.currentTimeMillis());
         distributionSetExpecter.blockForEvent();
         distributionSetExpecter.unregisterListener();
+        return dist;
     }
 
     // Test distribution and preferences values stored in preferences.json
@@ -437,6 +452,46 @@ public class testDistribution extends ContentProviderTest {
         String keyName = mActivity.getPackageName() + ".distribution_state";
         settings.edit().remove(keyName).commit();
         TestableDistribution.clearReferrerDescriptorForTesting();
+    }
+
+    public void checkTilesReporting() throws JSONException {
+        // Slight hack: Force top sites grid to reload.
+        inputAndLoadUrl(StringHelper.ABOUT_BLANK_URL);
+        inputAndLoadUrl(StringHelper.ABOUT_HOME_URL);
+
+        // Click the first tracking tile and verify the posted data.
+        JSONObject response = clickTrackingTile(StringHelper.DISTRIBUTION1_LABEL);
+        mAsserter.is(0, response.getInt("click"), "JSON click index matched");
+        mAsserter.is("[{\"id\":123},{\"id\":456},{},{},{},{}]", response.getString("tiles"), "JSON tiles data matched");
+
+        inputAndLoadUrl(StringHelper.ABOUT_HOME_URL);
+
+        // Pin the second tracking tile.
+        verifyPinned(false, StringHelper.DISTRIBUTION2_LABEL);
+        mSolo.clickLongOnText(StringHelper.DISTRIBUTION2_LABEL);
+        boolean dialogOpened = mSolo.waitForDialogToOpen();
+        mAsserter.ok(dialogOpened, "Pin site dialog opened", null);
+        boolean pinSiteFound = waitForText(StringHelper.CONTEXT_MENU_PIN_SITE);
+        mAsserter.ok(pinSiteFound, "Found pin site menu item", null);
+        mSolo.clickOnText(StringHelper.CONTEXT_MENU_PIN_SITE);
+        verifyPinned(true, StringHelper.DISTRIBUTION2_LABEL);
+
+        // Click the second tracking tile and verify the posted data.
+        response = clickTrackingTile(StringHelper.DISTRIBUTION2_LABEL);
+        mAsserter.is(1, response.getInt("click"), "JSON click index matched");
+        mAsserter.is("[{\"id\":123},{\"id\":456,\"pin\":true},{},{},{},{}]", response.getString("tiles"), "JSON tiles data matched");
+    }
+
+    private JSONObject clickTrackingTile(String text) throws JSONException {
+        boolean tileFound = waitForText(text);
+        mAsserter.ok(tileFound, "Found tile: " + text, null);
+
+        Actions.EventExpecter loadExpecter = mActions.expectGeckoEvent("Robocop:TilesResponse");
+        mSolo.clickOnText(text);
+        String data = loadExpecter.blockForEventData();
+        JSONObject dataJSON = new JSONObject(data);
+        String response = dataJSON.getString("response");
+        return new JSONObject(response);
     }
 
     @Override

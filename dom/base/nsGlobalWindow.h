@@ -1091,7 +1091,6 @@ protected:
   }
 
   void FreeInnerObjects();
-  JSObject *CallerGlobal();
   nsGlobalWindow *CallerInnerWindow();
 
   // Only to be called on an inner window.
@@ -1626,6 +1625,9 @@ protected:
   // mSpeechSynthesis is only used on inner windows.
   nsRefPtr<mozilla::dom::SpeechSynthesis> mSpeechSynthesis;
 #endif
+
+  // This is the CC generation the last time we called CanSkip.
+  uint32_t mCanSkipCCGeneration;
 
   friend class nsDOMScriptableHelper;
   friend class nsDOMWindowUtils;

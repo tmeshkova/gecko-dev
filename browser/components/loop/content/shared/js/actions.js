@@ -31,19 +31,53 @@ loop.shared.actions = (function() {
 
   return {
     /**
+     * Get the window data for the provided window id
+     */
+    GetWindowData: Action.define("getWindowData", {
+      windowId: String
+    }),
+
+    /**
+     * Extract the token information and type for the standalone window
+     */
+    ExtractTokenInfo: Action.define("extractTokenInfo", {
+      windowPath: String
+    }),
+
+    /**
+     * Used to pass round the window data so that stores can
+     * record the appropriate data.
+     */
+    SetupWindowData: Action.define("setupWindowData", {
+      windowId: String,
+      type: String
+
+      // Optional Items. There are other optional items typically sent
+      // around with this action. They are for the setup of calls and rooms and
+      // depend on the type. See LoopCalls and LoopRooms for the details of this
+      // data.
+    }),
+
+    /**
+     * Used to fetch the data from the server for a room or call for the
+     * token.
+     */
+    FetchServerData: Action.define("fetchServerData", {
+      token: String,
+      windowType: String
+    }),
+
+    /**
+     * Used to signal when the window is being unloaded.
+     */
+    WindowUnload: Action.define("windowUnload", {
+    }),
+
+    /**
      * Fetch a new call url from the server, intended to be sent over email when
      * a contact can't be reached.
      */
     FetchEmailLink: Action.define("fetchEmailLink", {
-    }),
-
-    /**
-     * Used to trigger gathering of initial call data.
-     */
-    GatherCallData: Action.define("gatherCallData", {
-      // Specify the callId for an incoming call.
-      callId: [String, null],
-      outgoing: Boolean
     }),
 
     /**
@@ -75,9 +109,12 @@ loop.shared.actions = (function() {
     }),
 
     /**
-     * Used to indicate the peer hung up the call.
+     * Used to indicate the remote peer was disconnected for some reason.
+     *
+     * peerHungup is true if the peer intentionally disconnected, false otherwise.
      */
-    PeerHungupCall: Action.define("peerHungupCall", {
+    RemotePeerDisconnected: Action.define("remotePeerDisconnected", {
+      peerHungup: Boolean
     }),
 
     /**
@@ -96,6 +133,18 @@ loop.shared.actions = (function() {
     ConnectionFailure: Action.define("connectionFailure", {
       // A string relating to the reason the connection failed.
       reason: String
+    }),
+
+    /**
+     * Used to notify that the sdk session is now connected to the servers.
+     */
+    ConnectedToSdkServers: Action.define("connectedToSdkServers", {
+    }),
+
+    /**
+     * Used to notify that a remote peer has connected to the room.
+     */
+    RemotePeerConnected: Action.define("remotePeerConnected", {
     }),
 
     /**
@@ -128,10 +177,131 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Creates a new room.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    CreateRoom: Action.define("createRoom", {
+      // The localized template to use to name the new room
+      // (eg. "Conversation {{conversationLabel}}").
+      nameTemplate: String,
+      roomOwner: String
+    }),
+
+    /**
+     * Rooms creation error.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    CreateRoomError: Action.define("createRoomError", {
+      error: Error
+    }),
+
+    /**
+     * Deletes a room.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    DeleteRoom: Action.define("deleteRoom", {
+      roomToken: String
+    }),
+
+    /**
+     * Room deletion error.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    DeleteRoomError: Action.define("deleteRoomError", {
+      error: Error
+    }),
+
+    /**
      * Retrieves room list.
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     GetAllRooms: Action.define("getAllRooms", {
+    }),
+
+    /**
+     * An error occured while trying to fetch the room list.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    GetAllRoomsError: Action.define("getAllRoomsError", {
+      error: Error
+    }),
+
+    /**
+     * Updates room list.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    UpdateRoomList: Action.define("updateRoomList", {
+      roomList: Array
+    }),
+
+    /**
+     * Opens a room.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    OpenRoom: Action.define("openRoom", {
+      roomToken: String
+    }),
+
+    /**
+     * Copy a room url into the user's clipboard.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    CopyRoomUrl: Action.define("copyRoomUrl", {
+      roomUrl: String
+    }),
+
+    /**
+     * Email a room url.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    EmailRoomUrl: Action.define("emailRoomUrl", {
+      roomUrl: String
+    }),
+
+    /**
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    RoomFailure: Action.define("roomFailure", {
+      error: Object
+    }),
+
+    /**
+     * Updates the room information when it is received.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     *
+     * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
+     */
+    UpdateRoomInfo: Action.define("updateRoomInfo", {
+      roomName: String,
+      roomOwner: String,
+      roomToken: String,
+      roomUrl: String
+    }),
+
+    /**
+     * Starts the process for the user to join the room.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    JoinRoom: Action.define("joinRoom", {
+    }),
+
+    /**
+     * Signals the user has successfully joined the room on the loop-server.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     *
+     * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#Joining_a_Room
+     */
+    JoinedRoom: Action.define("joinedRoom", {
+      apiKey: String,
+      sessionToken: String,
+      sessionId: String,
+      expires: Number
+    }),
+
+    /**
+     * Used to indicate the user wishes to leave the room.
+     */
+    LeaveRoom: Action.define("leaveRoom", {
     })
   };
 })();
