@@ -5717,6 +5717,9 @@ if test -n "$MOZ_GSTREAMER"; then
         AC_MSG_ERROR([gstreamer and gstreamer-plugins-base development packages are needed to build gstreamer backend. Install them or disable gstreamer support with --disable-gstreamer])
     fi
 
+    HAS_NEMO_RESOURCE=1
+    AC_DEFINE(HAS_NEMO_RESOURCE)
+
     _SAVE_LDFLAGS=$LDFLAGS
     LDFLAGS="$LDFLAGS $GSTREAMER_LIBS -lgstvideo-$GST_API_VERSION"
     AC_TRY_LINK(,[return 0;],_HAVE_LIBGSTVIDEO=1,_HAVE_LIBGSTVIDEO=)
@@ -5729,6 +5732,7 @@ if test -n "$MOZ_GSTREAMER"; then
 fi
 
 AC_SUBST(MOZ_GSTREAMER)
+AC_SUBST(HAS_NEMO_RESOURCE)
 AC_SUBST(GST_API_VERSION)
 
 if test -n "$MOZ_GSTREAMER"; then
