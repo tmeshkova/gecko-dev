@@ -19,7 +19,7 @@ var gMozLoopAPI;
 function promiseGetMozLoopAPI() {
   return new Promise((resolve, reject) => {
     let loopPanel = document.getElementById("loop-notification-panel");
-    let btn = document.getElementById("loop-button-throttled");
+    let btn = document.getElementById("loop-button");
 
     // Wait for the popup to be shown if it's not already, then we can get the iframe and
     // wait for the iframe's load to be completed.
@@ -183,7 +183,7 @@ function promiseOAuthGetRegistration(baseURL) {
 }
 
 function getLoopString(stringID) {
-  return MozLoopServiceInternal.localizedStrings[stringID].textContent;
+  return MozLoopServiceInternal.localizedStrings.get(stringID);
 }
 
 /**
@@ -221,13 +221,6 @@ let mockPushHandler = {
     this.notificationCallback[chanId](version, chanId);
   }
 };
-
-// Add the Loop button to the navbar.
-CustomizableUI.addWidgetToArea("loop-button-throttled", CustomizableUI.AREA_NAVBAR);
-
-registerCleanupFunction(function() {
-  CustomizableUI.reset();
-});
 
 const mockDb = {
   _store: { },

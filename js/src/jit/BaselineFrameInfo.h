@@ -12,7 +12,7 @@
 #include "jit/BaselineFrame.h"
 #include "jit/BaselineRegisters.h"
 #include "jit/FixedList.h"
-#include "jit/IonMacroAssembler.h"
+#include "jit/MacroAssembler.h"
 
 namespace js {
 namespace jit {
@@ -289,6 +289,9 @@ class FrameInfo
     }
     Address addressOfReturnValue() const {
         return Address(BaselineFrameReg, BaselineFrame::reverseOffsetOfReturnValue());
+    }
+    Address addressOfArgsObj() const {
+        return Address(BaselineFrameReg, BaselineFrame::reverseOffsetOfArgsObj());
     }
     Address addressOfStackValue(const StackValue *value) const {
         MOZ_ASSERT(value->kind() == StackValue::Stack);

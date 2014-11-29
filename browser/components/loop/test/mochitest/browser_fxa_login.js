@@ -18,7 +18,7 @@ function* checkFxA401() {
       "Check friendlyDetails");
   ise(err.friendlyDetailsButtonLabel, getLoopString("retry_button"),
       "Check friendlyDetailsButtonLabel");
-  let loopButton = document.getElementById("loop-button-throttled");
+  let loopButton = document.getElementById("loop-button");
   is(loopButton.getAttribute("state"), "error",
      "state of loop button should be error after a 401 with login");
 
@@ -40,6 +40,7 @@ function* checkFxA401() {
 add_task(function* setup() {
   Services.prefs.setCharPref("loop.server", BASE_URL);
   Services.prefs.setCharPref("services.push.serverURL", "ws://localhost/");
+  Services.prefs.setBoolPref("loop.gettingStarted.seen", true);
   MozLoopServiceInternal.mocks.pushHandler = mockPushHandler;
   // Normally the same pushUrl would be registered but we change it in the test
   // to be able to check for success on the second registration.
@@ -51,6 +52,7 @@ add_task(function* setup() {
     yield promiseDeletedOAuthParams(BASE_URL);
     Services.prefs.clearUserPref("loop.server");
     Services.prefs.clearUserPref("services.push.serverURL");
+    Services.prefs.clearUserPref("loop.gettingStarted.seen");
     MozLoopServiceInternal.mocks.pushHandler = undefined;
     delete mockPushHandler.registeredChannels[MozLoopService.channelIDs.callsFxA];
     delete mockPushHandler.registeredChannels[MozLoopService.channelIDs.roomsFxA];
@@ -293,7 +295,7 @@ add_task(function* basicAuthorizationAndRegistration() {
   let visibleEmail = loopDoc.getElementsByClassName("user-identity")[0];
   is(visibleEmail.textContent, "Guest", "Guest should be displayed on the panel when not logged in");
   is(MozLoopService.userProfile, null, "profile should be null before log-in");
-  let loopButton = document.getElementById("loop-button-throttled");
+  let loopButton = document.getElementById("loop-button");
   is(loopButton.getAttribute("state"), "", "state of loop button should be empty when not logged in");
 
   info("Login");

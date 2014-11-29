@@ -38,9 +38,14 @@ describe("loop.conversation", function() {
       get locale() {
         return "en-US";
       },
-      setLoopCharPref: sinon.stub(),
-      getLoopCharPref: sinon.stub().returns("http://fakeurl"),
-      getLoopBoolPref: sinon.stub(),
+      setLoopPref: sinon.stub(),
+      getLoopPref: function(prefName) {
+        if (prefName == "debug.sdk") {
+          return false;
+        }
+
+        return "http://fake";
+      },
       calls: {
         clearCallInProgress: sinon.stub()
       },
@@ -169,9 +174,8 @@ describe("loop.conversation", function() {
         dispatcher: dispatcher,
         sdkDriver: {}
       });
-      roomStore = new loop.store.RoomStore({
+      roomStore = new loop.store.RoomStore(dispatcher, {
         mozLoop: navigator.mozLoop,
-        dispatcher: dispatcher
       });
       conversationAppStore = new loop.store.ConversationAppStore({
         dispatcher: dispatcher,
@@ -229,7 +233,8 @@ describe("loop.conversation", function() {
   });
 
   describe("IncomingConversationView", function() {
-    var conversationAppStore, conversation, client, icView, oldTitle;
+    var conversationAppStore, conversation, client, icView, oldTitle,
+        feedbackStore;
 
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
@@ -237,7 +242,8 @@ describe("loop.conversation", function() {
           client: client,
           conversation: conversation,
           sdk: {},
-          conversationAppStore: conversationAppStore
+          conversationAppStore: conversationAppStore,
+          feedbackStore: feedbackStore
         }));
     }
 
@@ -252,6 +258,9 @@ describe("loop.conversation", function() {
       conversationAppStore = new loop.store.ConversationAppStore({
         dispatcher: dispatcher,
         mozLoop: navigator.mozLoop
+      });
+      feedbackStore = new loop.store.FeedbackStore(dispatcher, {
+        feedbackClient: {}
       });
       sandbox.stub(conversation, "setOutgoingSessionData");
     });
@@ -547,7 +556,7 @@ describe("loop.conversation", function() {
       });
 
       describe("#blocked", function() {
-        var mozLoop;
+        var mozLoop, deleteCallUrlStub;
 
         beforeEach(function() {
           icView = mountTestComponent();
@@ -564,6 +573,9 @@ describe("loop.conversation", function() {
               FXA: 2
             }
           };
+
+          deleteCallUrlStub = sandbox.stub(loop.Client.prototype,
+                                           "deleteCallUrl");
         });
 
         it("should call mozLoop.stopAlerting", function() {
@@ -578,12 +590,10 @@ describe("loop.conversation", function() {
                                            .withArgs("sessionType")
                                            .returns(mozLoop.LOOP_SESSION_TYPE.FXA);
 
-          var deleteCallUrl = sandbox.stub(loop.Client.prototype,
-                                           "deleteCallUrl");
           icView.declineAndBlock();
 
-          sinon.assert.calledOnce(deleteCallUrl);
-          sinon.assert.calledWithExactly(deleteCallUrl,
+          sinon.assert.calledOnce(deleteCallUrlStub);
+          sinon.assert.calledWithExactly(deleteCallUrlStub,
             "fakeToken", mozLoop.LOOP_SESSION_TYPE.FXA, sinon.match.func);
         });
 
@@ -602,9 +612,7 @@ describe("loop.conversation", function() {
           var fakeError = {
             error: true
           };
-          sandbox.stub(loop.Client.prototype, "deleteCallUrl", function(_, __, cb) {
-            cb(fakeError);
-          });
+          deleteCallUrlStub.callsArgWith(2, fakeError);
           icView.declineAndBlock();
 
           sinon.assert.calledOnce(log);
@@ -647,7 +655,6 @@ describe("loop.conversation", function() {
         icView = mountTestComponent();
 
         conversation.set("loopToken", "fakeToken");
-        navigator.mozLoop.getLoopCharPref.returns("http://fake");
         stubComponent(sharedView, "ConversationView");
       });
 
@@ -917,6 +924,7 @@ describe("loop.conversation", function() {
         pause: sinon.spy(),
         removeAttribute: sinon.spy()
       };
+      navigator.mozLoop.doNotDisturb = false;
       sandbox.stub(window, "Audio").returns(fakeAudio);
 
       view = TestUtils.renderIntoDocument(

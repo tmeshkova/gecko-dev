@@ -56,15 +56,9 @@ describe("loop.store.RoomStore", function () {
   });
 
   describe("#constructor", function() {
-    it("should throw an error if the dispatcher is missing", function() {
-      expect(function() {
-        new loop.store.RoomStore({mozLoop: {}});
-      }).to.Throw(/dispatcher/);
-    });
-
     it("should throw an error if mozLoop is missing", function() {
       expect(function() {
-        new loop.store.RoomStore({dispatcher: dispatcher});
+        new loop.store.RoomStore(dispatcher);
       }).to.Throw(/mozLoop/);
     });
   });
@@ -86,13 +80,11 @@ describe("loop.store.RoomStore", function () {
         rooms: {
           create: function() {},
           getAll: function() {},
+          open: function() {},
           on: sandbox.stub()
         }
       };
-      store = new loop.store.RoomStore({
-        dispatcher: dispatcher,
-        mozLoop: fakeMozLoop
-      });
+      store = new loop.store.RoomStore(dispatcher, {mozLoop: fakeMozLoop});
       store.setStoreState(defaultStoreState);
     });
 
@@ -151,19 +143,6 @@ describe("loop.store.RoomStore", function () {
             return room.roomToken === "_nxD4V4FflQ";
           })).eql(false);
         });
-      });
-    });
-
-    describe("#getStoreState", function() {
-      it("should retrieve the whole state by default", function() {
-        expect(store.getStoreState()).eql(defaultStoreState);
-      });
-
-      it("should retrieve a given property state", function() {
-        var fakeActiveRoom = {fake: true};
-        store.setStoreState({activeRoom: fakeActiveRoom});
-
-        expect(store.getStoreState().activeRoom).eql(fakeActiveRoom);
       });
     });
 
@@ -252,13 +231,28 @@ describe("loop.store.RoomStore", function () {
       it("should switch the pendingCreation state flag to false once the " +
          "operation is done", function() {
         sandbox.stub(fakeMozLoop.rooms, "create", function(data, cb) {
-          cb();
+          cb(null, {roomToken: "fakeToken"});
         });
 
         store.createRoom(new sharedActions.CreateRoom(fakeRoomCreationData));
 
         expect(store.getStoreState().pendingCreation).eql(false);
       });
+
+      it("should dispatch an OpenRoom action once the operation is done",
+        function() {
+          var dispatch = sandbox.stub(dispatcher, "dispatch");
+          sandbox.stub(fakeMozLoop.rooms, "create", function(data, cb) {
+            cb(null, {roomToken: "fakeToken"});
+          });
+
+          store.createRoom(new sharedActions.CreateRoom(fakeRoomCreationData));
+
+          sinon.assert.calledOnce(dispatch);
+          sinon.assert.calledWithExactly(dispatch, new sharedActions.OpenRoom({
+            roomToken: "fakeToken"
+          }));
+        });
     });
 
     describe("#copyRoomUrl", function() {
@@ -383,13 +377,11 @@ describe("loop.store.RoomStore", function () {
       var store, activeRoomStore;
 
       beforeEach(function() {
-        activeRoomStore = new loop.store.ActiveRoomStore({
-          dispatcher: dispatcher,
+        activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
           mozLoop: fakeMozLoop,
           sdkDriver: {}
         });
-        store = new loop.store.RoomStore({
-          dispatcher: dispatcher,
+        store = new loop.store.RoomStore(dispatcher, {
           mozLoop: fakeMozLoop,
           activeRoomStore: activeRoomStore
         });
@@ -424,10 +416,7 @@ describe("loop.store.RoomStore", function () {
           open: sinon.spy()
         }
       };
-      store = new loop.store.RoomStore({
-        dispatcher: dispatcher,
-        mozLoop: fakeMozLoop
-      });
+      store = new loop.store.RoomStore(dispatcher, {mozLoop: fakeMozLoop});
     });
 
     it("should open the room via mozLoop", function() {
@@ -435,6 +424,30 @@ describe("loop.store.RoomStore", function () {
 
       sinon.assert.calledOnce(fakeMozLoop.rooms.open);
       sinon.assert.calledWithExactly(fakeMozLoop.rooms.open, "42abc");
+    });
+  });
+
+  describe("#renameRoom", function() {
+    var store, fakeMozLoop;
+
+    beforeEach(function() {
+      fakeMozLoop = {
+        rooms: {
+          rename: sinon.spy()
+        }
+      };
+      store = new loop.store.RoomStore(dispatcher, {mozLoop: fakeMozLoop});
+    });
+
+    it("should rename the room via mozLoop", function() {
+      dispatcher.dispatch(new sharedActions.RenameRoom({
+        roomToken: "42abc",
+        newRoomName: "silly name"
+      }));
+
+      sinon.assert.calledOnce(fakeMozLoop.rooms.rename);
+      sinon.assert.calledWith(fakeMozLoop.rooms.rename, "42abc",
+        "silly name");
     });
   });
 });

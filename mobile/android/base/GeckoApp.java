@@ -82,6 +82,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.PowerManager;
 import android.os.StrictMode;
@@ -979,6 +980,12 @@ public abstract class GeckoApp
                 image = BitmapUtils.decodeByteArray(imgBuffer);
             }
             if (image != null) {
+                // Some devices don't have a DCIM folder and the Media.insertImage call will fail.
+                File dcimDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+                if (!dcimDir.mkdirs() && !dcimDir.isDirectory()) {
+                    Toast.makeText((Context) this, R.string.set_image_path_fail, Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 String path = Media.insertImage(getContentResolver(),image, null, null);
                 if (path == null) {
                     Toast.makeText((Context) this, R.string.set_image_path_fail, Toast.LENGTH_SHORT).show();
@@ -1118,7 +1125,7 @@ public abstract class GeckoApp
      **/
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        GeckoAppShell.registerGlobalExceptionHandler();
+        GeckoAppShell.ensureCrashHandling();
 
         // Enable Android Strict Mode for developers' local builds (the "default" channel).
         if ("default".equals(AppConstants.MOZ_UPDATE_CHANNEL)) {
@@ -1507,14 +1514,17 @@ public abstract class GeckoApp
         // External URLs should always be loaded regardless of whether Gecko is
         // already running.
         if (isExternalURL) {
+            // Restore tabs before opening an external URL so that the new tab
+            // is animated properly.
+            Tabs.getInstance().notifyListeners(null, Tabs.TabEvents.RESTORED);
             loadStartupTab(passedUri);
-        } else if (!mIsRestoringActivity) {
-            loadStartupTab(null);
-        }
+        } else {
+            if (!mIsRestoringActivity) {
+                loadStartupTab(null);
+            }
 
-        // We now have tab stubs from the last session. Any future tabs should
-        // be animated.
-        Tabs.getInstance().notifyListeners(null, Tabs.TabEvents.RESTORED);
+            Tabs.getInstance().notifyListeners(null, Tabs.TabEvents.RESTORED);
+        }
 
         // If we're not restoring, move the session file so it can be read for
         // the last tabs section.
@@ -1862,7 +1872,7 @@ public abstract class GeckoApp
         }
     }
 
-    /*
+    /**
      * Handles getting a URI from an intent in a way that is backwards-
      * compatible with our previous implementations.
      */
@@ -1872,18 +1882,7 @@ public abstract class GeckoApp
             return null;
         }
 
-        String uri = intent.getDataString();
-        if (uri != null) {
-            return uri;
-        }
-
-        if ((action != null && action.startsWith(ACTION_WEBAPP_PREFIX)) || ACTION_HOMESCREEN_SHORTCUT.equals(action)) {
-            uri = intent.getStringExtra("args");
-            if (uri != null && uri.startsWith("--url=")) {
-                uri.replace("--url=", "");
-            }
-        }
-        return uri;
+        return intent.getDataString();
     }
 
     protected int getOrientation() {

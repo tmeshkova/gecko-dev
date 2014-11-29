@@ -44,7 +44,7 @@ describe("loop.conversationViews", function () {
     };
 
     navigator.mozLoop = {
-      getLoopCharPref: sinon.stub().returns("http://fakeurl"),
+      getLoopPref: sinon.stub().returns("http://fakeurl"),
       composeEmail: sinon.spy(),
       get appVersionInfo() {
         return {
@@ -445,13 +445,14 @@ describe("loop.conversationViews", function () {
   });
 
   describe("OutgoingConversationView", function() {
-    var store;
+    var store, feedbackStore;
 
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
         loop.conversationViews.OutgoingConversationView({
           dispatcher: dispatcher,
-          store: store
+          store: store,
+          feedbackStore: feedbackStore
         }));
     }
 
@@ -460,6 +461,9 @@ describe("loop.conversationViews", function () {
         dispatcher: dispatcher,
         client: {},
         sdkDriver: {}
+      });
+      feedbackStore = new loop.store.FeedbackStore(dispatcher, {
+        feedbackClient: {}
       });
     });
 
@@ -504,6 +508,22 @@ describe("loop.conversationViews", function () {
 
         TestUtils.findRenderedComponentWithType(view,
           loop.shared.views.FeedbackView);
+    });
+
+    it("should play the terminated sound when the call state is 'finished'",
+      function() {
+        var fakeAudio = {
+          play: sinon.spy(),
+          pause: sinon.spy(),
+          removeAttribute: sinon.spy()
+        };
+        sandbox.stub(window, "Audio").returns(fakeAudio);
+
+        store.set({callState: CALL_STATES.FINISHED});
+
+        view = mountTestComponent();
+
+        sinon.assert.calledOnce(fakeAudio.play);
     });
 
     it("should update the rendered views when the state is changed.",

@@ -24,6 +24,7 @@ function init_all() {
 
   gSubDialog.init();
   gMainPane.init();
+  gSearchPane.init();
   gPrivacyPane.init();
   gAdvancedPane.init();
   gApplicationsPane.init();
@@ -95,6 +96,8 @@ function gotoPref(aCategory) {
   categories.selectedItem = item;
   window.history.replaceState(category, document.title);
   search(category, "data-category");
+  let mainContent = document.querySelector(".main-content");
+  mainContent.scrollTop = 0;
 }
 
 function search(aQuery, aAttribute) {

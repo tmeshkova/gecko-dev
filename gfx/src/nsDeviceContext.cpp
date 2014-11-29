@@ -6,10 +6,12 @@
 #include "nsDeviceContext.h"
 #include <algorithm>                    // for max
 #include "gfxASurface.h"                // for gfxASurface, etc
+#include "gfxContext.h"
 #include "gfxFont.h"                    // for gfxFontGroup
 #include "gfxImageSurface.h"            // for gfxImageSurface
 #include "gfxPoint.h"                   // for gfxSize
 #include "mozilla/Attributes.h"         // for MOZ_FINAL
+#include "mozilla/gfx/PathHelpers.h"
 #include "mozilla/Preferences.h"        // for Preferences
 #include "mozilla/Services.h"           // for GetObserverService
 #include "mozilla/mozalloc.h"           // for operator new
@@ -29,7 +31,6 @@
 #include "nsISupportsUtils.h"           // for NS_ADDREF, NS_RELEASE
 #include "nsIWidget.h"                  // for nsIWidget, NS_NATIVE_WINDOW
 #include "nsRect.h"                     // for nsRect
-#include "nsRenderingContext.h"         // for nsRenderingContext
 #include "nsServiceManagerUtils.h"      // for do_GetService
 #include "nsString.h"               // for nsDependentString
 #include "nsTArray.h"                   // for nsTArray, nsTArray_Impl
@@ -48,6 +49,7 @@
 #endif
 
 using namespace mozilla;
+using namespace mozilla::gfx;
 using mozilla::services::GetObserverService;
 
 class nsFontCache MOZ_FINAL : public nsIObserver
@@ -242,9 +244,9 @@ nsFontCache::Flush()
 
 nsDeviceContext::nsDeviceContext()
     : mWidth(0), mHeight(0), mDepth(0),
-      mAppUnitsPerDevPixel(-1), mAppUnitsPerDevNotScaledPixel(-1),
+      mAppUnitsPerDevPixel(-1), mAppUnitsPerDevPixelAtUnitFullZoom(-1),
       mAppUnitsPerPhysicalInch(-1),
-      mPixelScale(1.0f), mPrintingScale(1.0f),
+      mFullZoom(1.0f), mPrintingScale(1.0f),
       mFontCache(nullptr)
 {
     MOZ_ASSERT(NS_IsMainThread(), "nsDeviceContext created off main thread");
@@ -331,7 +333,7 @@ nsDeviceContext::SetDPI()
             break;
         }
 
-        mAppUnitsPerDevNotScaledPixel =
+        mAppUnitsPerDevPixelAtUnitFullZoom =
             NS_lround((AppUnitsPerCSSPixel() * 96) / dpi);
     } else {
         // A value of -1 means use the maximum of 96 and the system DPI.
@@ -356,14 +358,14 @@ nsDeviceContext::SetDPI()
                                                : CSSToLayoutDeviceScale(1.0);
         double devPixelsPerCSSPixel = scale.scale;
 
-        mAppUnitsPerDevNotScaledPixel =
+        mAppUnitsPerDevPixelAtUnitFullZoom =
             std::max(1, NS_lround(AppUnitsPerCSSPixel() / devPixelsPerCSSPixel));
     }
 
     NS_ASSERTION(dpi != -1.0, "no dpi set");
 
-    mAppUnitsPerPhysicalInch = NS_lround(dpi * mAppUnitsPerDevNotScaledPixel);
-    UpdateScaledAppUnits();
+    mAppUnitsPerPhysicalInch = NS_lround(dpi * mAppUnitsPerDevPixelAtUnitFullZoom);
+    UpdateAppUnitsForFullZoom();
 }
 
 nsresult
@@ -383,7 +385,7 @@ nsDeviceContext::Init(nsIWidget *aWidget)
     return NS_OK;
 }
 
-already_AddRefed<nsRenderingContext>
+already_AddRefed<gfxContext>
 nsDeviceContext::CreateRenderingContext()
 {
     nsRefPtr<gfxASurface> printingSurface = mPrintingSurface;
@@ -398,7 +400,6 @@ nsDeviceContext::CreateRenderingContext()
       printingSurface = mCachedPrintingSurface;
     }
 #endif
-    nsRefPtr<nsRenderingContext> pContext = new nsRenderingContext();
 
     RefPtr<gfx::DrawTarget> dt =
       gfxPlatform::GetPlatform()->CreateDrawTargetForSurface(printingSurface,
@@ -407,12 +408,10 @@ nsDeviceContext::CreateRenderingContext()
 #ifdef XP_MACOSX
     dt->AddUserData(&gfxContext::sDontUseAsSourceKey, dt, nullptr);
 #endif
+    dt->AddUserData(&sDisablePixelSnapping, (void*)0x1, nullptr);
 
-    pContext->Init(this, dt);
-    pContext->ThebesContext()->SetFlag(gfxContext::FLAG_DISABLE_SNAPPING);
-    pContext->ThebesContext()->SetMatrix(gfxMatrix::Scaling(mPrintingScale,
-                                                            mPrintingScale));
-
+    nsRefPtr<gfxContext> pContext = new gfxContext(dt);
+    pContext->SetMatrix(gfxMatrix::Scaling(mPrintingScale, mPrintingScale));
     return pContext.forget();
 }
 
@@ -723,33 +722,33 @@ nsDeviceContext::CalcPrintingSize()
 }
 
 bool nsDeviceContext::CheckDPIChange() {
-    int32_t oldDevPixels = mAppUnitsPerDevNotScaledPixel;
+    int32_t oldDevPixels = mAppUnitsPerDevPixelAtUnitFullZoom;
     int32_t oldInches = mAppUnitsPerPhysicalInch;
 
     SetDPI();
 
-    return oldDevPixels != mAppUnitsPerDevNotScaledPixel ||
+    return oldDevPixels != mAppUnitsPerDevPixelAtUnitFullZoom ||
         oldInches != mAppUnitsPerPhysicalInch;
 }
 
 bool
-nsDeviceContext::SetPixelScale(float aScale)
+nsDeviceContext::SetFullZoom(float aScale)
 {
     if (aScale <= 0) {
-        NS_NOTREACHED("Invalid pixel scale value");
+        NS_NOTREACHED("Invalid full zoom value");
         return false;
     }
     int32_t oldAppUnitsPerDevPixel = mAppUnitsPerDevPixel;
-    mPixelScale = aScale;
-    UpdateScaledAppUnits();
+    mFullZoom = aScale;
+    UpdateAppUnitsForFullZoom();
     return oldAppUnitsPerDevPixel != mAppUnitsPerDevPixel;
 }
 
 void
-nsDeviceContext::UpdateScaledAppUnits()
+nsDeviceContext::UpdateAppUnitsForFullZoom()
 {
     mAppUnitsPerDevPixel =
-        std::max(1, NSToIntRound(float(mAppUnitsPerDevNotScaledPixel) / mPixelScale));
-    // adjust mPixelScale to reflect appunit rounding
-    mPixelScale = float(mAppUnitsPerDevNotScaledPixel) / mAppUnitsPerDevPixel;
+        std::max(1, NSToIntRound(float(mAppUnitsPerDevPixelAtUnitFullZoom) / mFullZoom));
+    // adjust mFullZoom to reflect appunit rounding
+    mFullZoom = float(mAppUnitsPerDevPixelAtUnitFullZoom) / mAppUnitsPerDevPixel;
 }

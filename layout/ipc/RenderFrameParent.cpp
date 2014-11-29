@@ -73,6 +73,9 @@ already_AddRefed<LayerManager>
 GetFrom(nsFrameLoader* aFrameLoader)
 {
   nsIDocument* doc = aFrameLoader->GetOwnerDoc();
+  if (!doc) {
+    return nullptr;
+  }
   return nsContentUtils::LayerManagerForDocument(doc);
 }
 
@@ -152,7 +155,7 @@ public:
   virtual void HandleLongTap(const CSSPoint& aPoint,
                              int32_t aModifiers,
                              const ScrollableLayerGuid& aGuid,
-                             uint64_t) MOZ_OVERRIDE
+                             uint64_t aInputBlockId) MOZ_OVERRIDE
   {
     if (MessageLoop::current() != mUILoop) {
       // We have to send this message from the "UI thread" (main
@@ -160,12 +163,12 @@ public:
       mUILoop->PostTask(
         FROM_HERE,
         NewRunnableMethod(this, &RemoteContentController::HandleLongTap,
-                          aPoint, aModifiers, aGuid, 0));
+                          aPoint, aModifiers, aGuid, aInputBlockId));
       return;
     }
     if (mRenderFrame) {
       TabParent* browser = static_cast<TabParent*>(mRenderFrame->Manager());
-      browser->HandleLongTap(aPoint, aModifiers, aGuid);
+      browser->HandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
     }
   }
 
@@ -388,11 +391,10 @@ RenderFrameParent::BuildLayer(nsDisplayListBuilder* aBuilder,
   // container, but our display item is LAYER_ACTIVE_FORCE which
   // forces all layers above to be active.
   MOZ_ASSERT(aContainerParameters.mOffset == nsIntPoint());
-  gfx::Matrix4x4 m;
-  m.Translate(offset.x, offset.y, 0.0);
+  gfx::Matrix4x4 m = gfx::Matrix4x4::Translation(offset.x, offset.y, 0.0);
   // Remote content can't be repainted by us, so we multiply down
   // the resolution that our container expects onto our container.
-  m.Scale(aContainerParameters.mXScale, aContainerParameters.mYScale, 1.0);
+  m.PreScale(aContainerParameters.mXScale, aContainerParameters.mYScale, 1.0);
   layer->SetBaseTransform(m);
 
   return layer.forget();
@@ -403,14 +405,24 @@ RenderFrameParent::OwnerContentChanged(nsIContent* aContent)
 {
   NS_ABORT_IF_FALSE(mFrameLoader->GetOwnerContent() == aContent,
                     "Don't build new map if owner is same!");
+
+  nsRefPtr<LayerManager> lm = GetFrom(mFrameLoader);
+  // Perhaps the document containing this frame currently has no presentation?
+  if (lm && lm->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+    ClientLayerManager *clientManager =
+      static_cast<ClientLayerManager*>(lm.get());
+    clientManager->GetRemoteRenderer()->SendAdoptChild(mLayersId);
+  }
 }
 
 nsEventStatus
 RenderFrameParent::NotifyInputEvent(WidgetInputEvent& aEvent,
-                                    ScrollableLayerGuid* aOutTargetGuid)
+                                    ScrollableLayerGuid* aOutTargetGuid,
+                                    uint64_t* aOutInputBlockId)
 {
   if (GetApzcTreeManager()) {
-    return GetApzcTreeManager()->ReceiveInputEvent(aEvent, aOutTargetGuid);
+    return GetApzcTreeManager()->ReceiveInputEvent(
+        aEvent, aOutTargetGuid, aOutInputBlockId);
   }
   return nsEventStatus_eIgnore;
 }
@@ -519,6 +531,7 @@ RenderFrameParent::ZoomToRect(uint32_t aPresShellId, ViewID aViewId,
 
 void
 RenderFrameParent::ContentReceivedTouch(const ScrollableLayerGuid& aGuid,
+                                        uint64_t aInputBlockId,
                                         bool aPreventDefault)
 {
   if (aGuid.mLayersId != mLayersId) {
@@ -527,7 +540,23 @@ RenderFrameParent::ContentReceivedTouch(const ScrollableLayerGuid& aGuid,
     return;
   }
   if (GetApzcTreeManager()) {
-    GetApzcTreeManager()->ContentReceivedTouch(aGuid, aPreventDefault);
+    GetApzcTreeManager()->ContentReceivedTouch(aInputBlockId, aPreventDefault);
+  }
+}
+
+void
+RenderFrameParent::SetTargetAPZC(uint64_t aInputBlockId,
+                                 const nsTArray<ScrollableLayerGuid>& aTargets)
+{
+  for (size_t i = 0; i < aTargets.Length(); i++) {
+    if (aTargets[i].mLayersId != mLayersId) {
+      // Guard against bad data from hijacked child processes
+      NS_ERROR("Unexpected layers id in SetTargetAPZC; dropping message...");
+      return;
+    }
+  }
+  if (GetApzcTreeManager()) {
+    GetApzcTreeManager()->SetTargetAPZC(aInputBlockId, aTargets);
   }
 }
 
@@ -550,6 +579,19 @@ bool
 RenderFrameParent::HitTest(const nsRect& aRect)
 {
   return mTouchRegion.Contains(aRect);
+}
+
+void
+RenderFrameParent::GetTextureFactoryIdentifier(TextureFactoryIdentifier* aTextureFactoryIdentifier)
+{
+  nsRefPtr<LayerManager> lm = GetFrom(mFrameLoader);
+  // Perhaps the document containing this frame currently has no presentation?
+  if (lm && lm->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+    *aTextureFactoryIdentifier =
+      static_cast<ClientLayerManager*>(lm.get())->GetTextureFactoryIdentifier();
+  } else {
+    *aTextureFactoryIdentifier = TextureFactoryIdentifier();
+  }
 }
 
 }  // namespace layout

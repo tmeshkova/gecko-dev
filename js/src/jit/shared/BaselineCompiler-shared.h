@@ -10,7 +10,7 @@
 #include "jit/BaselineFrameInfo.h"
 #include "jit/BaselineIC.h"
 #include "jit/BytecodeAnalysis.h"
-#include "jit/IonMacroAssembler.h"
+#include "jit/MacroAssembler.h"
 
 namespace js {
 namespace jit {
@@ -24,7 +24,7 @@ class BaselineCompilerShared
     MacroAssembler masm;
     bool ionCompileable_;
     bool ionOSRCompileable_;
-    bool debugMode_;
+    bool compileDebugInstrumentation_;
 
     TempAllocator &alloc_;
     BytecodeAnalysis analysis_;
@@ -140,6 +140,10 @@ class BaselineCompilerShared
   public:
     BytecodeAnalysis &analysis() {
         return analysis_;
+    }
+
+    void setCompileDebugInstrumentation() {
+        compileDebugInstrumentation_ = true;
     }
 };
 

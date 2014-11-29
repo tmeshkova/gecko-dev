@@ -4,6 +4,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsPageFrame.h"
+
+#include "mozilla/gfx/2D.h"
+#include "nsDeviceContext.h"
+#include "nsFontMetrics.h"
+#include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsRenderingContext.h"
 #include "nsGkAtoms.h"
@@ -25,6 +30,7 @@ extern PRLogModuleInfo *GetLayoutPrintingLog();
 #endif
 
 using namespace mozilla;
+using namespace mozilla::gfx;
 
 nsPageFrame*
 NS_NewPageFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
@@ -231,14 +237,15 @@ nsPageFrame::ProcessSpecialCodes(const nsString& aStr, nsString& aNewStr)
 
 
 //------------------------------------------------------------------------------
-nscoord nsPageFrame::GetXPosition(nsRenderingContext& aRenderingContext, 
+nscoord nsPageFrame::GetXPosition(nsRenderingContext& aRenderingContext,
+                                  nsFontMetrics&       aFontMetrics,
                                   const nsRect&        aRect, 
                                   int32_t              aJust,
                                   const nsString&      aStr)
 {
-  nscoord width = nsLayoutUtils::GetStringWidth(this, &aRenderingContext,
-                                                aStr.get(), aStr.Length());
-
+  nscoord width = nsLayoutUtils::AppUnitWidthOfStringBidi(aStr, this,
+                                                          aFontMetrics,
+                                                          aRenderingContext);
   nscoord x = aRect.x;
   switch (aJust) {
     case nsIPrintSettings::kJustLeft:
@@ -268,6 +275,7 @@ nscoord nsPageFrame::GetXPosition(nsRenderingContext& aRenderingContext,
 // @param aHeight - the height of the font
 void
 nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
+                              nsFontMetrics&       aFontMetrics,
                               nsHeaderFooterEnum   aHeaderFooter,
                               const nsString&      aStrLeft,
                               const nsString&      aStrCenter,
@@ -285,17 +293,17 @@ nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
   nscoord strSpace = aRect.width / numStrs;
 
   if (!aStrLeft.IsEmpty()) {
-    DrawHeaderFooter(aRenderingContext, aHeaderFooter,
+    DrawHeaderFooter(aRenderingContext, aFontMetrics, aHeaderFooter,
                      nsIPrintSettings::kJustLeft, aStrLeft, aRect, aAscent,
                      aHeight, strSpace);
   }
   if (!aStrCenter.IsEmpty()) {
-    DrawHeaderFooter(aRenderingContext, aHeaderFooter,
+    DrawHeaderFooter(aRenderingContext, aFontMetrics, aHeaderFooter,
                      nsIPrintSettings::kJustCenter, aStrCenter, aRect, aAscent,
                      aHeight, strSpace);
   }
   if (!aStrRight.IsEmpty()) {
-    DrawHeaderFooter(aRenderingContext, aHeaderFooter,
+    DrawHeaderFooter(aRenderingContext, aFontMetrics, aHeaderFooter,
                      nsIPrintSettings::kJustRight, aStrRight, aRect, aAscent,
                      aHeight, strSpace);
   }
@@ -312,6 +320,7 @@ nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
 // @param aWidth - available width for the string
 void
 nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
+                              nsFontMetrics&       aFontMetrics,
                               nsHeaderFooterEnum   aHeaderFooter,
                               int32_t              aJust,
                               const nsString&      aStr,
@@ -337,7 +346,8 @@ nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
       return; // bail is empty string
     }
     // find how much text fits, the "position" is the size of the available area
-    if (nsLayoutUtils::BinarySearchForPosition(&aRenderingContext, text, 0, 0, 0, len,
+    if (nsLayoutUtils::BinarySearchForPosition(&aRenderingContext, aFontMetrics,
+                                               text, 0, 0, 0, len,
                                 int32_t(contentWidth), indx, textWidth)) {
       if (indx < len-1 ) {
         // we can't fit in all the text
@@ -364,7 +374,7 @@ nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
     }
 
     // cacl the x and y positions of the text
-    nscoord x = GetXPosition(aRenderingContext, aRect, aJust, str);
+    nscoord x = GetXPosition(aRenderingContext, aFontMetrics, aRect, aJust, str);
     nscoord y;
     if (aHeaderFooter == eHeader) {
       y = aRect.y + mPD->mEdgePaperMargin.top;
@@ -372,12 +382,18 @@ nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
       y = aRect.YMost() - aHeight - mPD->mEdgePaperMargin.bottom;
     }
 
+    DrawTarget* drawTarget = aRenderingContext.GetDrawTarget();
+    gfxContext* gfx = aRenderingContext.ThebesContext();
+
     // set up new clip and draw the text
-    aRenderingContext.ThebesContext()->Save();
-    aRenderingContext.SetColor(NS_RGB(0,0,0));
-    aRenderingContext.IntersectClip(aRect);
-    nsLayoutUtils::DrawString(this, &aRenderingContext, str.get(), str.Length(), nsPoint(x, y + aAscent));
-    aRenderingContext.ThebesContext()->Restore();
+    gfx->Save();
+    gfx->Clip(NSRectToSnappedRect(aRect, PresContext()->AppUnitsPerDevPixel(),
+                                  *drawTarget));
+    aRenderingContext.ThebesContext()->SetColor(NS_RGB(0,0,0));
+    nsLayoutUtils::DrawString(this, aFontMetrics, &aRenderingContext,
+                              str.get(), str.Length(),
+                              nsPoint(x, y + aAscent));
+    gfx->Restore();
   }
 }
 
@@ -578,7 +594,7 @@ nsPageFrame::PaintHeaderFooter(nsRenderingContext& aRenderingContext,
   }
 
   nsRect rect(aPt, mRect.Size());
-  aRenderingContext.SetColor(NS_RGB(0,0,0));
+  aRenderingContext.ThebesContext()->SetColor(NS_RGB(0,0,0));
 
   // Get the FontMetrics to determine width.height of strings
   nsRefPtr<nsFontMetrics> fontMet;
@@ -587,8 +603,6 @@ nsPageFrame::PaintHeaderFooter(nsRenderingContext& aRenderingContext,
                                      pc->GetUserFontSet(),
                                      pc->GetTextPerfMetrics(),
                                      *getter_AddRefs(fontMet));
-
-  aRenderingContext.SetFont(fontMet);
 
   nscoord ascent = 0;
   nscoord visibleHeight = 0;
@@ -602,7 +616,7 @@ nsPageFrame::PaintHeaderFooter(nsRenderingContext& aRenderingContext,
   mPD->mPrintSettings->GetHeaderStrLeft(getter_Copies(headerLeft));
   mPD->mPrintSettings->GetHeaderStrCenter(getter_Copies(headerCenter));
   mPD->mPrintSettings->GetHeaderStrRight(getter_Copies(headerRight));
-  DrawHeaderFooter(aRenderingContext, eHeader,
+  DrawHeaderFooter(aRenderingContext, *fontMet, eHeader,
                    headerLeft, headerCenter, headerRight,
                    rect, ascent, visibleHeight);
 
@@ -610,7 +624,7 @@ nsPageFrame::PaintHeaderFooter(nsRenderingContext& aRenderingContext,
   mPD->mPrintSettings->GetFooterStrLeft(getter_Copies(footerLeft));
   mPD->mPrintSettings->GetFooterStrCenter(getter_Copies(footerCenter));
   mPD->mPrintSettings->GetFooterStrRight(getter_Copies(footerRight));
-  DrawHeaderFooter(aRenderingContext, eFooter,
+  DrawHeaderFooter(aRenderingContext, *fontMet, eFooter,
                    footerLeft, footerCenter, footerRight,
                    rect, ascent, visibleHeight);
 }

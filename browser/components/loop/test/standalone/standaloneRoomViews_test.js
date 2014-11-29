@@ -10,55 +10,101 @@ describe("loop.standaloneRoomViews", function() {
   "use strict";
 
   var ROOM_STATES = loop.store.ROOM_STATES;
+  var FEEDBACK_STATES = loop.store.FEEDBACK_STATES;
   var sharedActions = loop.shared.actions;
 
-  var sandbox, dispatcher, activeRoomStore, dispatch;
+  var sandbox, dispatcher, activeRoomStore, feedbackStore, dispatch;
 
   beforeEach(function() {
     sandbox = sinon.sandbox.create();
     dispatcher = new loop.Dispatcher();
     dispatch = sandbox.stub(dispatcher, "dispatch");
-    activeRoomStore = new loop.store.ActiveRoomStore({
-      dispatcher: dispatcher,
+    activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
       mozLoop: {},
       sdkDriver: {}
     });
+    feedbackStore = new loop.store.FeedbackStore(dispatcher, {
+      feedbackClient: {}
+    });
+
+    sandbox.useFakeTimers();
+
+    // Prevents audio request errors in the test console.
+    sandbox.useFakeXMLHttpRequest();
   });
 
   afterEach(function() {
     sandbox.restore();
   });
 
-  describe("standaloneRoomView", function() {
+  describe("StandaloneRoomView", function() {
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
         loop.standaloneRoomViews.StandaloneRoomView({
           dispatcher: dispatcher,
           activeRoomStore: activeRoomStore,
+          feedbackStore: feedbackStore,
           helper: new loop.shared.utils.Helper()
         }));
     }
 
+    function expectActionDispatched(view) {
+      sinon.assert.calledOnce(dispatch);
+      sinon.assert.calledWithExactly(dispatch,
+        sinon.match.instanceOf(sharedActions.SetupStreamElements));
+      sinon.assert.calledWithExactly(dispatch, sinon.match(function(value) {
+        return value.getLocalElementFunc() ===
+               view.getDOMNode().querySelector(".local");
+      }));
+      sinon.assert.calledWithExactly(dispatch, sinon.match(function(value) {
+        return value.getRemoteElementFunc() ===
+               view.getDOMNode().querySelector(".remote");
+      }));
+    }
+
     describe("#componentWillUpdate", function() {
-      it("dispatch an `SetupStreamElements` action on room joined", function() {
-        activeRoomStore.setStoreState({roomState: ROOM_STATES.READY});
-        var view = mountTestComponent();
+      it("should dispatch a `SetupStreamElements` action when the MEDIA_WAIT state " +
+        "is entered", function() {
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.READY});
+          var view = mountTestComponent();
 
-        sinon.assert.notCalled(dispatch);
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.MEDIA_WAIT});
 
-        activeRoomStore.setStoreState({roomState: ROOM_STATES.JOINED});
+          expectActionDispatched(view);
+        });
 
-        sinon.assert.calledOnce(dispatch);
-        sinon.assert.calledWithExactly(dispatch,
-          sinon.match.instanceOf(sharedActions.SetupStreamElements));
-        sinon.assert.calledWithExactly(dispatch, sinon.match(function(value) {
-          return value.getLocalElementFunc() ===
-                 view.getDOMNode().querySelector(".local");
-        }));
-        sinon.assert.calledWithExactly(dispatch, sinon.match(function(value) {
-          return value.getRemoteElementFunc() ===
-                 view.getDOMNode().querySelector(".remote");
-        }));
+      it("should dispatch a `SetupStreamElements` action on MEDIA_WAIT state is " +
+        "re-entered", function() {
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.ENDED});
+          var view = mountTestComponent();
+
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.MEDIA_WAIT});
+
+          expectActionDispatched(view);
+        });
+
+      it("should updateVideoContainer when the JOINED state is entered", function() {
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.READY});
+
+          var view = mountTestComponent();
+
+          sandbox.stub(view, "updateVideoContainer");
+
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.JOINED});
+
+          sinon.assert.calledOnce(view.updateVideoContainer);
+      });
+
+      it("should updateVideoContainer when the JOINED state is re-entered", function() {
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.ENDED});
+
+          var view = mountTestComponent();
+
+          sandbox.stub(view, "updateVideoContainer");
+
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.JOINED});
+
+          sinon.assert.calledOnce(view.updateVideoContainer);
       });
     });
 
@@ -126,6 +172,16 @@ describe("loop.standaloneRoomViews", function() {
 
             expect(view.getDOMNode().querySelector(".empty-room-message"))
               .eql(null);
+          });
+      });
+
+      describe("Prompt media message", function() {
+        it("should display a prompt for user media on MEDIA_WAIT",
+          function() {
+            activeRoomStore.setStoreState({roomState: ROOM_STATES.MEDIA_WAIT});
+
+            expect(view.getDOMNode().querySelector(".prompt-media-message"))
+              .not.eql(null);
           });
       });
 
@@ -232,6 +288,41 @@ describe("loop.standaloneRoomViews", function() {
           sinon.assert.calledOnce(dispatch);
           sinon.assert.calledWithExactly(dispatch, new sharedActions.LeaveRoom());
         });
+      });
+
+      describe("Feedback", function() {
+        beforeEach(function() {
+          activeRoomStore.setStoreState({roomState: ROOM_STATES.ENDED});
+        });
+
+        it("should display a feedback form when the user leaves the room",
+          function() {
+            expect(view.getDOMNode().querySelector(".faces")).not.eql(null);
+          });
+
+        it("should dispatch a `FeedbackComplete` action after feedback is sent",
+          function() {
+            feedbackStore.setStoreState({feedbackState: FEEDBACK_STATES.SENT});
+
+            sandbox.clock.tick(
+              loop.shared.views.WINDOW_AUTOCLOSE_TIMEOUT_IN_SECONDS * 1000 + 1000);
+
+            sinon.assert.calledOnce(dispatch);
+            sinon.assert.calledWithExactly(dispatch, new sharedActions.FeedbackComplete());
+          });
+      });
+
+      describe("Mute", function() {
+        it("should render local media as audio-only if video is muted",
+          function() {
+            activeRoomStore.setStoreState({
+              roomState: ROOM_STATES.SESSION_CONNECTED,
+              videoMuted: true
+            });
+
+            expect(view.getDOMNode().querySelector(".local-stream-audio"))
+              .not.eql(null);
+          });
       });
     });
   });

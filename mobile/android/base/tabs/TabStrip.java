@@ -6,9 +6,12 @@
 package org.mozilla.gecko.tabs;
 
 import android.content.Context;
+import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
+import android.view.TouchDelegate;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.widget.ImageButton;
 
 import org.mozilla.gecko.R;
@@ -51,6 +54,25 @@ public class TabStrip extends ThemedLinearLayout {
             }
         });
 
+        getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+                @Override
+                public boolean onPreDraw() {
+                    getViewTreeObserver().removeOnPreDrawListener(this);
+
+                    final Rect r = new Rect();
+                    r.left = addTabButton.getRight();
+                    r.right = getWidth();
+                    r.top = 0;
+                    r.bottom = getHeight();
+
+                    // Redirect touch events between the 'new tab' button and the edge
+                    // of the screen to the 'new tab' button.
+                    setTouchDelegate(new TouchDelegate(r, addTabButton));
+
+                    return true;
+                }
+            });
+
         tabsListener = new TabsListener();
     }
 
@@ -81,10 +103,11 @@ public class TabStrip extends ThemedLinearLayout {
         public void onTabChanged(Tab tab, Tabs.TabEvents msg, Object data) {
             switch (msg) {
                 case RESTORED:
+                    tabStripView.restoreTabs();
+                    break;
+
                 case ADDED:
-                    // Refresh the list to make sure the new tab is
-                    // added in the right position.
-                    tabStripView.refreshTabs();
+                    tabStripView.addTab(tab);
                     break;
 
                 case CLOSED:

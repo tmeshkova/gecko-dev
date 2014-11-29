@@ -7,8 +7,8 @@
 #ifndef jit_TypePolicy_h
 #define jit_TypePolicy_h
 
-#include "jit/IonAllocPolicy.h"
 #include "jit/IonTypes.h"
+#include "jit/JitAllocPolicy.h"
 
 namespace js {
 namespace jit {
@@ -233,6 +233,16 @@ class NoFloatPolicy : public TypePolicy
     }
 };
 
+// Policy for guarding variadic instructions such as object / array state
+// instructions.
+template <unsigned FirstOp>
+class NoFloatPolicyAfter : public TypePolicy
+{
+  public:
+    EMPTY_DATA_;
+    bool adjustInputs(TempAllocator &alloc, MInstruction *ins);
+};
+
 // Box objects or strings as an input to a ToDouble instruction.
 class ToDoublePolicy : public BoxInputsPolicy
 {
@@ -372,6 +382,13 @@ class StoreTypedArrayElementStaticPolicy : public StoreTypedArrayPolicy
   public:
     EMPTY_DATA_;
     bool adjustInputs(TempAllocator &alloc, MInstruction *ins);
+};
+
+class StoreUnboxedObjectOrNullPolicy : public TypePolicy
+{
+  public:
+    EMPTY_DATA_;
+    bool adjustInputs(TempAllocator &alloc, MInstruction *def);
 };
 
 // Accepts integers and doubles. Everything else is boxed.

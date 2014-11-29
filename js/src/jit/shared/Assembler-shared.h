@@ -12,11 +12,15 @@
 #include <limits.h>
 
 #include "asmjs/AsmJSFrameIterator.h"
-#include "jit/IonAllocPolicy.h"
+#include "jit/JitAllocPolicy.h"
 #include "jit/Label.h"
 #include "jit/Registers.h"
 #include "jit/RegisterSets.h"
 #include "vm/HelperThreads.h"
+
+#if defined(JS_CODEGEN_ARM)
+#define JS_USE_LINK_REGISTER
+#endif
 
 #if defined(JS_CODEGEN_X64) || defined(JS_CODEGEN_ARM)
 // JS_SMALL_BRANCH means the range on a branch instruction
@@ -37,6 +41,11 @@ enum Scale {
     TimesFour = 2,
     TimesEight = 3
 };
+
+static_assert(sizeof(JS::Value) == 8,
+              "required for TimesEight and 3 below to be correct");
+static const Scale ValueScale = TimesEight;
+static const size_t ValueShift = 3;
 
 static inline unsigned
 ScaleToShift(Scale scale)
@@ -114,9 +123,9 @@ struct ImmWord
 static inline bool
 IsCompilingAsmJS()
 {
-    // asm.js compilation pushes an IonContext with a null JSCompartment.
-    IonContext *ictx = MaybeGetIonContext();
-    return ictx && ictx->compartment == nullptr;
+    // asm.js compilation pushes a JitContext with a null JSCompartment.
+    JitContext *jctx = MaybeGetJitContext();
+    return jctx && jctx->compartment == nullptr;
 }
 
 static inline bool
@@ -127,8 +136,8 @@ CanUsePointerImmediates()
 
     // Pointer immediates can still be used with asm.js when the resulting code
     // is being profiled; the module will not be serialized in this case.
-    IonContext *ictx = MaybeGetIonContext();
-    if (ictx && ictx->runtime->profilingScripts())
+    JitContext *jctx = MaybeGetJitContext();
+    if (jctx && jctx->runtime->profilingScripts())
         return true;
 
     return false;
@@ -307,6 +316,40 @@ struct BaseIndex
     { }
 
     BaseIndex() { mozilla::PodZero(this); }
+};
+
+// A BaseIndex used to access Values.  Note that |offset| is *not* scaled by
+// sizeof(Value).  Use this *only* if you're indexing into a series of Values
+// that aren't object elements or object slots (for example, values on the
+// stack, values in an arguments object, &c.).  If you're indexing into an
+// object's elements or slots, don't use this directly!  Use
+// BaseObject{Element,Slot}Index instead.
+struct BaseValueIndex : BaseIndex
+{
+    BaseValueIndex(Register base, Register index, int32_t offset = 0)
+      : BaseIndex(base, index, ValueScale, offset)
+    { }
+};
+
+// Specifies the address of an indexed Value within object elements from a
+// base.  The index must not already be scaled by sizeof(Value)!
+struct BaseObjectElementIndex : BaseValueIndex
+{
+    BaseObjectElementIndex(Register base, Register index, int32_t offset = 0)
+      : BaseValueIndex(base, index, offset)
+    {
+        NativeObject::elementsSizeMustNotOverflow();
+    }
+};
+
+// Like BaseObjectElementIndex, except for object slots.
+struct BaseObjectSlotIndex : BaseValueIndex
+{
+    BaseObjectSlotIndex(Register base, Register index)
+      : BaseValueIndex(base, index)
+    {
+        NativeObject::slotsSizeMustNotOverflow();
+    }
 };
 
 class Relocation {
@@ -692,11 +735,27 @@ static const unsigned AsmJSNaN32GlobalDataOffset = 2 * sizeof(void*) + sizeof(do
 // #ifdefery.
 class AsmJSHeapAccess
 {
+  public:
+    enum ViewType {
+         Int8         = Scalar::Int8,
+         Uint8        = Scalar::Uint8,
+         Int16        = Scalar::Int16,
+         Uint16       = Scalar::Uint16,
+         Int32        = Scalar::Int32,
+         Uint32       = Scalar::Uint32,
+         Float32      = Scalar::Float32,
+         Float64      = Scalar::Float64,
+         Uint8Clamped = Scalar::Uint8Clamped,
+         Float32x4,
+         Int32x4
+    };
+
+  private:
     uint32_t offset_;
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
     uint8_t cmpDelta_;  // the number of bytes from the cmp to the load/store instruction
     uint8_t opLength_;  // the length of the load/store instruction
-    uint8_t isFloat32Load_;
+    ViewType viewType_;
     AnyRegister::Code loadedReg_ : 8;
 #endif
 
@@ -709,19 +768,20 @@ class AsmJSHeapAccess
 
     // If 'cmp' equals 'offset' or if it is not supplied then the
     // cmpDelta_ is zero indicating that there is no length to patch.
-    AsmJSHeapAccess(uint32_t offset, uint32_t after, Scalar::Type vt,
+    AsmJSHeapAccess(uint32_t offset, uint32_t after, ViewType viewType,
                     AnyRegister loadedReg, uint32_t cmp = NoLengthCheck)
       : offset_(offset),
         cmpDelta_(cmp == NoLengthCheck ? 0 : offset - cmp),
         opLength_(after - offset),
-        isFloat32Load_(vt == Scalar::Float32),
+        viewType_(viewType),
         loadedReg_(loadedReg.code())
     {}
-    AsmJSHeapAccess(uint32_t offset, uint8_t after, uint32_t cmp = NoLengthCheck)
+    AsmJSHeapAccess(uint32_t offset, uint8_t after, ViewType viewType,
+                    uint32_t cmp = NoLengthCheck)
       : offset_(offset),
         cmpDelta_(cmp == NoLengthCheck ? 0 : offset - cmp),
         opLength_(after - offset),
-        isFloat32Load_(false),
+        viewType_(viewType),
         loadedReg_(UINT8_MAX)
     {}
 #elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
@@ -740,7 +800,7 @@ class AsmJSHeapAccess
     void *patchLengthAt(uint8_t *code) const { return code + (offset_ - cmpDelta_); }
     unsigned opLength() const { return opLength_; }
     bool isLoad() const { return loadedReg_ != UINT8_MAX; }
-    bool isFloat32Load() const { return isFloat32Load_; }
+    ViewType viewType() const { return viewType_; }
     AnyRegister loadedReg() const { return AnyRegister::FromCode(loadedReg_); }
 #endif
 };
@@ -783,9 +843,10 @@ enum AsmJSImmKind
     AsmJSImm_PowD            = AsmJSExit::Builtin_PowD,
     AsmJSImm_ATan2D          = AsmJSExit::Builtin_ATan2D,
     AsmJSImm_Runtime,
-    AsmJSImm_RuntimeInterrupt,
+    AsmJSImm_RuntimeInterruptUint32,
     AsmJSImm_StackLimit,
     AsmJSImm_ReportOverRecursed,
+    AsmJSImm_OnDetached,
     AsmJSImm_HandleExecutionInterrupt,
     AsmJSImm_InvokeFromAsmJS_Ignore,
     AsmJSImm_InvokeFromAsmJS_ToInt32,
@@ -879,7 +940,7 @@ class AssemblerShared
             // FIXME: Ideally we'd assert this in all cases, but PJS needs to
             //        compile IC's from off-main-thread; it will not touch
             //        nursery pointers, however.
-            MOZ_ASSERT(GetIonContext()->runtime->onMainThread());
+            MOZ_ASSERT(GetJitContext()->runtime->onMainThread());
             embedsNurseryPointers_ = true;
         }
 #endif

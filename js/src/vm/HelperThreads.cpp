@@ -189,8 +189,8 @@ ParseTask::ParseTask(ExclusiveContext *cx, JSObject *exclusiveContextGlobal, JSC
                      JS::OffThreadCompileCallback callback, void *callbackData)
   : cx(cx), options(initCx), chars(chars), length(length),
     alloc(JSRuntime::TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
-    exclusiveContextGlobal(initCx, exclusiveContextGlobal), optionsElement(initCx),
-    optionsIntroductionScript(initCx), callback(callback), callbackData(callbackData),
+    exclusiveContextGlobal(initCx, exclusiveContextGlobal),
+    callback(callback), callbackData(callbackData),
     script(nullptr), errors(cx), overRecursed(false)
 {
 }
@@ -364,6 +364,12 @@ js::StartOffThreadParseScript(JSContext *cx, const ReadOnlyCompileOptions &optio
             return false;
     } else {
         task->activate(cx->runtime());
+
+        if (cx->compartment()->isDebuggee()) {
+            task->cx->compartment()->setIsDebuggee();
+            if (cx->compartment()->debugObservesAllExecution())
+                task->cx->compartment()->setDebugObservesAllExecution();
+        }
 
         AutoLockHelperThreadState lock;
 
@@ -761,6 +767,7 @@ js::GCParallelTask::joinWithLockHeld()
     while (state != Finished)
         HelperThreadState().wait(GlobalHelperThreadState::CONSUMER);
     state = NotStarted;
+    cancel_ = false;
 }
 
 void
@@ -794,6 +801,13 @@ js::GCParallelTask::runFromHelperThread()
 
     state = Finished;
     HelperThreadState().notifyAll(GlobalHelperThreadState::CONSUMER);
+}
+
+bool
+js::GCParallelTask::isRunning() const
+{
+    MOZ_ASSERT(HelperThreadState().isLocked());
+    return state == Dispatched;
 }
 
 void
@@ -973,7 +987,7 @@ HelperThread::handleAsmJSWorkload()
         AutoUnlockHelperThreadState unlock;
         PerThreadData::AutoEnterRuntime enter(threadData.ptr(), asmData->runtime);
 
-        jit::IonContext icx(asmData->mir->compartment->runtime(),
+        jit::JitContext jcx(asmData->mir->compartment->runtime(),
                             asmData->mir->compartment,
                             &asmData->mir->alloc());
 
@@ -1043,7 +1057,7 @@ HelperThread::handleIonWorkload()
         AutoUnlockHelperThreadState unlock;
         PerThreadData::AutoEnterRuntime enter(threadData.ptr(),
                                               ionBuilder->script()->runtimeFromAnyThread());
-        jit::IonContext ictx(jit::CompileRuntime::get(rt),
+        jit::JitContext jctx(jit::CompileRuntime::get(rt),
                              jit::CompileCompartment::get(ionBuilder->script()->compartment()),
                              &ionBuilder->alloc());
         ionBuilder->setBackgroundCodegen(jit::CompileBackEnd(ionBuilder));
@@ -1057,7 +1071,7 @@ HelperThread::handleIonWorkload()
     // at the next interrupt callback. Don't interrupt Ion code for this, as
     // this incorporation can be delayed indefinitely without affecting
     // performance as long as the main thread is actually executing Ion code.
-    rt->requestInterrupt(JSRuntime::RequestInterruptAnyThreadDontStopIon);
+    rt->requestInterrupt(JSRuntime::RequestInterruptCanWait);
 
     // Notify the main thread in case it is waiting for the compilation to finish.
     HelperThreadState().notifyAll(GlobalHelperThreadState::CONSUMER);

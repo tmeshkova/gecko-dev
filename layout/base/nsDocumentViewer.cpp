@@ -80,7 +80,6 @@
 
 #include "nsIPrompt.h"
 #include "imgIContainer.h" // image animation mode constants
-#include "SelectionCarets.h"
 
 //--------------------------
 // Printing Include
@@ -122,6 +121,7 @@ static const char sPrintOptionsContractID[] =
 #include <stdio.h>
 
 #include "mozilla/dom/Element.h"
+#include "mozilla/Telemetry.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -666,7 +666,8 @@ nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow)
 
   // Initialize our view manager
   int32_t p2a = mPresContext->AppUnitsPerDevPixel();
-  MOZ_ASSERT(p2a == mPresContext->DeviceContext()->UnscaledAppUnitsPerDevPixel());
+  MOZ_ASSERT(p2a ==
+             mPresContext->DeviceContext()->AppUnitsPerDevPixelAtUnitFullZoom());
   nscoord width = p2a * mBounds.width;
   nscoord height = p2a * mBounds.height;
 
@@ -708,14 +709,6 @@ nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow)
   rv = selection->AddSelectionListener(mSelectionListener);
   if (NS_FAILED(rv))
     return rv;
-
-  nsRefPtr<SelectionCarets> selectionCaret = mPresShell->GetSelectionCarets();
-  if (selectionCaret) {
-    nsCOMPtr<nsIDocShell> docShell(mContainer);
-    if (docShell) {
-      docShell->AddWeakScrollObserver(selectionCaret);
-    }
-  }
 
   // Save old listener so we can unregister it
   nsRefPtr<nsDocViewerFocusListener> oldFocusListener = mFocusListener;
@@ -1207,6 +1200,7 @@ nsDocumentViewer::PermitUnloadInternal(bool aCallerClosesWindow,
 
       nsAutoSyncOperation sync(mDocument);
       mInPermitUnloadPrompt = true;
+      mozilla::Telemetry::Accumulate(mozilla::Telemetry::ONBEFOREUNLOAD_PROMPT_COUNT, 1);
       rv = prompt->ConfirmEx(title, message, buttonFlags,
                              leaveLabel, stayLabel, nullptr, nullptr,
                              &dummy, &buttonPressed);
@@ -1221,12 +1215,15 @@ nsDocumentViewer::PermitUnloadInternal(bool aCallerClosesWindow,
       // XXX: Are there other cases where prompts can abort? Is it ok to
       //      prevent unloading the page in those cases?
       if (NS_FAILED(rv)) {
+        mozilla::Telemetry::Accumulate(mozilla::Telemetry::ONBEFOREUNLOAD_PROMPT_ACTION, 2);
         *aPermitUnload = false;
         return NS_OK;
       }
 
       // Button 0 == leave, button 1 == stay
       *aPermitUnload = (buttonPressed == 0);
+      mozilla::Telemetry::Accumulate(mozilla::Telemetry::ONBEFOREUNLOAD_PROMPT_ACTION,
+        (*aPermitUnload ? 1 : 0));
       // If the user decided to go ahead, make sure not to prompt the user again
       // by toggling the internal prompting bool to false:
       if (*aPermitUnload) {
@@ -3340,9 +3337,8 @@ nsDocumentViewer::GetContentSize(int32_t* aWidth, int32_t* aHeight)
 
   nscoord prefWidth;
   {
-    nsRefPtr<nsRenderingContext> rcx =
-      presShell->CreateReferenceRenderingContext();
-    prefWidth = root->GetPrefISize(rcx);
+    nsRenderingContext rcx(presShell->CreateReferenceRenderingContext());
+    prefWidth = root->GetPrefISize(&rcx);
   }
 
   nsresult rv = presShell->ResizeReflow(prefWidth, NS_UNCONSTRAINEDSIZE);
@@ -4428,14 +4424,6 @@ nsDocumentViewer::DestroyPresShell()
   nsRefPtr<mozilla::dom::Selection> selection = GetDocumentSelection();
   if (selection && mSelectionListener)
     selection->RemoveSelectionListener(mSelectionListener);
-
-  nsRefPtr<SelectionCarets> selectionCaret = mPresShell->GetSelectionCarets();
-  if (selectionCaret) {
-    nsCOMPtr<nsIDocShell> docShell(mContainer);
-    if (docShell) {
-      docShell->RemoveWeakScrollObserver(selectionCaret);
-    }
-  }
 
   nsAutoScriptBlocker scriptBlocker;
   mPresShell->Destroy();

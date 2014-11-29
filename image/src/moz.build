@@ -16,12 +16,11 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     'ClippedImage.cpp',
+    'DecodePool.cpp',
     'Decoder.cpp',
-    'DiscardTracker.cpp',
     'DynamicImage.cpp',
     'FrameAnimator.cpp',
     'FrameBlender.cpp',
-    'FrameSequence.cpp',
     'FrozenImage.cpp',
     'Image.cpp',
     'ImageFactory.cpp',
@@ -43,7 +42,7 @@ SOURCES += [
     'imgLoader.cpp',
     'imgRequest.cpp',
     'imgRequestProxy.cpp',
-    'imgStatusTracker.cpp',
+    'ProgressTracker.cpp',
     'RasterImage.cpp',
 ]
 
@@ -55,8 +54,8 @@ FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     # Because SVGDocumentWrapper.cpp includes "mozilla/dom/SVGSVGElement.h"
-    '/content/base/src',
-    '/content/svg/content/src',
+    '/dom/base',
+    '/dom/svg',
     # We need to instantiate the decoders
     '/image/decoders',
     # Because VectorImage.cpp includes nsSVGUtils.h and nsSVGEffects.h

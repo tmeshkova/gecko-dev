@@ -212,6 +212,7 @@ IndexedDatabaseManager::~IndexedDatabaseManager()
 }
 
 bool IndexedDatabaseManager::sIsMainProcess = false;
+bool IndexedDatabaseManager::sFullSynchronousMode = false;
 mozilla::Atomic<bool> IndexedDatabaseManager::sLowDiskSpaceMode(false);
 
 // static
@@ -299,6 +300,14 @@ IndexedDatabaseManager::Init()
   Preferences::RegisterCallbackAndCall(TestingPrefChangedCallback,
                                        kTestingPref);
 
+  // By default IndexedDB uses SQLite with PRAGMA synchronous = NORMAL. This
+  // guarantees (unlike synchronous = OFF) atomicity and consistency, but not
+  // necessarily durability in situations such as power loss. This preference
+  // allows enabling PRAGMA synchronous = FULL on SQLite, which does guarantee
+  // durability, but with an extra fsync() and the corresponding performance
+  // hit.
+  sFullSynchronousMode = Preferences::GetBool("dom.indexedDB.fullSynchronous");
+
   return NS_OK;
 }
 
@@ -357,7 +366,7 @@ IndexedDatabaseManager::FireWindowOnError(nsPIDOMWindow* aOwner,
 
   ThreadsafeAutoJSContext cx;
   RootedDictionary<ErrorEventInit> init(cx);
-  request->FillScriptErrorEvent(init);
+  request->GetCallerLocation(init.mFilename, &init.mLineno);
 
   init.mMessage = errorName;
   init.mCancelable = true;
@@ -455,7 +464,7 @@ IndexedDatabaseManager::DefineIndexedDB(JSContext* aCx,
 
   JS::Rooted<JS::Value> indexedDB(aCx);
   js::AssertSameCompartment(aCx, aGlobal);
-  if (!WrapNewBindingObject(aCx, factory, &indexedDB)) {
+  if (!GetOrCreateDOMReflector(aCx, factory, &indexedDB)) {
     return false;
   }
 
@@ -500,6 +509,16 @@ IndexedDatabaseManager::InTestingMode()
              "InTestingMode() called before indexedDB has been initialized!");
 
   return gTestingMode;
+}
+
+// static
+bool
+IndexedDatabaseManager::FullSynchronous()
+{
+  MOZ_ASSERT(gDBManager,
+             "FullSynchronous() called before indexedDB has been initialized!");
+
+  return sFullSynchronousMode;
 }
 
 already_AddRefed<FileManager>
@@ -848,7 +867,7 @@ AsyncDeleteFileRunnable::Run()
   nsresult rv;
   int64_t fileSize;
 
-  if (mFileManager->Privilege() != Chrome) {
+  if (mFileManager->EnforcingQuota()) {
     rv = file->GetFileSize(&fileSize);
     NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
   }
@@ -856,7 +875,7 @@ AsyncDeleteFileRunnable::Run()
   rv = file->Remove(false);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
 
-  if (mFileManager->Privilege() != Chrome) {
+  if (mFileManager->EnforcingQuota()) {
     QuotaManager* quotaManager = QuotaManager::Get();
     NS_ASSERTION(quotaManager, "Shouldn't be null!");
 

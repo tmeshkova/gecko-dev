@@ -81,12 +81,16 @@ let tests = [
     function test_highlight_2() {
       let highlight = document.getElementById("UITourHighlight");
       gContentAPI.hideHighlight();
+
+      waitForElementToBeHidden(highlight, test_highlight_3, "Highlight should be hidden after hideHighlight()");
+    }
+    function test_highlight_3() {
       is_element_hidden(highlight, "Highlight should be hidden after hideHighlight()");
 
       gContentAPI.showHighlight("urlbar");
-      waitForElementToBeVisible(highlight, test_highlight_3, "Highlight should be shown after showHighlight()");
+      waitForElementToBeVisible(highlight, test_highlight_4, "Highlight should be shown after showHighlight()");
     }
-    function test_highlight_3() {
+    function test_highlight_4() {
       let highlight = document.getElementById("UITourHighlight");
       gContentAPI.showHighlight("backForward");
       waitForElementToBeVisible(highlight, done, "Highlight should be shown after showHighlight()");
@@ -217,8 +221,13 @@ let tests = [
     gContentAPI.showHighlight("urlbar");
     waitForElementToBeVisible(highlight, () => {
 
+      let searchbar = document.getElementById("searchbar");
+      if (searchbar.getAttribute("oneoffui")) {
+        done();
+        return; // The oneoffui removes the menu that's being tested here.
+      }
+
       gContentAPI.showMenu("searchEngines", function() {
-        let searchbar = document.getElementById("searchbar");
         isnot(searchbar, null, "Should have found searchbar");
         let searchPopup = document.getAnonymousElementByAttribute(searchbar,
                                                                    "anonid",
@@ -302,33 +311,27 @@ let tests = [
 
     gContentAPI.showInfo("urlbar", "test title", "test text");
   },
-  function test_info_2(done) {
+  taskify(function* test_info_2() {
     let popup = document.getElementById("UITourTooltip");
     let title = document.getElementById("UITourTooltipTitle");
     let desc = document.getElementById("UITourTooltipDescription");
     let icon = document.getElementById("UITourTooltipIcon");
     let buttons = document.getElementById("UITourTooltipButtons");
 
-    popup.addEventListener("popupshown", function onPopupShown() {
-      popup.removeEventListener("popupshown", onPopupShown);
-      is(popup.popupBoxObject.anchorNode, document.getElementById("urlbar"), "Popup should be anchored to the urlbar");
-      is(title.textContent, "urlbar title", "Popup should have correct title");
-      is(desc.textContent, "urlbar text", "Popup should have correct description text");
-      is(icon.src, "", "Popup should have no icon");
-      is(buttons.hasChildNodes(), false, "Popup should have no buttons");
+    yield showInfoPromise("urlbar", "urlbar title", "urlbar text");
 
-      gContentAPI.showInfo("search", "search title", "search text");
-      executeSoon(function() {
-        is(popup.popupBoxObject.anchorNode, document.getElementById("searchbar"), "Popup should be anchored to the searchbar");
-        is(title.textContent, "search title", "Popup should have correct title");
-        is(desc.textContent, "search text", "Popup should have correct description text");
+    is(popup.popupBoxObject.anchorNode, document.getElementById("urlbar"), "Popup should be anchored to the urlbar");
+    is(title.textContent, "urlbar title", "Popup should have correct title");
+    is(desc.textContent, "urlbar text", "Popup should have correct description text");
+    is(icon.src, "", "Popup should have no icon");
+    is(buttons.hasChildNodes(), false, "Popup should have no buttons");
 
-        done();
-      });
-    });
+    yield showInfoPromise("search", "search title", "search text");
 
-    gContentAPI.showInfo("urlbar", "urlbar title", "urlbar text");
-  },
+    is(popup.popupBoxObject.anchorNode, document.getElementById("searchbar"), "Popup should be anchored to the searchbar");
+    is(title.textContent, "search title", "Popup should have correct title");
+    is(desc.textContent, "search text", "Popup should have correct description text");
+  }),
   function test_getConfigurationVersion(done) {
     function callback(result) {
       let props = ["defaultUpdateChannel", "version"];
@@ -366,10 +369,49 @@ let tests = [
       });
     });
   },
+  function test_select_search_engine(done) {
+    Services.search.init(rv => {
+      if (!Components.isSuccessCode(rv)) {
+        ok(false, "search service init failed: " + rv);
+        done();
+        return;
+      }
+      let defaultEngine = Services.search.defaultEngine;
+      gContentAPI.getConfiguration("availableTargets", data => {
+        let searchEngines = data.targets.filter(t => t.startsWith("searchEngine-"));
+        let someOtherEngineID = searchEngines.filter(t => t != "searchEngine-" + defaultEngine.identifier)[0];
+        someOtherEngineID = someOtherEngineID.replace(/^searchEngine-/, "");
+
+        let observe = function (subject, topic, verb) {
+          info("browser-search-engine-modified: " + verb);
+          if (verb == "engine-current") {
+            is(Services.search.defaultEngine.identifier, someOtherEngineID, "correct engine was switched to");
+            done();
+          }
+        };
+        Services.obs.addObserver(observe, "browser-search-engine-modified", false);
+        registerCleanupFunction(() => {
+          // Clean up
+          Services.obs.removeObserver(observe, "browser-search-engine-modified");
+          Services.search.defaultEngine = defaultEngine;
+        });
+
+        gContentAPI.setDefaultSearchEngine(someOtherEngineID);
+      });
+    });
+  },
+  function test_treatment_tag(done) {
+    gContentAPI.setTreatmentTag("foobar", "baz");
+    gContentAPI.getTreatmentTag("foobar", (data) => {
+      is(data.value, "baz", "set and retrieved treatmentTag");
+      done();
+    });
+  },
 
   // Make sure this test is last in the file so the appMenu gets left open and done will confirm it got tore down.
-  function cleanupMenus(done) {
+  taskify(function* cleanupMenus() {
+    let shownPromise = promisePanelShown(window);
     gContentAPI.showMenu("appMenu");
-    done();
-  },
+    yield shownPromise;
+  }),
 ];

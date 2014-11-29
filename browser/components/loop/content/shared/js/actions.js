@@ -30,6 +30,8 @@ loop.shared.actions = (function() {
   };
 
   return {
+    Action: Action,
+
     /**
      * Get the window data for the provided window id
      */
@@ -161,6 +163,12 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Used for notifying that local media has been obtained.
+     */
+    GotMediaPermission: Action.define("gotMediaPermission", {
+    }),
+
+    /**
      * Used for notifying that the media is now up for the call.
      */
     MediaConnected: Action.define("mediaConnected", {
@@ -223,7 +231,10 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     GetAllRoomsError: Action.define("getAllRoomsError", {
-      error: Error
+      // There's two types of error possible - one thrown by our code (and Error)
+      // and the other is an Object about the error codes from the server as
+      // returned by the Hawk request.
+      error: [Error, Object]
     }),
 
     /**
@@ -240,6 +251,15 @@ loop.shared.actions = (function() {
      */
     OpenRoom: Action.define("openRoom", {
       roomToken: String
+    }),
+
+    /**
+     * Renames a room.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    RenameRoom: Action.define("renameRoom", {
+      roomToken: String,
+      newRoomName: String
     }),
 
     /**
@@ -266,6 +286,19 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Sets up the room information when it is received.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     *
+     * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
+     */
+    SetupRoomInfo: Action.define("setupRoomInfo", {
+      roomName: String,
+      roomOwner: String,
+      roomToken: String,
+      roomUrl: String
+    }),
+
+    /**
      * Updates the room information when it is received.
      * XXX: should move to some roomActions module - refs bug 1079284
      *
@@ -274,7 +307,6 @@ loop.shared.actions = (function() {
     UpdateRoomInfo: Action.define("updateRoomInfo", {
       roomName: String,
       roomOwner: String,
-      roomToken: String,
       roomUrl: String
     }),
 
@@ -299,9 +331,38 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Used to indicate that the feedback cycle is completed and the countdown
+     * finished.
+     */
+    FeedbackComplete: Action.define("feedbackComplete", {
+    }),
+
+    /**
      * Used to indicate the user wishes to leave the room.
      */
     LeaveRoom: Action.define("leaveRoom", {
+    }),
+
+    /**
+     * Requires detailed information on sad feedback.
+     */
+    RequireFeedbackDetails: Action.define("requireFeedbackDetails", {
+    }),
+
+    /**
+     * Send feedback data.
+     */
+    SendFeedback: Action.define("sendFeedback", {
+      happy: Boolean,
+      category: String,
+      description: String
+    }),
+
+    /**
+     * Reacts on feedback submission error.
+     */
+    SendFeedbackError: Action.define("sendFeedbackError", {
+      error: Error
     })
   };
 })();

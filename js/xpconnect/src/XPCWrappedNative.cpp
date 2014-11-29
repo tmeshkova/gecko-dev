@@ -681,7 +681,6 @@ XPCWrappedNative::GatherProtoScriptableCreateInfo(nsIClassInfo* classInfo,
         uint32_t flags = classInfoHelper->GetScriptableFlags();
         sciProto.SetCallback(helper.forget());
         sciProto.SetFlags(XPCNativeScriptableFlags(flags));
-        sciProto.SetInterfacesBitmap(classInfoHelper->GetInterfacesBitmap());
 
         return;
     }
@@ -1089,9 +1088,10 @@ XPCWrappedNative::ReparentWrapperIfFound(XPCWrappedNativeScope* aOldScope,
                                          HandleObject aNewParent,
                                          nsISupports* aCOMObj)
 {
-    // Check if we're near the stack limit before we get anywhere near the
-    // transplanting code. We use a conservative check since we'll use a little
-    // more space before we actually hit the critical "can't fail" path.
+    // Check if we're anywhere near the stack limit before we reach the
+    // transplanting code, since it has no good way to handle errors. This uses
+    // the untrusted script limit, which is not strictly necessary since no
+    // actual script should run.
     AutoJSContext cx;
     JS_CHECK_RECURSION_CONSERVATIVE(cx, return NS_ERROR_FAILURE);
 
@@ -2479,22 +2479,6 @@ XPCWrappedNative::HasNativeMember(HandleId name)
     XPCNativeMember *member = nullptr;
     uint16_t ignored;
     return GetSet()->FindMember(name, &member, &ignored) && !!member;
-}
-
-/* void finishInitForWrappedGlobal (); */
-NS_IMETHODIMP XPCWrappedNative::FinishInitForWrappedGlobal()
-{
-    // We can only be called under certain conditions.
-    MOZ_ASSERT(mScriptableInfo);
-    MOZ_ASSERT(mScriptableInfo->GetFlags().IsGlobalObject());
-    MOZ_ASSERT(HasProto());
-
-    // Call PostCreateProrotype.
-    bool success = GetProto()->CallPostCreatePrototype();
-    if (!success)
-        return NS_ERROR_FAILURE;
-
-    return NS_OK;
 }
 
 /* void debugDump (in short depth); */

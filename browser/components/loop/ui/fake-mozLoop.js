@@ -49,13 +49,14 @@ var fakeRooms = [
  */
 navigator.mozLoop = {
   ensureRegistered: function() {},
-  getLoopCharPref: function() {},
-  getLoopBoolPref: function(pref) {
+  getAudioBlob: function(){},
+  getLoopPref: function(pref) {
     // Ensure UI for rooms is displayed in the showcase.
     if (pref === "rooms.enabled") {
       return true;
     }
   },
+  setLoopPref: function(){},
   releaseCallData: function() {},
   copyString: function() {},
   contacts: {

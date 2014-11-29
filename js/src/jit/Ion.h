@@ -12,7 +12,6 @@
 #include "jscntxt.h"
 #include "jscompartment.h"
 
-#include "jit/CompileInfo.h"
 #include "jit/CompileWrappers.h"
 #include "jit/JitOptions.h"
 
@@ -38,19 +37,19 @@ enum AbortReason {
     AbortReason_NoAbort
 };
 
-// An Ion context is needed to enter into either an Ion method or an instance
-// of the Ion compiler. It points to a temporary allocator and the active
+// A JIT context is needed to enter into either an JIT method or an instance
+// of a JIT compiler. It points to a temporary allocator and the active
 // JSContext, either of which may be nullptr, and the active compartment, which
 // will not be nullptr.
 
-class IonContext
+class JitContext
 {
   public:
-    IonContext(JSContext *cx, TempAllocator *temp);
-    IonContext(ExclusiveContext *cx, TempAllocator *temp);
-    IonContext(CompileRuntime *rt, CompileCompartment *comp, TempAllocator *temp);
-    explicit IonContext(CompileRuntime *rt);
-    ~IonContext();
+    JitContext(JSContext *cx, TempAllocator *temp);
+    JitContext(ExclusiveContext *cx, TempAllocator *temp);
+    JitContext(CompileRuntime *rt, CompileCompartment *comp, TempAllocator *temp);
+    explicit JitContext(CompileRuntime *rt);
+    ~JitContext();
 
     // Running context when executing on the main thread. Not available during
     // compilation.
@@ -68,18 +67,18 @@ class IonContext
         return assemblerCount_++;
     }
   private:
-    IonContext *prev_;
+    JitContext *prev_;
     int assemblerCount_;
 };
 
 // Initialize Ion statically for all JSRuntimes.
 bool InitializeIon();
 
-// Get and set the current Ion context.
-IonContext *GetIonContext();
-IonContext *MaybeGetIonContext();
+// Get and set the current JIT context.
+JitContext *GetJitContext();
+JitContext *MaybeGetJitContext();
 
-void SetIonContext(IonContext *ctx);
+void SetJitContext(JitContext *ctx);
 
 bool CanIonCompileScript(JSContext *cx, JSScript *script, bool osr);
 
@@ -93,42 +92,42 @@ MethodStatus CanEnterInParallel(JSContext *cx, HandleScript script);
 
 MethodStatus
 Recompile(JSContext *cx, HandleScript script, BaselineFrame *osrFrame, jsbytecode *osrPc,
-          bool constructing);
+          bool constructing, bool force);
 
-enum IonExecStatus
+enum JitExecStatus
 {
     // The method call had to be aborted due to a stack limit check. This
     // error indicates that Ion never attempted to clean up frames.
-    IonExec_Aborted,
+    JitExec_Aborted,
 
     // The method call resulted in an error, and IonMonkey has cleaned up
     // frames.
-    IonExec_Error,
+    JitExec_Error,
 
-    // The method call succeeed and returned a value.
-    IonExec_Ok
+    // The method call succeeded and returned a value.
+    JitExec_Ok
 };
 
 static inline bool
-IsErrorStatus(IonExecStatus status)
+IsErrorStatus(JitExecStatus status)
 {
-    return status == IonExec_Error || status == IonExec_Aborted;
+    return status == JitExec_Error || status == JitExec_Aborted;
 }
 
 struct EnterJitData;
 
 bool SetEnterJitData(JSContext *cx, EnterJitData &data, RunState &state, AutoValueVector &vals);
 
-IonExecStatus IonCannon(JSContext *cx, RunState &state);
+JitExecStatus IonCannon(JSContext *cx, RunState &state);
 
 // Used to enter Ion from C++ natives like Array.map. Called from FastInvokeGuard.
-IonExecStatus FastInvoke(JSContext *cx, HandleFunction fun, CallArgs &args);
+JitExecStatus FastInvoke(JSContext *cx, HandleFunction fun, CallArgs &args);
 
 // Walk the stack and invalidate active Ion frames for the invalid scripts.
 void Invalidate(types::TypeZone &types, FreeOp *fop,
-                const Vector<types::RecompileInfo> &invalid, bool resetUses = true,
+                const types::RecompileInfoVector &invalid, bool resetUses = true,
                 bool cancelOffThread = true);
-void Invalidate(JSContext *cx, const Vector<types::RecompileInfo> &invalid, bool resetUses = true,
+void Invalidate(JSContext *cx, const types::RecompileInfoVector &invalid, bool resetUses = true,
                 bool cancelOffThread = true);
 bool Invalidate(JSContext *cx, JSScript *script, ExecutionMode mode, bool resetUses = true,
                 bool cancelOffThread = true);
@@ -199,14 +198,8 @@ void ForbidCompilation(JSContext *cx, JSScript *script, ExecutionMode mode);
 
 void PurgeCaches(JSScript *script);
 size_t SizeOfIonData(JSScript *script, mozilla::MallocSizeOf mallocSizeOf);
-void DestroyIonScripts(FreeOp *fop, JSScript *script);
-void TraceIonScripts(JSTracer* trc, JSScript *script);
-
-void RequestInterruptForIonCode(JSRuntime *rt, JSRuntime::InterruptMode mode);
-
-bool RematerializeAllFrames(JSContext *cx, JSCompartment *comp);
-bool UpdateForDebugMode(JSContext *maybecx, JSCompartment *comp,
-                        AutoDebugModeInvalidation &invalidate);
+void DestroyJitScripts(FreeOp *fop, JSScript *script);
+void TraceJitScripts(JSTracer* trc, JSScript *script);
 
 bool JitSupportsFloatingPoint();
 bool JitSupportsSimd();

@@ -17,6 +17,9 @@ namespace base {
 }
 
 namespace mozilla {
+namespace HangMonitor {
+  class HangAnnotations;
+}
 namespace Telemetry {
 
 #include "TelemetryHistogramEnums.h"
@@ -38,6 +41,15 @@ void Init();
  * @param sample - value to record.
  */
 void Accumulate(ID id, uint32_t sample);
+
+/**
+ * Adds sample to a keyed histogram defined in TelemetryHistograms.h
+ *
+ * @param id - keyed histogram id
+ * @param key - the string key
+ * @param sample - (optional) value to record, defaults to 1.
+ */
+void Accumulate(ID id, const nsCString& key, uint32_t sample = 1);
 
 /**
  * Adds a sample to a histogram defined in TelemetryHistograms.h.
@@ -200,12 +212,14 @@ class ProcessedStack;
  * @param aStack - Array of PCs from the hung call stack
  * @param aSystemUptime - System uptime at the time of the hang, in minutes
  * @param aFirefoxUptime - Firefox uptime at the time of the hang, in minutes
+ * @param aAnnotations - Any annotations to be added to the report
  */
 #if defined(MOZ_ENABLE_PROFILER_SPS)
 void RecordChromeHang(uint32_t aDuration,
                       ProcessedStack &aStack,
                       int32_t aSystemUptime,
-                      int32_t aFirefoxUptime);
+                      int32_t aFirefoxUptime,
+                      mozilla::HangMonitor::HangAnnotations* aAnnotations = nullptr);
 #endif
 
 class ThreadHangStats;

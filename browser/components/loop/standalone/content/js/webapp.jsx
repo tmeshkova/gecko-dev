@@ -260,12 +260,90 @@ loop.webapp = (function($, _, OT, mozL10n) {
           <div title={mozL10n.get("vendor_alttext",
                                   {vendorShortname: mozL10n.get("vendorShortname")})}
                className="footer-logo"></div>
+          <div className="footer-external-links">
+            <a target="_blank" href={loop.config.guestSupportUrl}>
+              {mozL10n.get("support_link")}
+            </a>
+          </div>
         </div>
       );
     }
   });
 
+  /**
+   * A view for when conversations are pending, displays any messages
+   * and an option cancel button.
+   */
   var PendingConversationView = React.createClass({
+    propTypes: {
+      callState: React.PropTypes.string.isRequired,
+      // If not supplied, the cancel button is not displayed.
+      cancelCallback: React.PropTypes.func
+    },
+
+    render: function() {
+      var cancelButtonClasses = React.addons.classSet({
+        btn: true,
+        "btn-large": true,
+        "btn-cancel": true,
+        hide: !this.props.cancelCallback
+      });
+
+      return (
+        <div className="container">
+          <div className="container-box">
+            <header className="pending-header header-box">
+              <ConversationBranding />
+            </header>
+
+            <div id="cameraPreview" />
+
+            <div id="messages" />
+
+            <p className="standalone-btn-label">
+              {this.props.callState}
+            </p>
+
+            <div className="btn-pending-cancel-group btn-group">
+              <div className="flex-padding-1" />
+              <button className={cancelButtonClasses}
+                      onClick={this.props.cancelCallback} >
+                <span className="standalone-call-btn-text">
+                  {mozL10n.get("initiate_call_cancel_button")}
+                </span>
+              </button>
+              <div className="flex-padding-1" />
+            </div>
+          </div>
+          <ConversationFooter />
+        </div>
+      );
+    }
+  });
+
+  /**
+   * View displayed whilst the get user media prompt is being displayed. Indicates
+   * to the user to accept the prompt.
+   */
+  var GumPromptConversationView = React.createClass({
+    render: function() {
+      var callState = mozL10n.get("call_progress_getting_media_description", {
+        clientShortname: mozL10n.get("clientShortname2")
+      });
+      document.title = mozL10n.get("standalone_title_with_status", {
+        clientShortname: mozL10n.get("clientShortname2"),
+        currentStatus: mozL10n.get("call_progress_getting_media_title")
+      });
+
+      return <PendingConversationView callState={callState}/>;
+    }
+  });
+
+  /**
+   * View displayed waiting for a call to be connected. Updates the display
+   * once the websocket shows that the callee is being alerted.
+   */
+  var WaitingConversationView = React.createClass({
     mixins: [sharedMixins.AudioMixin],
 
     getInitialState: function() {
@@ -296,35 +374,17 @@ loop.webapp = (function($, _, OT, mozL10n) {
     },
 
     render: function() {
-      var callState = mozL10n.get("call_progress_" + this.state.callState + "_description");
+      var callStateStringEntityName = "call_progress_" + this.state.callState + "_description";
+      var callState = mozL10n.get(callStateStringEntityName);
+      document.title = mozL10n.get("standalone_title_with_status",
+                                   {clientShortname: mozL10n.get("clientShortname2"),
+                                    currentStatus: mozL10n.get(callStateStringEntityName)});
+
       return (
-        <div className="container">
-          <div className="container-box">
-            <header className="pending-header header-box">
-              <ConversationBranding />
-            </header>
-
-            <div id="cameraPreview" />
-
-            <div id="messages" />
-
-            <p className="standalone-btn-label">
-              {callState}
-            </p>
-
-            <div className="btn-pending-cancel-group btn-group">
-              <div className="flex-padding-1" />
-              <button className="btn btn-large btn-cancel"
-                      onClick={this._cancelOutgoingCall} >
-                <span className="standalone-call-btn-text">
-                  {mozL10n.get("initiate_call_cancel_button")}
-                </span>
-              </button>
-              <div className="flex-padding-1" />
-            </div>
-          </div>
-          <ConversationFooter />
-        </div>
+        <PendingConversationView
+          callState={callState}
+          cancelCallback={this._cancelOutgoingCall}
+        />
       );
     }
   });
@@ -449,15 +509,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
      */
     startCall: function(callType) {
       return function() {
-        multiplexGum.getPermsAndCacheMedia({audio:true, video:true},
-          function(localStream) {
-            this.props.conversation.setupOutgoingCall(callType);
-            this.setState({disableCallButton: true});
-          }.bind(this),
-          function(errorCode) {
-            multiplexGum.reset();
-          }.bind(this)
-        );
+        this.props.conversation.setupOutgoingCall(callType);
+        this.setState({disableCallButton: true});
       }.bind(this);
     },
 
@@ -534,15 +587,18 @@ loop.webapp = (function($, _, OT, mozL10n) {
       conversation: React.PropTypes.instanceOf(sharedModels.ConversationModel)
                          .isRequired,
       sdk: React.PropTypes.object.isRequired,
-      feedbackApiClient: React.PropTypes.object.isRequired,
+      feedbackStore: React.PropTypes.instanceOf(loop.store.FeedbackStore),
       onAfterFeedbackReceived: React.PropTypes.func.isRequired
     },
 
     render: function() {
+      document.title = mozL10n.get("standalone_title_with_status",
+                                   {clientShortname: mozL10n.get("clientShortname2"),
+                                    currentStatus: mozL10n.get("status_conversation_ended")});
       return (
         <div className="ended-conversation">
           <sharedViews.FeedbackView
-            feedbackApiClient={this.props.feedbackApiClient}
+            feedbackStore={this.props.feedbackStore}
             onAfterFeedbackReceived={this.props.onAfterFeedbackReceived}
           />
           <sharedViews.ConversationView
@@ -559,6 +615,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
 
   var StartConversationView = React.createClass({
     render: function() {
+      document.title = mozL10n.get("clientShortname2");
       return this.transferPropsTo(
         <InitiateConversationView
           title={mozL10n.get("initiate_call_button_label2")}
@@ -575,6 +632,9 @@ loop.webapp = (function($, _, OT, mozL10n) {
     },
 
     render: function() {
+      document.title = mozL10n.get("standalone_title_with_status",
+                                   {clientShortname: mozL10n.get("clientShortname2"),
+                                    currentStatus: mozL10n.get("status_error")});
       return this.transferPropsTo(
         <InitiateConversationView
           title={mozL10n.get("call_failed_title")}
@@ -600,7 +660,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
       notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
                           .isRequired,
       sdk: React.PropTypes.object.isRequired,
-      feedbackApiClient: React.PropTypes.object.isRequired
+      feedbackStore: React.PropTypes.instanceOf(loop.store.FeedbackStore)
     },
 
     getInitialState: function() {
@@ -611,6 +671,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
 
     componentDidMount: function() {
       this.props.conversation.on("call:outgoing", this.startCall, this);
+      this.props.conversation.on("call:outgoing:get-media-privs", this.getMediaPrivs, this);
       this.props.conversation.on("call:outgoing:setup", this.setupOutgoingCall, this);
       this.props.conversation.on("change:publishedStream", this._checkConnected, this);
       this.props.conversation.on("change:subscribedStream", this._checkConnected, this);
@@ -629,9 +690,10 @@ loop.webapp = (function($, _, OT, mozL10n) {
       return nextState.callStatus !== this.state.callStatus;
     },
 
-    callStatusSwitcher: function(status) {
+    resetCallStatus: function() {
+      this.props.feedbackStore.dispatchAction(new sharedActions.FeedbackComplete());
       return function() {
-        this.setState({callStatus: status});
+        this.setState({callStatus: "start"});
       }.bind(this);
     },
 
@@ -658,10 +720,16 @@ loop.webapp = (function($, _, OT, mozL10n) {
             />
           );
         }
+        case "gumPrompt": {
+          return <GumPromptConversationView />;
+        }
         case "pending": {
-          return <PendingConversationView websocket={this._websocket} />;
+          return <WaitingConversationView websocket={this._websocket} />;
         }
         case "connected": {
+          document.title = mozL10n.get("standalone_title_with_status",
+                                       {clientShortname: mozL10n.get("clientShortname2"),
+                                        currentStatus: mozL10n.get("status_in_conversation")});
           return (
             <sharedViews.ConversationView
               initiate={true}
@@ -676,8 +744,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
             <EndedConversationView
               sdk={this.props.sdk}
               conversation={this.props.conversation}
-              feedbackApiClient={this.props.feedbackApiClient}
-              onAfterFeedbackReceived={this.callStatusSwitcher("start")}
+              feedbackStore={this.props.feedbackStore}
+              onAfterFeedbackReceived={this.resetCallStatus()}
             />
           );
         }
@@ -753,6 +821,22 @@ loop.webapp = (function($, _, OT, mozL10n) {
           this.props.conversation.outgoing(sessionData);
         }.bind(this));
       }
+    },
+
+    /**
+     * Asks the user for the media privileges, handling the result appropriately.
+     */
+    getMediaPrivs: function() {
+      this.setState({callStatus: "gumPrompt"});
+      multiplexGum.getPermsAndCacheMedia({audio:true, video:true},
+        function(localStream) {
+          this.props.conversation.gotMediaPrivs();
+        }.bind(this),
+        function(errorCode) {
+          multiplexGum.reset();
+          this.setState({callStatus: "failure"});
+        }.bind(this)
+      );
     },
 
     /**
@@ -847,6 +931,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
      * Handles ending a call by resetting the view to the start state.
      */
     _endCall: function() {
+      multiplexGum.reset();
+
       if (this.state.callStatus !== "failure") {
         this.setState({callStatus: "end"});
       }
@@ -873,14 +959,14 @@ loop.webapp = (function($, _, OT, mozL10n) {
       notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
                           .isRequired,
       sdk: React.PropTypes.object.isRequired,
-      feedbackApiClient: React.PropTypes.object.isRequired,
 
       // XXX New types for flux style
       standaloneAppStore: React.PropTypes.instanceOf(
         loop.store.StandaloneAppStore).isRequired,
       activeRoomStore: React.PropTypes.instanceOf(
         loop.store.ActiveRoomStore).isRequired,
-      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
+      feedbackStore: React.PropTypes.instanceOf(loop.store.FeedbackStore)
     },
 
     getInitialState: function() {
@@ -917,7 +1003,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
                helper={this.props.helper}
                notifications={this.props.notifications}
                sdk={this.props.sdk}
-               feedbackApiClient={this.props.feedbackApiClient}
+               feedbackStore={this.props.feedbackStore}
             />
           );
         }
@@ -925,6 +1011,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
           return (
             <loop.standaloneRoomViews.StandaloneRoomView
               activeRoomStore={this.props.activeRoomStore}
+              feedbackStore={this.props.feedbackStore}
               dispatcher={this.props.dispatcher}
               helper={this.props.helper}
             />
@@ -978,17 +1065,26 @@ loop.webapp = (function($, _, OT, mozL10n) {
       dispatcher: dispatcher,
       sdk: OT
     });
+    var feedbackClient = new loop.FeedbackAPIClient(
+      loop.config.feedbackApiUrl, {
+      product: loop.config.feedbackProductName,
+      user_agent: navigator.userAgent,
+      url: document.location.origin
+    });
 
+    // Stores
     var standaloneAppStore = new loop.store.StandaloneAppStore({
       conversation: conversation,
       dispatcher: dispatcher,
       helper: helper,
       sdk: OT
     });
-    var activeRoomStore = new loop.store.ActiveRoomStore({
-      dispatcher: dispatcher,
+    var activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
       mozLoop: standaloneMozLoop,
       sdkDriver: sdkDriver
+    });
+    var feedbackStore = new loop.store.FeedbackStore(dispatcher, {
+      feedbackClient: feedbackClient
     });
 
     window.addEventListener("unload", function() {
@@ -1001,7 +1097,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
       helper={helper}
       notifications={notifications}
       sdk={OT}
-      feedbackApiClient={feedbackApiClient}
+      feedbackStore={feedbackStore}
       standaloneAppStore={standaloneAppStore}
       activeRoomStore={activeRoomStore}
       dispatcher={dispatcher}
@@ -1022,6 +1118,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
   return {
     CallUrlExpiredView: CallUrlExpiredView,
     PendingConversationView: PendingConversationView,
+    GumPromptConversationView: GumPromptConversationView,
+    WaitingConversationView: WaitingConversationView,
     StartConversationView: StartConversationView,
     FailedConversationView: FailedConversationView,
     OutgoingConversationView: OutgoingConversationView,

@@ -53,6 +53,7 @@ loop.store.ConversationStore = (function() {
     TERMINATED: "cs-terminated"
   };
 
+  // XXX this needs to migrate to use loop.store.createStore
   var ConversationStore = Backbone.Model.extend({
     defaults: {
       // The id of the window. Currently used for getting the window id.
@@ -74,6 +75,8 @@ loop.store.ConversationStore = (function() {
       // Call Connection information
       // The call id from the loop-server
       callId: undefined,
+      // The caller id of the contacting side
+      callerId: undefined,
       // The connection progress url to connect the websocket
       progressURL: undefined,
       // The websocket token that allows connection to the progress url

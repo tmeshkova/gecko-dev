@@ -124,9 +124,11 @@ interface Element : Node {
    * Requests that this element be made the full-screen element, as per the DOM
    * full-screen api.
    *
+   * The fsOptions parameter is non-standard.
+   *
    * @see <https://wiki.mozilla.org/index.php?title=Gecko:FullScreenAPI>
    */
-  void mozRequestFullScreen();
+  void mozRequestFullScreen(optional RequestFullscreenOptions fsOptions);
 
   /**
    * Requests that this element be made the pointer-locked element, as per the DOM
@@ -154,19 +156,32 @@ interface Element : Node {
   boolean scrollByNoFlush(long dx, long dy);
 };
 
+// http://dev.w3.org/csswg/cssom-view/
+enum ScrollLogicalPosition { "start", "end" };
+dictionary ScrollIntoViewOptions : ScrollOptions {
+  ScrollLogicalPosition block = "start";
+};
+
 // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-element-interface
 partial interface Element {
   DOMRectList getClientRects();
   DOMRect getBoundingClientRect();
 
   // scrolling
-  void scrollIntoView();
-  void scrollIntoView(boolean top, optional ScrollOptions options);
+  void scrollIntoView(boolean top);
+  void scrollIntoView(optional ScrollIntoViewOptions options);
   // None of the CSSOM attributes are [Pure], because they flush
            attribute long scrollTop;   // scroll on setting
            attribute long scrollLeft;  // scroll on setting
   readonly attribute long scrollWidth;
   readonly attribute long scrollHeight;
+  
+  void scroll(unrestricted double x, unrestricted double y);
+  void scroll(optional ScrollToOptions options);
+  void scrollTo(unrestricted double x, unrestricted double y);
+  void scrollTo(optional ScrollToOptions options);
+  void scrollBy(unrestricted double x, unrestricted double y);
+  void scrollBy(optional ScrollToOptions options);
 
   readonly attribute long clientTop;
   readonly attribute long clientLeft;
@@ -222,3 +237,10 @@ Element implements NonDocumentTypeChildNode;
 Element implements ParentNode;
 Element implements Animatable;
 Element implements GeometryUtils;
+
+// non-standard: allows passing options to Element.requestFullScreen
+dictionary RequestFullscreenOptions {
+  // Which HMDVRDevice to go full screen on; also enables VR rendering.
+  // If null, normal fullscreen is entered.
+  HMDVRDevice? vrDisplay = null;
+};

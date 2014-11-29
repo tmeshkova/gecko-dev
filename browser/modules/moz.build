@@ -13,6 +13,7 @@ XPCSHELL_TESTS_MANIFESTS += [
 EXTRA_JS_MODULES += [
     'BrowserNewTabPreloader.jsm',
     'BrowserUITelemetry.jsm',
+    'CastingApps.jsm',
     'Chat.jsm',
     'ContentClick.jsm',
     'ContentLinkHandler.jsm',
@@ -52,6 +53,10 @@ EXTRA_PP_JS_MODULES += [
     'RecentWindow.jsm',
     'UITour.jsm',
     'webrtcUI.jsm',
+]
+
+EXTRA_PP_COMPONENTS += [
+    'browsermodules.manifest',
 ]
 
 if CONFIG['MOZILLA_OFFICIAL']:

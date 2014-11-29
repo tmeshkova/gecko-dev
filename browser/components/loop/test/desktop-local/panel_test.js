@@ -34,9 +34,8 @@ describe("loop.panel", function() {
       get locale() {
         return "en-US";
       },
-      getLoopBoolPref: sandbox.stub(),
-      setLoopCharPref: sandbox.stub(),
-      getLoopCharPref: sandbox.stub().returns("unseen"),
+      setLoopPref: sandbox.stub(),
+      getLoopPref: sandbox.stub().returns("unseen"),
       getPluralForm: function() {
         return "fakeText";
       },
@@ -155,8 +154,7 @@ describe("loop.panel", function() {
       };
 
       dispatcher = new loop.Dispatcher();
-      roomStore = new loop.store.RoomStore({
-        dispatcher: dispatcher,
+      roomStore = new loop.store.RoomStore(dispatcher, {
         mozLoop: navigator.mozLoop
       });
     });
@@ -176,15 +174,16 @@ describe("loop.panel", function() {
 
       describe("loop.rooms.enabled on", function() {
         beforeEach(function() {
-          navigator.mozLoop.getLoopBoolPref = function(pref) {
-            if (pref === "rooms.enabled") {
+          navigator.mozLoop.getLoopPref = function(pref) {
+            if (pref === "rooms.enabled" ||
+                pref === "gettingStarted.seen") {
               return true;
             }
           };
 
           view = createTestPanelView();
 
-          [callTab, roomsTab, contactsTab] =
+          [roomsTab, contactsTab] =
             TestUtils.scryRenderedDOMComponentsWithClass(view, "tab");
         });
 
@@ -203,21 +202,15 @@ describe("loop.panel", function() {
           expect(roomsTab.getDOMNode().classList.contains("selected"))
             .to.be.true;
         });
-
-        it("should select call tab when clicking tab button", function() {
-          TestUtils.Simulate.click(
-            view.getDOMNode().querySelector("li[data-tab-name=\"call\"]"));
-
-          expect(callTab.getDOMNode().classList.contains("selected"))
-            .to.be.true;
-        });
       });
 
       describe("loop.rooms.enabled off", function() {
         beforeEach(function() {
-          navigator.mozLoop.getLoopBoolPref = function(pref) {
+          navigator.mozLoop.getLoopPref = function(pref) {
             if (pref === "rooms.enabled") {
               return false;
+            } else if (pref === "gettingStarted.seen") {
+              return true;
             }
           };
 
@@ -363,12 +356,71 @@ describe("loop.panel", function() {
       });
     });
 
+    describe("Help", function() {
+      var supportUrl = "https://example.com";
+
+      beforeEach(function() {
+        navigator.mozLoop.getLoopPref = function(pref) {
+          if (pref === "support_url")
+            return supportUrl;
+          return "unseen";
+        };
+
+        sandbox.stub(window, "open");
+        sandbox.stub(window, "close");
+      });
+
+      it("should open a tab to the support page", function() {
+        var view = TestUtils.renderIntoDocument(loop.panel.SettingsDropdown());
+
+        TestUtils.Simulate
+          .click(view.getDOMNode().querySelector(".icon-help"));
+
+        sinon.assert.calledOnce(window.open);
+        sinon.assert.calledWithExactly(window.open, supportUrl);
+      });
+    });
+
     describe("#render", function() {
       it("should render a ToSView", function() {
         var view = createTestPanelView();
 
         TestUtils.findRenderedComponentWithType(view, loop.panel.ToSView);
       });
+
+      it("should not render a ToSView when the view has been 'seen'", function() {
+        navigator.mozLoop.getLoopPref = function() {
+          return "seen";
+        };
+        var view = createTestPanelView();
+
+        try {
+          TestUtils.findRenderedComponentWithType(view, loop.panel.ToSView);
+          sinon.assert.fail("Should not find the ToSView if it has been 'seen'");
+        } catch (ex) {}
+      });
+
+      it("should render a GettingStarted view", function() {
+        navigator.mozLoop.getLoopPref = function(pref) {
+          return false;
+        };
+        var view = createTestPanelView();
+
+        TestUtils.findRenderedComponentWithType(view, loop.panel.GettingStartedView);
+      });
+
+      it("should not render a GettingStartedView when the view has been seen", function() {
+        navigator.mozLoop.getLoopPref = function() {
+          return true;
+        };
+        var view = createTestPanelView();
+
+        try {
+          TestUtils.findRenderedComponentWithType(view, loop.panel.GettingStartedView);
+          sinon.assert.fail("Should not find the GettingStartedView if it has been seen");
+        } catch (ex) {}
+      });
+
     });
   });
 
@@ -764,8 +816,7 @@ describe("loop.panel", function() {
     beforeEach(function() {
       fakeEmail = "fakeEmail@example.com";
       dispatcher = new loop.Dispatcher();
-      roomStore = new loop.store.RoomStore({
-        dispatcher: dispatcher,
+      roomStore = new loop.store.RoomStore(dispatcher, {
         mozLoop: navigator.mozLoop
       });
       roomStore.setStoreState({
@@ -841,7 +892,7 @@ describe("loop.panel", function() {
 
     it("should not render when the value of loop.seenToS is set to 'seen'",
       function(done) {
-        navigator.mozLoop.getLoopCharPref = function() {
+        navigator.mozLoop.getLoopPref = function() {
           return "seen";
         };
 

@@ -45,6 +45,7 @@ enum FrameType
     // An unwound JS frame is a JS frame signalling that its callee frame has been
     // turned into an exit frame (see EnsureExitFrame). Used by Ion bailouts and
     // Baseline exception unwinding.
+    JitFrame_Unwound_BaselineJS,
     JitFrame_Unwound_IonJS,
 
     // Like Unwound_IonJS, but the caller is a baseline stub frame.
@@ -77,9 +78,9 @@ enum ReadFrameArgsBehavior {
     ReadFrame_Actuals
 };
 
-class IonCommonFrameLayout;
-class IonJSFrameLayout;
-class IonExitFrameLayout;
+class CommonFrameLayout;
+class JitFrameLayout;
+class ExitFrameLayout;
 
 class BaselineFrame;
 
@@ -116,20 +117,20 @@ class JitFrameIterator
         return activation_;
     }
 
-    IonCommonFrameLayout *current() const {
-        return (IonCommonFrameLayout *)current_;
+    CommonFrameLayout *current() const {
+        return (CommonFrameLayout *)current_;
     }
 
     inline uint8_t *returnAddress() const;
 
     // Return the pointer of the JitFrame, the iterator is assumed to be settled
     // on a scripted frame.
-    IonJSFrameLayout *jsFrame() const;
+    JitFrameLayout *jsFrame() const;
 
     // Returns true iff this exit frame was created using EnsureExitFrame.
     inline bool isFakeExitFrame() const;
 
-    inline IonExitFrameLayout *exitFrame() const;
+    inline ExitFrameLayout *exitFrame() const;
 
     // Returns whether the JS frame has been invalidated and, if so,
     // places the invalidated Ion script in |ionScript|.
@@ -177,10 +178,6 @@ class JitFrameIterator
     uint8_t *returnAddressToFp() const {
         return returnAddressToFp_;
     }
-
-    // Returns the resume address. As above, except taking
-    // BaselineDebugModeOSRInfo into account, if present.
-    uint8_t *resumeAddressToFp() const;
 
     // Previous frame information extracted from the current frame.
     inline size_t prevFrameLocalSize() const;
@@ -267,7 +264,7 @@ class RInstructionResults
 
     // The frame pointer is used as a key to check if the current frame already
     // bailed out.
-    IonJSFrameLayout *fp_;
+    JitFrameLayout *fp_;
 
     // Record if we tried and succeed at allocating and filling the vector of
     // recover instruction results, if needed.  This flag is needed in order to
@@ -275,7 +272,7 @@ class RInstructionResults
     bool initialized_;
 
   public:
-    RInstructionResults(IonJSFrameLayout *fp);
+    explicit RInstructionResults(JitFrameLayout *fp);
     RInstructionResults(RInstructionResults&& src);
 
     RInstructionResults& operator=(RInstructionResults&& rhs);
@@ -285,7 +282,7 @@ class RInstructionResults
     bool init(JSContext *cx, uint32_t numResults);
     bool isInitialized() const;
 
-    IonJSFrameLayout *frame() const;
+    JitFrameLayout *frame() const;
 
     RelocatableValue& operator[](size_t index);
 
@@ -299,24 +296,33 @@ struct MaybeReadFallback
         NoGC_MagicOptimizedOut
     };
 
+    enum FallbackConsequence {
+        Fallback_Invalidate,
+        Fallback_DoNothing
+    };
+
     JSContext *maybeCx;
     JitActivation *activation;
     JitFrameIterator *frame;
     const NoGCValue unreadablePlaceholder_;
+    const FallbackConsequence consequence;
 
-    MaybeReadFallback(const Value &placeholder = UndefinedValue())
+    explicit MaybeReadFallback(const Value &placeholder = UndefinedValue())
       : maybeCx(nullptr),
         activation(nullptr),
         frame(nullptr),
-        unreadablePlaceholder_(noGCPlaceholder(placeholder))
+        unreadablePlaceholder_(noGCPlaceholder(placeholder)),
+        consequence(Fallback_Invalidate)
     {
     }
 
-    MaybeReadFallback(JSContext *cx, JitActivation *activation, JitFrameIterator *frame)
+    MaybeReadFallback(JSContext *cx, JitActivation *activation, JitFrameIterator *frame,
+                      FallbackConsequence consequence = Fallback_Invalidate)
       : maybeCx(cx),
         activation(activation),
         frame(frame),
-        unreadablePlaceholder_(NoGC_UndefinedValue)
+        unreadablePlaceholder_(NoGC_UndefinedValue),
+        consequence(consequence)
     {
     }
 
@@ -345,7 +351,7 @@ class SnapshotIterator
   protected:
     SnapshotReader snapshot_;
     RecoverReader recover_;
-    IonJSFrameLayout *fp_;
+    JitFrameLayout *fp_;
     MachineState machine_;
     IonScript *ionScript_;
     RInstructionResults *instructionResults_;
@@ -379,6 +385,7 @@ class SnapshotIterator
 
     Value allocationValue(const RValueAllocation &a);
     bool allocationReadable(const RValueAllocation &a);
+    void writeAllocationValuePayload(const RValueAllocation &a, Value v);
     void warnUnreadableAllocation();
 
   public:
@@ -467,7 +474,7 @@ class SnapshotIterator
     // content of baseline frames.
 
     SnapshotIterator(IonScript *ionScript, SnapshotOffset snapshotOffset,
-                     IonJSFrameLayout *fp, const MachineState &machine);
+                     JitFrameLayout *fp, const MachineState &machine);
     explicit SnapshotIterator(const JitFrameIterator &iter);
     SnapshotIterator();
 
@@ -492,6 +499,8 @@ class SnapshotIterator
 
         return fallback.unreadablePlaceholder();
     }
+
+    void traceAllocation(JSTracer *trc);
 
     void readCommonFrameSlots(Value *scopeChain, Value *rval) {
         if (scopeChain)

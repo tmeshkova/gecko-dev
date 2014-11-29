@@ -339,6 +339,7 @@ typedef NSInteger NSEventGestureAxis;
 - (BOOL)isCoveringTitlebar;
 
 - (NSColor*)vibrancyFillColorForWidgetType:(uint8_t)aWidgetType;
+- (NSColor*)vibrancyFontSmoothingBackgroundColorForWidgetType:(uint8_t)aWidgetType;
 
 // Simple gestures support
 //
@@ -503,6 +504,13 @@ public:
                       const mozilla::WidgetKeyboardEvent& aEvent,
                       DoCommandCallback aCallback,
                       void* aCallbackData) MOZ_OVERRIDE;
+  bool ExecuteNativeKeyBindingRemapped(
+                      NativeKeyBindingsType aType,
+                      const mozilla::WidgetKeyboardEvent& aEvent,
+                      DoCommandCallback aCallback,
+                      void* aCallbackData,
+                      uint32_t aGeckoKeyCode,
+                      uint32_t aCocoaKeyCode);
   virtual nsIMEUpdatePreference GetIMEUpdatePreference() MOZ_OVERRIDE;
   NS_IMETHOD        GetToggledKeyState(uint32_t aKeyCode,
                                        bool* aLEDState);
@@ -584,6 +592,7 @@ public:
 
   void              ClearVibrantAreas();
   NSColor*          VibrancyFillColorForWidgetType(uint8_t aWidgetType);
+  NSColor*          VibrancyFontSmoothingBackgroundColorForWidgetType(uint8_t aWidgetType);
 
   // unit conversion convenience functions
   int32_t           CocoaPointsToDevPixels(CGFloat aPts) const {

@@ -5,14 +5,14 @@
 <html>
   <head>
     <meta charset="utf-8">
+    <meta name="locales" content="en-US" />
+    <meta name="default_locale" content="en-US" />
+
     <link rel="stylesheet" type="text/css" href="shared/css/reset.css">
     <link rel="stylesheet" type="text/css" href="shared/css/common.css">
     <link rel="stylesheet" type="text/css" href="shared/css/conversation.css">
     <link rel="stylesheet" type="text/css" href="css/webapp.css">
-    <link rel="localization" href="l10n/loop.{locale}.properties">
-
-    <meta name="locales" content="en-US" />
-    <meta name="default_locale" content="en-US" />
+    <link rel="localization" href="l10n/{locale}/loop.properties">
   </head>
   <body class="standalone">
 
@@ -42,7 +42,7 @@
         myCustomEvent.prototype = window.Event.prototype;
         window.CustomEvent = myCustomEvent;
       }
- 
+
       // To support IE for the l10n-gaia library on IE <= 10.
       if (!"language" in navigator) {
         navigator.language = navigator.browserLanguage;
@@ -97,7 +97,10 @@
     <script type="text/javascript" src="shared/js/dispatcher.js"></script>
     <script type="text/javascript" src="shared/js/websocket.js"></script>
     <script type="text/javascript" src="shared/js/otSdkDriver.js"></script>
+    <script type="text/javascript" src="shared/js/store.js"></script>
     <script type="text/javascript" src="shared/js/activeRoomStore.js"></script>
+    <script type="text/javascript" src="shared/js/feedbackStore.js"></script>
+    <script type="text/javascript" src="shared/js/feedbackViews.js"></script>
     <script type="text/javascript" src="js/standaloneAppStore.js"></script>
     <script type="text/javascript" src="js/standaloneClient.js"></script>
     <script type="text/javascript" src="js/standaloneMozLoop.js"></script>

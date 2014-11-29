@@ -69,6 +69,44 @@ loop.StandaloneMozLoop = (function(mozL10n) {
 
   StandaloneMozLoopRooms.prototype = {
     /**
+     * Request information about a specific room from the server.
+     *
+     * @param {String}   roomToken Room identifier
+     * @param {Function} callback  Function that will be invoked once the operation
+     *                             finished. The first argument passed will be an
+     *                             `Error` object or `null`. The second argument will
+     *                             be the list of rooms, if it was fetched successfully.
+     */
+    get: function(roomToken, callback) {
+      var req = $.ajax({
+        url:         this._baseServerUrl + "/rooms/" + roomToken,
+        method:      "GET",
+        contentType: "application/json",
+        beforeSend: function(xhr) {
+          if (this.sessionToken) {
+            xhr.setRequestHeader("Authorization", "Basic " + btoa(this.sessionToken));
+          }
+        }.bind(this)
+      });
+
+      req.done(function(responseData) {
+        try {
+          // We currently only require things we need rather than everything possible.
+          callback(null, validate(responseData, {
+            roomName: String,
+            roomOwner: String,
+            roomUrl: String
+          }));
+        } catch (err) {
+          console.error("Error requesting call info", err.message);
+          callback(err);
+        }
+      }.bind(this));
+
+      req.fail(failureHandler.bind(this, callback));
+    },
+
+    /**
      * Internal function to actually perform a post to a room.
      *
      * @param {String} roomToken The rom token.
@@ -115,6 +153,16 @@ loop.StandaloneMozLoop = (function(mozL10n) {
      *                            `Error` object or `null`.
      */
     join: function(roomToken, callback) {
+      function callbackWrapper(err, result) {
+        // XXX Save the sessionToken for purposes of get.
+        // When bug 1103331 this can probably be removed.
+        if (result) {
+          this.sessionToken = result.sessionToken;
+        }
+
+        callback(err, result);
+      }
+
       this._postToRoom(roomToken, null, {
         action: "join",
         displayName: mozL10n.get("rooms_display_name_guest"),
@@ -124,7 +172,7 @@ loop.StandaloneMozLoop = (function(mozL10n) {
         sessionId: String,
         sessionToken: String,
         expires: Number
-      }, callback);
+      }, callbackWrapper.bind(this));
     },
 
     /**
@@ -170,7 +218,13 @@ loop.StandaloneMozLoop = (function(mozL10n) {
         action: "leave",
         sessionToken: sessionToken
       }, null, callback);
-    }
+    },
+
+    // Dummy functions to reflect those in the desktop mozLoop.rooms that we
+    // don't currently use.
+    on: function() {},
+    once: function() {},
+    off: function() {}
   };
 
   var StandaloneMozLoop = function(options) {
@@ -182,6 +236,34 @@ loop.StandaloneMozLoop = (function(mozL10n) {
     this._baseServerUrl = options.baseServerUrl;
 
     this.rooms = new StandaloneMozLoopRooms(options);
+  };
+
+  StandaloneMozLoop.prototype = {
+    /**
+     * Stores a preference in the local storage for standalone.
+     * Note: Some prefs are filtered out as they are not applicable
+     * to the standalone UI.
+     *
+     * @param {String} prefName The name of the pref
+     * @param {String} value The value to set.
+     */
+    setLoopPref: function(prefName, value) {
+      if (prefName === "seenToS") {
+        return;
+      }
+
+      localStorage.setItem(prefName, value);
+    },
+
+    /**
+     * Gets a preference from the local storage for standalone.
+     *
+     * @param {String} prefName The name of the pref
+     * @param {String} value The value to set.
+     */
+    getLoopPref: function(prefName) {
+      return localStorage.getItem(prefName);
+    }
   };
 
   return StandaloneMozLoop;

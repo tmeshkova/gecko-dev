@@ -10,15 +10,15 @@
 
 #include "jit/CompactBuffer.h"
 #include "jit/IonCaches.h"
-#include "jit/IonMacroAssembler.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitSpewer.h"
+#include "jit/MacroAssembler.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/ParallelFunctions.h"
 #include "vm/TraceLogging.h"
 
-#include "jit/IonFrames-inl.h"
+#include "jit/JitFrames-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -57,7 +57,7 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator *gen, LIRGraph *graph, Mac
     nativeToBytecodeNumRegions_(0),
     nativeToBytecodeScriptList_(nullptr),
     nativeToBytecodeScriptListLength_(0),
-    sps_(&GetIonContext()->runtime->spsProfiler(), &lastNotInlinedPC_),
+    sps_(&GetJitContext()->runtime->spsProfiler(), &lastNotInlinedPC_),
     osrEntryOffset_(0),
     skipArgCheckEntryOffset_(0),
 #ifdef CHECK_OSIPOINT_REGISTERS
@@ -145,7 +145,7 @@ CodeGeneratorShared::addOutOfLineCode(OutOfLineCode *code, const MInstruction *m
 }
 
 bool
-CodeGeneratorShared::addOutOfLineCode(OutOfLineCode *code, const BytecodeSite &site)
+CodeGeneratorShared::addOutOfLineCode(OutOfLineCode *code, const BytecodeSite *site)
 {
     code->setFramePushed(masm.framePushed());
     code->setBytecodeSite(site);
@@ -154,17 +154,18 @@ CodeGeneratorShared::addOutOfLineCode(OutOfLineCode *code, const BytecodeSite &s
 }
 
 bool
-CodeGeneratorShared::addNativeToBytecodeEntry(const BytecodeSite &site)
+CodeGeneratorShared::addNativeToBytecodeEntry(const BytecodeSite *site)
 {
     // Skip the table entirely if profiling is not enabled.
     if (!isNativeToBytecodeMapEnabled())
         return true;
 
-    MOZ_ASSERT(site.tree());
-    MOZ_ASSERT(site.pc());
+    MOZ_ASSERT(site);
+    MOZ_ASSERT(site->tree());
+    MOZ_ASSERT(site->pc());
 
-    InlineScriptTree *tree = site.tree();
-    jsbytecode *pc = site.pc();
+    InlineScriptTree *tree = site->tree();
+    jsbytecode *pc = site->pc();
     uint32_t nativeOffset = masm.currentOffset();
 
     MOZ_ASSERT_IF(nativeToBytecodeList_.empty(), nativeOffset == 0);
@@ -274,8 +275,8 @@ ToStackIndex(LAllocation *a)
         MOZ_ASSERT(a->toStackSlot()->slot() >= 1);
         return a->toStackSlot()->slot();
     }
-    MOZ_ASSERT(-int32_t(sizeof(IonJSFrameLayout)) <= a->toArgument()->index());
-    return -int32_t(sizeof(IonJSFrameLayout) + a->toArgument()->index());
+    MOZ_ASSERT(-int32_t(sizeof(JitFrameLayout)) <= a->toArgument()->index());
+    return -int32_t(sizeof(JitFrameLayout) + a->toArgument()->index());
 }
 
 bool
@@ -613,6 +614,7 @@ CodeGeneratorShared::generateCompactNativeToBytecodeMap(JSContext *cx, JitCode *
             &nativeToBytecodeList_[0] + nativeToBytecodeList_.length(),
             &tableOffset, &numRegions))
     {
+        js_free(nativeToBytecodeScriptList_);
         return false;
     }
 
@@ -621,8 +623,10 @@ CodeGeneratorShared::generateCompactNativeToBytecodeMap(JSContext *cx, JitCode *
 
     // Writer is done, copy it to sized buffer.
     uint8_t *data = cx->runtime()->pod_malloc<uint8_t>(writer.length());
-    if (!data)
+    if (!data) {
+        js_free(nativeToBytecodeScriptList_);
         return false;
+    }
 
     memcpy(data, writer.buffer(), writer.length());
     nativeToBytecodeMap_ = data;
@@ -996,7 +1000,7 @@ CodeGeneratorShared::callVM(const VMFunction &fun, LInstruction *ins, const Regi
 
     // If we're calling a function with an out parameter type of double, make
     // sure we have an FPU.
-    MOZ_ASSERT_IF(fun.outParam == Type_Double, GetIonContext()->runtime->jitSupportsFloatingPoint());
+    MOZ_ASSERT_IF(fun.outParam == Type_Double, GetJitContext()->runtime->jitSupportsFloatingPoint());
 
 #ifdef DEBUG
     if (ins->mirRaw()) {
@@ -1044,7 +1048,7 @@ CodeGeneratorShared::callVM(const VMFunction &fun, LInstruction *ins, const Regi
 
     // Remove rest of the frame left on the stack. We remove the return address
     // which is implicitly poped when returning.
-    int framePop = sizeof(IonExitFrameLayout) - sizeof(void*);
+    int framePop = sizeof(ExitFrameLayout) - sizeof(void*);
 
     // Pop arguments from framePushed.
     masm.implicitPop(fun.explicitStackSlots() * sizeof(void *) + framePop);

@@ -5,7 +5,7 @@
 MOZ_APP_BASENAME=Fennec
 MOZ_APP_VENDOR=Mozilla
 
-MOZ_APP_VERSION=35.0a2
+MOZ_APP_VERSION=36.0a2
 MOZ_APP_UA_NAME=Firefox
 
 MOZ_BRANDING_DIRECTORY=mobile/android/branding/unofficial
@@ -55,19 +55,17 @@ MOZ_PAY=1
 # Enable UI for healthreporter
 MOZ_SERVICES_HEALTHREPORT=1
 
-# Wifi-AP/cell tower data reporting is enabled on non-release builds.
-if test ! "$RELEASE_BUILD"; then
-MOZ_DATA_REPORTING=1
-fi
-
 # Enable runtime locale switching.
 MOZ_LOCALE_SWITCHER=1
 
 # Enable second screen and casting support for external devices.
 MOZ_DEVICES=1
 
-# Enable second screen using native Android libraries
-MOZ_NATIVE_DEVICES=1
+# Enable second screen using native Android libraries, provided we're
+# not resource constrained.
+if test -z "$MOZ_ANDROID_RESOURCE_CONSTRAINED"; then
+  MOZ_NATIVE_DEVICES=1
+fi
 
 # Mark as WebGL conformant
 MOZ_WEBGL_CONFORMANT=1
@@ -93,7 +91,7 @@ if test ! "$RELEASE_BUILD"; then
 fi
 
 # Enable generational GC on mobile.
-JSGC_GENERATIONAL=1
+export JSGC_GENERATIONAL=1
 
 # Use the low-memory GC tuning.
-JS_GC_SMALL_CHUNK_SIZE=1
+export JS_GC_SMALL_CHUNK_SIZE=1

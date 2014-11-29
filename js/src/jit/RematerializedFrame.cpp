@@ -5,12 +5,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jit/RematerializedFrame.h"
-#include "jit/IonFrames.h"
 
+#include "jit/JitFrames.h"
 #include "vm/ArgumentsObject.h"
 
 #include "jsscriptinlines.h"
-#include "jit/IonFrames-inl.h"
+#include "jit/JitFrames-inl.h"
 
 using namespace js;
 using namespace jit;
@@ -31,6 +31,7 @@ struct CopyValueToRematerializedFrame
 RematerializedFrame::RematerializedFrame(ThreadSafeContext *cx, uint8_t *top,
                                          unsigned numActualArgs, InlineFrameIterator &iter)
   : prevUpToDate_(false),
+    isDebuggee_(iter.script()->isDebuggee()),
     top_(top),
     pc_(iter.pc()),
     frameNo_(iter.frameNo()),

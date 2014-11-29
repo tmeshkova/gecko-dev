@@ -22,8 +22,12 @@ searchbar {
   -moz-binding: url("chrome://browser/content/search/search.xml#searchbar");
 }
 
+.browserStack > browser {
+  -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser-browser");
+}
+
 .browserStack > browser[remote="true"] {
-  -moz-binding: url("chrome://global/content/bindings/remote-browser.xml#remote-browser");
+  -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser-remote-browser");
 }
 
 toolbar[customizable="true"] {
@@ -252,6 +256,11 @@ toolbar[customizing] > .overflow-button {
 
 %endif
 
+#main-window[inDOMFullscreen] #sidebar-box,
+#main-window[inDOMFullscreen] #sidebar-splitter {
+  visibility: collapse;
+}
+
 #main-window[inFullscreen] #global-notificationbox,
 #main-window[inFullscreen] #high-priority-global-notificationbox {
   visibility: collapse;
@@ -404,6 +413,15 @@ panel[noactions] > richlistbox > richlistitem[type~="action"] > .ac-url-box > .a
 
 #PopupAutoComplete {
   -moz-binding: url("chrome://browser/content/urlbarBindings.xml#browser-autocomplete-result-popup");
+}
+
+#PopupSearchAutoComplete {
+  -moz-binding: url("chrome://browser/content/urlbarBindings.xml#browser-search-autocomplete-result-popup");
+  margin-left: -23px;
+}
+
+searchbar[oneoffui] {
+  -moz-binding: url("chrome://browser/content/search/search.xml#searchbar-flare") !important;
 }
 
 #PopupAutoCompleteRichResult {
@@ -778,9 +796,6 @@ statuspanel[inactive][previoustype=overLink] {
   max-width: 32em;
 }
 
-/* highlighter */
-%include highlighter.css
-
 /* gcli */
 
 html|*#gcli-tooltip-frame,
@@ -1102,14 +1117,14 @@ toolbarpaletteitem[dragover] {
 
 #customization-palette:not([hidden]) {
   display: block;
-  flex: 1 1 main-size;
+  flex: 1 1 auto;
   overflow: auto;
   min-height: 3em;
 }
 
 #customization-footer-spacer,
 #customization-spacer {
-  flex: 1 1 main-size;
+  flex: 1 1 auto;
 }
 
 #customization-footer {
@@ -1204,6 +1219,29 @@ toolbarpaletteitem[place="palette"][hidden] {
 #UITourHighlight[active="color"] {
   animation-name: uitour-color;
   animation-duration: 2s;
+}
+
+#abouthome-search-panel .panel-arrowcontent {
+  -moz-padding-start: 0;
+  -moz-padding-end: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: rgb(248, 250, 251);
+  font-size: 110%;
+}
+
+.abouthome-search-panel-item {
+  -moz-box-align: center;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  -moz-padding-start: 24px;
+  -moz-padding-end: 24px;
+}
+
+.abouthome-search-panel-item > label {
+  -moz-padding-start: 0;
+  -moz-margin-start: 0;
+  color: rgb(130, 132, 133);
 }
 
 /* Combined context-menu items */

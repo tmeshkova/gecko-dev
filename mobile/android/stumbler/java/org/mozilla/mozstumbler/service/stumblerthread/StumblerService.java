@@ -17,7 +17,6 @@ import org.mozilla.mozstumbler.service.stumblerthread.blocklist.WifiBlockListInt
 import org.mozilla.mozstumbler.service.stumblerthread.datahandling.DataStorageManager;
 import org.mozilla.mozstumbler.service.stumblerthread.scanners.ScanManager;
 import org.mozilla.mozstumbler.service.stumblerthread.scanners.cellscanner.CellScanner;
-import org.mozilla.mozstumbler.service.stumblerthread.scanners.cellscanner.CellScannerNoWCDMA;
 import org.mozilla.mozstumbler.service.uploadthread.UploadAlarmReceiver;
 import org.mozilla.mozstumbler.service.utils.NetworkUtils;
 import org.mozilla.mozstumbler.service.utils.PersistentIntentService;
@@ -27,7 +26,7 @@ import org.mozilla.mozstumbler.service.utils.PersistentIntentService;
 //
 public class StumblerService extends PersistentIntentService
         implements DataStorageManager.StorageIsEmptyTracker {
-    private static final String LOG_TAG = AppGlobals.LOG_PREFIX + StumblerService.class.getSimpleName();
+    private static final String LOG_TAG = AppGlobals.makeLogTag(StumblerService.class.getSimpleName());
     public static final String ACTION_BASE = AppGlobals.ACTION_NAMESPACE;
     public static final String ACTION_START_PASSIVE = ACTION_BASE + ".START_PASSIVE";
     public static final String ACTION_EXTRA_MOZ_API_KEY = ACTION_BASE + ".MOZKEY";
@@ -109,10 +108,6 @@ public class StumblerService extends PersistentIntentService
         return mScanManager.getCellInfoCount();
     }
 
-    public int getCurrentCellInfoCount() {
-        return mScanManager.getCurrentCellInfoCount();
-    }
-
     public boolean isGeofenced () {
         return mScanManager.isGeofenced();
     }
@@ -124,10 +119,6 @@ public class StumblerService extends PersistentIntentService
         Prefs.createGlobalInstance(this);
         NetworkUtils.createGlobalInstance(this);
         DataStorageManager.createGlobalInstance(this, this);
-
-        if (!CellScanner.isCellScannerImplSet()) {
-            CellScanner.setCellScannerImpl(new CellScannerNoWCDMA(this));
-        }
 
         mReporter.startup(this);
     }
@@ -198,7 +189,11 @@ public class StumblerService extends PersistentIntentService
             return;
         }
 
-        if (!DataStorageManager.getInstance().isDirEmpty()) {
+        boolean hasFilesWaiting = !DataStorageManager.getInstance().isDirEmpty();
+        if (AppGlobals.isDebug) {
+            Log.d(LOG_TAG, "Files waiting:" + hasFilesWaiting);
+        }
+        if (hasFilesWaiting) {
             // non-empty on startup, schedule an upload
             // This is the only upload trigger in Firefox mode
             // Firefox triggers this ~4 seconds after startup (after Gecko is loaded), add a small delay to avoid

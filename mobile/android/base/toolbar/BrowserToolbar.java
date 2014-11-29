@@ -12,7 +12,6 @@ import java.util.List;
 import org.json.JSONObject;
 import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.BrowserApp;
-import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoApplication;
 import org.mozilla.gecko.LightweightTheme;
@@ -27,11 +26,11 @@ import org.mozilla.gecko.animation.PropertyAnimator.PropertyAnimationListener;
 import org.mozilla.gecko.animation.ViewHelper;
 import org.mozilla.gecko.menu.GeckoMenu;
 import org.mozilla.gecko.menu.MenuPopup;
+import org.mozilla.gecko.tabs.TabHistoryController;
 import org.mozilla.gecko.toolbar.ToolbarDisplayLayout.OnStopListener;
 import org.mozilla.gecko.toolbar.ToolbarDisplayLayout.OnTitleChangeListener;
 import org.mozilla.gecko.toolbar.ToolbarDisplayLayout.UpdateFlags;
 import org.mozilla.gecko.util.Clipboard;
-import org.mozilla.gecko.util.GeckoEventListener;
 import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.MenuUtils;
 import org.mozilla.gecko.widget.ThemedImageButton;
@@ -76,8 +75,7 @@ import android.widget.PopupWindow;
 */
 public abstract class BrowserToolbar extends ThemedRelativeLayout
                                      implements Tabs.OnTabsChangedListener,
-                                                GeckoMenu.ActionItemBarPresenter,
-                                                GeckoEventListener {
+                                                GeckoMenu.ActionItemBarPresenter {
     private static final String LOGTAG = "GeckoToolbar";
 
     public interface OnActivateListener {
@@ -135,6 +133,7 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
     protected boolean hasSoftMenuButton;
 
     protected UIMode uiMode;
+    protected TabHistoryController tabHistoryController;
 
     private final Paint shadowPaint;
     private final int shadowSize;
@@ -186,10 +185,6 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
 
         Tabs.registerOnTabsChangedListener(this);
         isSwitchingTabs = true;
-
-        EventDispatcher.getInstance().registerGeckoThreadListener(this,
-            "Reader:Click",
-            "Reader:LongClick");
 
         urlDisplayLayout = (ToolbarDisplayLayout) findViewById(R.id.display_layout);
         urlBarEntry = findViewById(R.id.url_bar_entry);
@@ -322,6 +317,10 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
         tabsButton.setOnClickListener(new Button.OnClickListener() {
             @Override
             public void onClick(View v) {
+                // Clear focus so a back press with the tabs
+                // panel open does not go to the editing field.
+                urlEditLayout.clearFocus();
+
                 toggleTabs();
             }
         });
@@ -348,6 +347,8 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
             menuButton.setOnClickListener(new Button.OnClickListener() {
                 @Override
                 public void onClick(View view) {
+                    // Drop the soft keyboard.
+                    urlEditLayout.clearFocus();
                     activity.openOptionsMenu();
                 }
             });
@@ -371,6 +372,10 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
 
     public void setProgressBar(ToolbarProgressView progressBar) {
         this.progressBar = progressBar;
+    }
+
+    public void setTabHistoryController(TabHistoryController tabHistoryController) {
+        this.tabHistoryController = tabHistoryController;
     }
 
     public void refresh() {
@@ -415,6 +420,18 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
                 }
             });
         }
+    }
+
+    public void saveTabEditingState(final TabEditingState editingState) {
+        urlEditLayout.saveTabEditingState(editingState);
+    }
+
+    public void restoreTabEditingState(final TabEditingState editingState) {
+        if (!isEditing()) {
+            throw new IllegalStateException("Expected to be editing");
+        }
+
+        urlEditLayout.restoreTabEditingState(editingState);
     }
 
     @Override
@@ -850,10 +867,6 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
 
     public void onDestroy() {
         Tabs.unregisterOnTabsChangedListener(this);
-
-        EventDispatcher.getInstance().unregisterGeckoThreadListener(this,
-            "Reader:Click",
-            "Reader:LongClick");
     }
 
     public boolean openOptionsMenu() {
@@ -896,22 +909,6 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
     }
 
     @Override
-    public void handleMessage(String event, JSONObject message) {
-        Log.d(LOGTAG, "handleMessage: " + event);
-        if (event.equals("Reader:Click")) {
-            Tab tab = Tabs.getInstance().getSelectedTab();
-            if (tab != null) {
-                tab.toggleReaderMode();
-            }
-        } else if (event.equals("Reader:LongClick")) {
-            Tab tab = Tabs.getInstance().getSelectedTab();
-            if (tab != null) {
-                tab.addToReadingList();
-            }
-        }
-    }
-
-    @Override
     public void onLightweightThemeChanged() {
         Drawable drawable = theme.getDrawable(this);
         if (drawable == null)
@@ -930,5 +927,30 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
     public void onLightweightThemeReset() {
         setBackgroundResource(R.drawable.url_bar_bg);
         editCancel.onLightweightThemeReset();
+    }
+
+    public static class TabEditingState {
+        // The edited text from the most recent time this tab was unselected.
+        protected String lastEditingText;
+        protected int selectionStart;
+        protected int selectionEnd;
+
+        public boolean isBrowserSearchShown;
+
+        public void copyFrom(final TabEditingState s2) {
+            lastEditingText = s2.lastEditingText;
+            selectionStart = s2.selectionStart;
+            selectionEnd = s2.selectionEnd;
+
+            isBrowserSearchShown = s2.isBrowserSearchShown;
+        }
+
+        public boolean isBrowserSearchShown() {
+            return isBrowserSearchShown;
+        }
+
+        public void setIsBrowserSearchShown(final boolean isShown) {
+            isBrowserSearchShown = isShown;
+        }
     }
 }

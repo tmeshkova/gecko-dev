@@ -29,7 +29,7 @@
 #include "ActorsChild.h"
 
 #ifdef DEBUG
-#include "nsContentUtils.h" // For IsCallerChrome assertions.
+#include "nsContentUtils.h" // For assertions.
 #endif
 
 namespace mozilla {
@@ -110,7 +110,7 @@ struct IDBFactory::PendingRequestInfo
 IDBFactory::IDBFactory()
   : mOwningObject(nullptr)
   , mBackgroundActor(nullptr)
-  , mRootedOwningObject(false)
+  , mInnerWindowID(0)
   , mBackgroundActorFailed(false)
   , mPrivateBrowsingMode(false)
 {
@@ -124,10 +124,8 @@ IDBFactory::~IDBFactory()
 {
   MOZ_ASSERT_IF(mBackgroundActorFailed, !mBackgroundActor);
 
-  if (mRootedOwningObject) {
-    mOwningObject = nullptr;
-    mozilla::DropJSObjects(this);
-  }
+  mOwningObject = nullptr;
+  mozilla::DropJSObjects(this);
 
   if (mBackgroundActor) {
     mBackgroundActor->SendDeleteMeInternal();
@@ -186,6 +184,7 @@ IDBFactory::CreateForWindow(nsPIDOMWindow* aWindow,
   factory->mPrincipalInfo = Move(principalInfo);
   factory->mWindow = aWindow;
   factory->mTabChild = TabChild::GetFrom(aWindow);
+  factory->mInnerWindowID = aWindow->WindowID();
   factory->mPrivateBrowsingMode = privateBrowsingMode;
 
   factory.forget(aFactory);
@@ -271,9 +270,7 @@ IDBFactory::CreateForJSInternal(JSContext* aCx,
   nsRefPtr<IDBFactory> factory = new IDBFactory();
   factory->mPrincipalInfo = aPrincipalInfo.forget();
   factory->mOwningObject = aOwningObject;
-
   mozilla::HoldJSObjects(factory.get());
-  factory->mRootedOwningObject = true;
 
   factory.forget(aFactory);
   return NS_OK;
@@ -289,6 +286,15 @@ IDBFactory::AssertIsOnOwningThread() const
 }
 
 #endif // DEBUG
+
+bool
+IDBFactory::IsChrome() const
+{
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(mPrincipalInfo);
+
+  return mPrincipalInfo->type() == PrincipalInfo::TSystemPrincipalInfo;
+}
 
 void
 IDBFactory::SetBackgroundActor(BackgroundFactoryChild* aBackgroundActor)
@@ -483,8 +489,7 @@ IDBFactory::OpenInternal(nsIPrincipal* aPrincipal,
     persistenceType = PERSISTENCE_TYPE_PERSISTENT;
     persistenceTypeIsExplicit = false;
   } else {
-    persistenceType =
-      PersistenceTypeFromStorage(aStorageType, PERSISTENCE_TYPE_PERSISTENT);
+    persistenceType = PersistenceTypeFromStorage(aStorageType);
     persistenceTypeIsExplicit = aStorageType.WasPassed();
   }
 
@@ -530,19 +535,20 @@ IDBFactory::OpenInternal(nsIPrincipal* aPrincipal,
   nsRefPtr<IDBOpenDBRequest> request;
 
   if (mWindow) {
-    if (NS_WARN_IF(!autoJS.Init(mWindow))) {
+    AutoJSContext cx;
+    if (NS_WARN_IF(!autoJS.Init(mWindow, cx))) {
       IDB_REPORT_INTERNAL_ERR();
       aRv.Throw(NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
       return nullptr;
     }
 
-    JS::Rooted<JSObject*> scriptOwner(autoJS.cx(),
+    JS::Rooted<JSObject*> scriptOwner(cx,
       static_cast<nsGlobalWindow*>(mWindow.get())->FastGetGlobalJSObject());
     MOZ_ASSERT(scriptOwner);
 
     request = IDBOpenDBRequest::CreateForWindow(this, mWindow, scriptOwner);
   } else {
-    autoJS.Init();
+    autoJS.Init(mOwningObject.get());
     JS::Rooted<JSObject*> scriptOwner(autoJS.cx(), mOwningObject);
 
     request = IDBOpenDBRequest::CreateForJS(this, scriptOwner);
@@ -717,13 +723,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(IDBFactory)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
-  if (tmp->mOwningObject) {
-    tmp->mOwningObject = nullptr;
-  }
-  if (tmp->mRootedOwningObject) {
-    mozilla::DropJSObjects(tmp);
-    tmp->mRootedOwningObject = false;
-  }
+  tmp->mOwningObject = nullptr;
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindow)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 

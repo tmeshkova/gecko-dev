@@ -11,11 +11,18 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
 this.EXPORTED_SYMBOLS = ["LoopCalls"];
 
+const EMAIL_OR_PHONE_RE = /^(:?\S+@\S+|\+\d+)$/;
+
 XPCOMUtils.defineLazyModuleGetter(this, "MozLoopService",
                                   "resource:///modules/loop/MozLoopService.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "LOOP_SESSION_TYPE",
                                   "resource:///modules/loop/MozLoopService.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "LoopContacts",
+                                  "resource:///modules/loop/LoopContacts.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Task",
+                                  "resource://gre/modules/Task.jsm");
 
  /**
  * Attempts to open a websocket.
@@ -269,7 +276,35 @@ let LoopCallsInternal = {
    *                          "outgoing".
    */
   _startCall: function(callData) {
-    this.conversationInProgress.id = MozLoopService.openChatWindow(callData);
+    const openChat = () => {
+      this.conversationInProgress.id = MozLoopService.openChatWindow(callData);
+    };
+
+    if (callData.type == "incoming" && ("callerId" in callData) &&
+        EMAIL_OR_PHONE_RE.test(callData.callerId)) {
+      LoopContacts.search({
+        q: callData.callerId,
+        field: callData.callerId.contains("@") ? "email" : "tel"
+      }, (err, contacts) => {
+        if (err) {
+          // Database error, helas!
+          openChat();
+          return;
+        }
+
+        for (let contact of contacts) {
+          if (contact.blocked) {
+            // Blocked! Send a busy signal back to the caller.
+            this._returnBusy(callData);
+            return;
+          }
+        }
+
+        openChat();
+      })
+    } else {
+      openChat();
+    }
   },
 
   /**
@@ -291,6 +326,50 @@ let LoopCallsInternal = {
 
     this._startCall(callData);
     return true;
+  },
+
+  /**
+   * Block a caller so it will show up in the contacts list as a blocked contact.
+   * If the contact is not yet part of the users' contacts list, it will be added
+   * as a blocked contact directly.
+   *
+   * @param {String}   callerId Email address or phone number that may identify
+   *                            the caller as an existing contact
+   * @param {Function} callback Function that will be invoked once the operation
+   *                            has completed. When an error occurs, it will be
+   *                            passed as its first argument
+   */
+  blockDirectCaller: function(callerId, callback) {
+    let field = callerId.contains("@") ? "email" : "tel";
+    Task.spawn(function* () {
+      // See if we can find the caller in our database.
+      let contacts = yield LoopContacts.promise("search", {
+        q: callerId,
+        field: field
+      });
+
+      let contact;
+      if (contacts.length) {
+        for (contact of contacts) {
+          yield LoopContacts.promise("block", contact._guid);
+        }
+      } else {
+        // If the contact doesn't exist yet, add it as a blocked contact.
+        contact = {
+          id: MozLoopService.generateUUID(),
+          name: [callerId],
+          category: ["local"],
+          blocked: true
+        };
+        // Add the phone OR email field to the contact.
+        contact[field] = [{
+          pref: true,
+          value: callerId
+        }];
+
+        yield LoopContacts.promise("add", contact);
+      }
+    }).then(callback, callback);
   },
 
    /**
@@ -367,6 +446,13 @@ this.LoopCalls = {
      */
   startDirectCall: function(contact, callType) {
     LoopCallsInternal.startDirectCall(contact, callType);
+  },
+
+  /**
+   * @see LoopCallsInternal#blockDirectCaller
+   */
+  blockDirectCaller: function(callerId, callback) {
+    return LoopCallsInternal.blockDirectCaller(callerId, callback);
   }
 };
 Object.freeze(LoopCalls);

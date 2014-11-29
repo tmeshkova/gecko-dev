@@ -12,7 +12,7 @@
 #include "jit/Bailouts.h"
 #include "jit/BaselineFrame.h"
 #include "jit/BaselineRegisters.h"
-#include "jit/IonFrames.h"
+#include "jit/JitFrames.h"
 #include "jit/mips/Simulator-mips.h"
 #include "jit/MoveEmitter.h"
 
@@ -839,6 +839,12 @@ MacroAssemblerMIPS::ma_sw(Imm32 imm, Address address)
 }
 
 void
+MacroAssemblerMIPS::ma_sw(Register data, BaseIndex &address)
+{
+    ma_store(data, address, SizeWord);
+}
+
+void
 MacroAssemblerMIPS::ma_pop(Register r)
 {
     as_lw(r, StackPointer, 0);
@@ -924,31 +930,42 @@ MacroAssemblerMIPS::ma_b(Label *label, JumpKind jumpKind)
 }
 
 void
-MacroAssemblerMIPS::ma_bal(Label *label, JumpKind jumpKind)
+MacroAssemblerMIPS::ma_bal(Label *label, DelaySlotFill delaySlotFill)
 {
-    branchWithCode(getBranchCode(BranchIsCall), label, jumpKind);
+    if (label->bound()) {
+        // Generate the long jump for calls because return address has to be
+        // the address after the reserved block.
+        addLongJump(nextOffset());
+        ma_liPatchable(ScratchRegister, Imm32(label->offset()));
+        as_jalr(ScratchRegister);
+        if (delaySlotFill == FillDelaySlot)
+            as_nop();
+        return;
+    }
+
+    // Second word holds a pointer to the next branch in label's chain.
+    uint32_t nextInChain = label->used() ? label->offset() : LabelBase::INVALID_OFFSET;
+
+    // Make the whole branch continous in the buffer.
+    m_buffer.ensureSpace(4 * sizeof(uint32_t));
+
+    BufferOffset bo = writeInst(getBranchCode(BranchIsCall).encode());
+    writeInst(nextInChain);
+    label->use(bo.getOffset());
+    // Leave space for long jump.
+    as_nop();
+    if (delaySlotFill == FillDelaySlot)
+        as_nop();
 }
 
 void
 MacroAssemblerMIPS::branchWithCode(InstImm code, Label *label, JumpKind jumpKind)
 {
-    InstImm inst_bgezal = InstImm(op_regimm, zero, rt_bgezal, BOffImm16(0));
+    MOZ_ASSERT(code.encode() != InstImm(op_regimm, zero, rt_bgezal, BOffImm16(0)).encode());
     InstImm inst_beq = InstImm(op_beq, zero, zero, BOffImm16(0));
 
     if (label->bound()) {
         int32_t offset = label->offset() - m_buffer.nextOffset().getOffset();
-
-        // Generate the long jump for calls because return address has to be
-        // the address after the reserved block.
-        if (code.encode() == inst_bgezal.encode()) {
-            MOZ_ASSERT(jumpKind != ShortJump);
-            // Handle long call
-            addLongJump(nextOffset());
-            ma_liPatchable(ScratchRegister, Imm32(label->offset()));
-            as_jalr(ScratchRegister);
-            as_nop();
-            return;
-        }
 
         if (BOffImm16::IsInRange(offset))
             jumpKind = ShortJump;
@@ -997,8 +1014,7 @@ MacroAssemblerMIPS::branchWithCode(InstImm code, Label *label, JumpKind jumpKind
         return;
     }
 
-    bool conditional = (code.encode() != inst_bgezal.encode() &&
-                        code.encode() != inst_beq.encode());
+    bool conditional = code.encode() != inst_beq.encode();
 
     // Make the whole branch continous in the buffer.
     m_buffer.ensureSpace((conditional ? 5 : 4) * sizeof(uint32_t));
@@ -1474,7 +1490,7 @@ MacroAssemblerMIPSCompat::buildFakeExitFrame(Register scratch, uint32_t *offset)
     bind(cl.src());
     *offset = currentOffset();
 
-    MOZ_ASSERT(framePushed() == initialDepth + IonExitFrameLayout::Size());
+    MOZ_ASSERT(framePushed() == initialDepth + ExitFrameLayout::Size());
     return addCodeLabel(cl);
 }
 
@@ -1490,6 +1506,15 @@ MacroAssemblerMIPSCompat::buildOOLFakeExitFrame(void *fakeReturnAddr)
 }
 
 void
+MacroAssemblerMIPSCompat::callWithExitFrame(Label *target)
+{
+    uint32_t descriptor = MakeFrameDescriptor(framePushed(), JitFrame_IonJS);
+    Push(Imm32(descriptor)); // descriptor
+
+    ma_callJitHalfPush(target);
+}
+
+void
 MacroAssemblerMIPSCompat::callWithExitFrame(JitCode *target)
 {
     uint32_t descriptor = MakeFrameDescriptor(framePushed(), JitFrame_IonJS);
@@ -1497,7 +1522,7 @@ MacroAssemblerMIPSCompat::callWithExitFrame(JitCode *target)
 
     addPendingJump(m_buffer.nextOffset(), ImmPtr(target->raw()), Relocation::JITCODE);
     ma_liPatchable(ScratchRegister, ImmPtr(target->raw()));
-    ma_callIonHalfPush(ScratchRegister);
+    ma_callJitHalfPush(ScratchRegister);
 }
 
 void
@@ -1509,26 +1534,26 @@ MacroAssemblerMIPSCompat::callWithExitFrame(JitCode *target, Register dynStack)
 
     addPendingJump(m_buffer.nextOffset(), ImmPtr(target->raw()), Relocation::JITCODE);
     ma_liPatchable(ScratchRegister, ImmPtr(target->raw()));
-    ma_callIonHalfPush(ScratchRegister);
+    ma_callJitHalfPush(ScratchRegister);
 }
 
 void
-MacroAssemblerMIPSCompat::callIon(Register callee)
+MacroAssemblerMIPSCompat::callJit(Register callee)
 {
     MOZ_ASSERT((framePushed() & 3) == 0);
     if ((framePushed() & 7) == 4) {
-        ma_callIonHalfPush(callee);
+        ma_callJitHalfPush(callee);
     } else {
         adjustFrame(sizeof(uint32_t));
-        ma_callIon(callee);
+        ma_callJit(callee);
     }
 }
 void
-MacroAssemblerMIPSCompat::callIonFromAsmJS(Register callee)
+MacroAssemblerMIPSCompat::callJitFromAsmJS(Register callee)
 {
-    ma_callIonNoPush(callee);
+    ma_callJitNoPush(callee);
 
-    // The Ion ABI has the callee pop the return address off the stack.
+    // The JIT ABI has the callee pop the return address off the stack.
     // The asm.js caller assumes that the call leaves sp unchanged, so bump
     // the stack.
     subPtr(Imm32(sizeof(void*)), StackPointer);
@@ -1787,6 +1812,12 @@ MacroAssemblerMIPSCompat::movePtr(ImmGCPtr imm, Register dest)
 {
     ma_li(dest, imm);
 }
+
+void
+MacroAssemblerMIPSCompat::movePtr(ImmMaybeNurseryPtr imm, Register dest)
+{
+    movePtr(noteMaybeNurseryPtr(imm), dest);
+}
 void
 MacroAssemblerMIPSCompat::movePtr(ImmPtr imm, Register dest)
 {
@@ -2018,25 +2049,37 @@ MacroAssemblerMIPSCompat::store32(Register src, const BaseIndex &dest)
     ma_store(src, dest, SizeWord);
 }
 
+template <typename T>
 void
-MacroAssemblerMIPSCompat::storePtr(ImmWord imm, const Address &address)
+MacroAssemblerMIPSCompat::storePtr(ImmWord imm, T address)
 {
     ma_li(ScratchRegister, Imm32(imm.value));
     ma_sw(ScratchRegister, address);
 }
 
+template void MacroAssemblerMIPSCompat::storePtr<Address>(ImmWord imm, Address address);
+template void MacroAssemblerMIPSCompat::storePtr<BaseIndex>(ImmWord imm, BaseIndex address);
+
+template <typename T>
 void
-MacroAssemblerMIPSCompat::storePtr(ImmPtr imm, const Address &address)
+MacroAssemblerMIPSCompat::storePtr(ImmPtr imm, T address)
 {
     storePtr(ImmWord(uintptr_t(imm.value)), address);
 }
 
+template void MacroAssemblerMIPSCompat::storePtr<Address>(ImmPtr imm, Address address);
+template void MacroAssemblerMIPSCompat::storePtr<BaseIndex>(ImmPtr imm, BaseIndex address);
+
+template <typename T>
 void
-MacroAssemblerMIPSCompat::storePtr(ImmGCPtr imm, const Address &address)
+MacroAssemblerMIPSCompat::storePtr(ImmGCPtr imm, T address)
 {
     ma_li(ScratchRegister, imm);
     ma_sw(ScratchRegister, address);
 }
+
+template void MacroAssemblerMIPSCompat::storePtr<Address>(ImmGCPtr imm, Address address);
+template void MacroAssemblerMIPSCompat::storePtr<BaseIndex>(ImmGCPtr imm, BaseIndex address);
 
 void
 MacroAssemblerMIPSCompat::storePtr(Register src, const Address &address)
@@ -2304,6 +2347,13 @@ MacroAssemblerMIPSCompat::branchTestNull(Condition cond, const BaseIndex &src, L
 }
 
 void
+MacroAssemblerMIPSCompat::branchTestNull(Condition cond, const Address &address, Label *label) {
+    MOZ_ASSERT(cond == Equal || cond == NotEqual);
+    extractTag(address, SecondScratchReg);
+    ma_b(SecondScratchReg, ImmTag(JSVAL_TAG_NULL), label, cond);
+}
+
+void
 MacroAssemblerMIPSCompat::testNullSet(Condition cond, const ValueOperand &value, Register dest)
 {
     MOZ_ASSERT(cond == Equal || cond == NotEqual);
@@ -2498,6 +2548,19 @@ MacroAssemblerMIPSCompat::branchTestValue(Condition cond, const Address &valaddr
 }
 
 // unboxing code
+void
+MacroAssemblerMIPSCompat::unboxNonDouble(const ValueOperand &operand, Register dest)
+{
+    if (operand.payloadReg() != dest)
+        ma_move(dest, operand.payloadReg());
+}
+
+void
+MacroAssemblerMIPSCompat::unboxNonDouble(const Address &src, Register dest)
+{
+    ma_lw(dest, Address(src.base, src.offset + PAYLOAD_OFFSET));
+}
+
 void
 MacroAssemblerMIPSCompat::unboxInt32(const ValueOperand &operand, Register dest)
 {
@@ -3059,7 +3122,7 @@ MacroAssemblerMIPSCompat::storeTypeTag(ImmTag tag, const BaseIndex &dest)
 }
 
 void
-MacroAssemblerMIPS::ma_callIonNoPush(const Register r)
+MacroAssemblerMIPS::ma_callJitNoPush(const Register r)
 {
     // This is a MIPS hack to push return address during jalr delay slot.
     as_jalr(r);
@@ -3069,7 +3132,7 @@ MacroAssemblerMIPS::ma_callIonNoPush(const Register r)
 // This macrosintruction calls the ion code and pushes the return address to
 // the stack in the case when stack is alligned.
 void
-MacroAssemblerMIPS::ma_callIon(const Register r)
+MacroAssemblerMIPS::ma_callJit(const Register r)
 {
     // This is a MIPS hack to push return address during jalr delay slot.
     as_addiu(StackPointer, StackPointer, -2 * sizeof(intptr_t));
@@ -3080,11 +3143,22 @@ MacroAssemblerMIPS::ma_callIon(const Register r)
 // This macrosintruction calls the ion code and pushes the return address to
 // the stack in the case when stack is not alligned.
 void
-MacroAssemblerMIPS::ma_callIonHalfPush(const Register r)
+MacroAssemblerMIPS::ma_callJitHalfPush(const Register r)
 {
     // This is a MIPS hack to push return address during jalr delay slot.
     as_addiu(StackPointer, StackPointer, -sizeof(intptr_t));
     as_jalr(r);
+    as_sw(ra, StackPointer, 0);
+}
+
+// This macrosintruction calls the ion code and pushes the return address to
+// the stack in the case when stack is not alligned.
+void
+MacroAssemblerMIPS::ma_callJitHalfPush(Label *label)
+{
+    // This is a MIPS hack to push return address during jalr delay slot.
+    as_addiu(StackPointer, StackPointer, -sizeof(intptr_t));
+    ma_bal(label, DontFillDelaySlot);
     as_sw(ra, StackPointer, 0);
 }
 
@@ -3464,7 +3538,7 @@ MacroAssemblerMIPSCompat::handleFailureWithHandler(void *handler)
     passABIArg(a0);
     callWithABI(handler);
 
-    JitCode *excTail = GetIonContext()->runtime->jitRuntime()->getExceptionTail();
+    JitCode *excTail = GetJitContext()->runtime->jitRuntime()->getExceptionTail();
     branch(excTail);
 }
 
@@ -3577,7 +3651,7 @@ MacroAssemblerMIPSCompat::branchPtrInNurseryRange(Condition cond, Register ptr, 
     MOZ_ASSERT(ptr != temp);
     MOZ_ASSERT(ptr != SecondScratchReg);
 
-    const Nursery &nursery = GetIonContext()->runtime->gcNursery();
+    const Nursery &nursery = GetJitContext()->runtime->gcNursery();
     movePtr(ImmWord(-ptrdiff_t(nursery.start())), SecondScratchReg);
     addPtr(ptr, SecondScratchReg);
     branchPtr(cond == Assembler::Equal ? Assembler::Below : Assembler::AboveOrEqual,

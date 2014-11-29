@@ -9,9 +9,9 @@
 
 #include "mozilla/Alignment.h"
 
-#include "jit/IonFrames.h"
-#include "jit/IonMacroAssembler.h"
+#include "jit/JitFrames.h"
 #include "jit/LIR.h"
+#include "jit/MacroAssembler.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
 #include "jit/Safepoints.h"
@@ -181,13 +181,13 @@ class CodeGeneratorShared : public LElementVisitor
     // For arguments to the current function.
     inline int32_t ArgToStackOffset(int32_t slot) const {
         return masm.framePushed() +
-               (gen->compilingAsmJS() ? sizeof(AsmJSFrame) : sizeof(IonJSFrameLayout)) +
+               (gen->compilingAsmJS() ? sizeof(AsmJSFrame) : sizeof(JitFrameLayout)) +
                slot;
     }
 
     // For the callee of the current function.
     inline int32_t CalleeStackOffset() const {
-        return masm.framePushed() + IonJSFrameLayout::offsetOfCalleeToken();
+        return masm.framePushed() + JitFrameLayout::offsetOfCalleeToken();
     }
 
     inline int32_t SlotToStackOffset(int32_t slot) const {
@@ -251,7 +251,7 @@ class CodeGeneratorShared : public LElementVisitor
     void verifyOsiPointRegs(LSafepoint *safepoint);
 #endif
 
-    bool addNativeToBytecodeEntry(const BytecodeSite &site);
+    bool addNativeToBytecodeEntry(const BytecodeSite *site);
     void dumpNativeToBytecodeEntries();
     void dumpNativeToBytecodeEntry(uint32_t idx);
 
@@ -478,7 +478,7 @@ class CodeGeneratorShared : public LElementVisitor
 
   protected:
     bool addOutOfLineCode(OutOfLineCode *code, const MInstruction *mir);
-    bool addOutOfLineCode(OutOfLineCode *code, const BytecodeSite &site);
+    bool addOutOfLineCode(OutOfLineCode *code, const BytecodeSite *site);
     bool hasOutOfLineCode() { return !outOfLineCode_.empty(); }
     bool generateOutOfLineCode();
 
@@ -536,7 +536,7 @@ class OutOfLineCode : public TempObject
     Label entry_;
     Label rejoin_;
     uint32_t framePushed_;
-    BytecodeSite site_;
+    const BytecodeSite *site_;
 
   public:
     OutOfLineCode()
@@ -561,17 +561,17 @@ class OutOfLineCode : public TempObject
     uint32_t framePushed() const {
         return framePushed_;
     }
-    void setBytecodeSite(const BytecodeSite &site) {
+    void setBytecodeSite(const BytecodeSite *site) {
         site_ = site;
     }
-    const BytecodeSite &bytecodeSite() const {
+    const BytecodeSite *bytecodeSite() const {
         return site_;
     }
     jsbytecode *pc() const {
-        return site_.pc();
+        return site_->pc();
     }
     JSScript *script() const {
-        return site_.script();
+        return site_->script();
     }
 };
 

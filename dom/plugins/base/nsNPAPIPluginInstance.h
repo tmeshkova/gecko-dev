@@ -207,7 +207,7 @@ public:
       mSurfaceTexture = nullptr;
     }
 
-    nsRefPtr<mozilla::gl::AndroidSurfaceTexture> mSurfaceTexture;
+    mozilla::RefPtr<mozilla::gl::AndroidSurfaceTexture> mSurfaceTexture;
     gfxRect mDimensions;
   };
 
@@ -274,11 +274,6 @@ public:
 
   void URLRedirectResponse(void* notifyData, NPBool allow);
 
-  NPError InitAsyncSurface(NPSize *size, NPImageFormat format,
-                           void *initData, NPAsyncSurface *surface);
-  NPError FinalizeAsyncSurface(NPAsyncSurface *surface);
-  void SetCurrentAsyncSurface(NPAsyncSurface *surface, NPRect *changed);
-
   // Called when the instance fails to instantiate beceause the Carbon
   // event model is not supported.
   void CarbonNPAPIFailure();
@@ -333,8 +328,8 @@ protected:
   bool mFullScreen;
   bool mInverted;
 
-  nsRefPtr<SharedPluginTexture> mContentTexture;
-  nsRefPtr<mozilla::gl::AndroidSurfaceTexture> mContentSurface;
+  mozilla::RefPtr<SharedPluginTexture> mContentTexture;
+  mozilla::RefPtr<mozilla::gl::AndroidSurfaceTexture> mContentSurface;
 #endif
 
   enum {
@@ -383,7 +378,7 @@ private:
 
 #ifdef MOZ_WIDGET_ANDROID
   void EnsureSharedTexture();
-  mozilla::gl::AndroidSurfaceTexture* CreateSurfaceTexture();
+  mozilla::TemporaryRef<mozilla::gl::AndroidSurfaceTexture> CreateSurfaceTexture();
 
   std::map<void*, VideoInfo*> mVideos;
   bool mOnScreen;

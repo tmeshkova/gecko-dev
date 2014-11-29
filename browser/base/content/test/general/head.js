@@ -6,6 +6,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "Task",
   "resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
+  "resource://testing-common/PlacesTestUtils.jsm");
 
 function closeAllNotifications () {
   let notificationBox = document.getElementById("global-notificationbox");
@@ -108,16 +110,16 @@ function promiseWaitForCondition(aConditionFn) {
   return deferred.promise;
 }
 
-function promiseWaitForEvent(object, eventName, capturing = false) {
+function promiseWaitForEvent(object, eventName, capturing = false, chrome = false) {
   return new Promise((resolve) => {
     function listener(event) {
       info("Saw " + eventName);
-      object.removeEventListener(eventName, listener, capturing);
+      object.removeEventListener(eventName, listener, capturing, chrome);
       resolve(event);
     }
 
     info("Waiting for " + eventName);
-    object.addEventListener(eventName, listener, capturing);
+    object.addEventListener(eventName, listener, capturing, chrome);
   });
 }
 
@@ -744,7 +746,7 @@ function is_element_hidden(element, msg) {
 function promisePopupEvent(popup, eventSuffix) {
   let endState = {shown: "open", hidden: "closed"}[eventSuffix];
 
-  if (popup.state = endState)
+  if (popup.state == endState)
     return Promise.resolve();
 
   let eventType = "popup" + eventSuffix;

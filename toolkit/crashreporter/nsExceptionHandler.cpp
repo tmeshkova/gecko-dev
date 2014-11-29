@@ -1694,8 +1694,10 @@ static PLDHashOperator EnumerateEntries(const nsACString& key,
                                         nsCString entry,
                                         void* userData)
 {
-  crashReporterAPIData->Append(key + NS_LITERAL_CSTRING("=") + entry +
-                               NS_LITERAL_CSTRING("\n"));
+  if (!entry.IsEmpty()) {
+    crashReporterAPIData->Append(key + NS_LITERAL_CSTRING("=") + entry +
+                                 NS_LITERAL_CSTRING("\n"));
+  }
   return PL_DHASH_NEXT;
 }
 
@@ -1795,6 +1797,11 @@ nsresult AnnotateCrashReport(const nsACString& key, const nsACString& data)
                                            crashReporterAPIData);
 
   return NS_OK;
+}
+
+nsresult RemoveCrashReportAnnotation(const nsACString& key)
+{
+  return AnnotateCrashReport(key, NS_LITERAL_CSTRING(""));
 }
 
 nsresult SetGarbageCollecting(bool collecting)
@@ -2322,7 +2329,7 @@ SetMemoryReportFile(nsIFile* aFile)
 #ifdef XP_WIN
   nsString path;
   aFile->GetPath(path);
-  memoryReportPath = ToNewUnicode(path);
+  memoryReportPath = reinterpret_cast<wchar_t*>(ToNewUnicode(path));
 #else
   nsCString path;
   aFile->GetNativePath(path);
@@ -2363,7 +2370,7 @@ FindPendingDir()
 static bool
 GetPendingDir(nsIFile** dir)
 {
-  MOZ_ASSERT(OOPInitialized());
+  // MOZ_ASSERT(OOPInitialized());
   if (!pendingDirectory) {
     return false;
   }

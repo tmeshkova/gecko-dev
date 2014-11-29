@@ -24,6 +24,9 @@
     _(SimdInsertElementI)           \
     _(SimdInsertElementF)           \
     _(SimdSignMaskX4)               \
+    _(SimdSwizzleI)                 \
+    _(SimdSwizzleF)                 \
+    _(SimdShuffle)                  \
     _(SimdUnaryArithIx4)            \
     _(SimdUnaryArithFx4)            \
     _(SimdBinaryCompIx4)            \
@@ -43,8 +46,10 @@
     _(Goto)                         \
     _(NewArray)                     \
     _(NewArrayCopyOnWrite)          \
+    _(NewArrayDynamicLength)        \
     _(ArraySplice)                  \
     _(NewObject)                    \
+    _(NewTypedObject)               \
     _(NewDeclEnvObject)             \
     _(NewCallObject)                \
     _(NewSingletonCallObject)       \
@@ -169,6 +174,7 @@
     _(IntToString)                  \
     _(DoubleToString)               \
     _(ValueToString)                \
+    _(ValueToObjectOrNull)          \
     _(Int32x4ToFloat32x4)           \
     _(Float32x4ToInt32x4)           \
     _(Start)                        \
@@ -182,6 +188,7 @@
     _(RegExpTest)                   \
     _(RegExpReplace)                \
     _(StringReplace)                \
+    _(Substr)                       \
     _(Lambda)                       \
     _(LambdaArrow)                  \
     _(LambdaForSingleton)           \
@@ -208,15 +215,17 @@
     _(PostWriteBarrierV)            \
     _(InitializedLength)            \
     _(SetInitializedLength)         \
-    _(NeuterCheck)                  \
     _(BoundsCheck)                  \
     _(BoundsCheckRange)             \
     _(BoundsCheckLower)             \
     _(LoadElementV)                 \
     _(LoadElementT)                 \
     _(LoadElementHole)              \
+    _(LoadUnboxedPointerV)          \
+    _(LoadUnboxedPointerT)          \
     _(StoreElementV)                \
     _(StoreElementT)                \
+    _(StoreUnboxedPointer)          \
     _(ArrayPopShiftV)               \
     _(ArrayPopShiftT)               \
     _(ArrayPushV)                   \
@@ -231,6 +240,8 @@
     _(StoreTypedArrayElement)       \
     _(StoreTypedArrayElementHole)   \
     _(StoreTypedArrayElementStatic) \
+    _(CompareExchangeTypedArrayElement) \
+    _(AtomicTypedArrayElementBinop) \
     _(EffectiveAddress)             \
     _(ClampIToUint8)                \
     _(ClampDToUint8)                \
@@ -309,6 +320,7 @@
     _(CallDOMNative)                \
     _(IsCallable)                   \
     _(IsObject)                     \
+    _(IsObjectAndBranch)            \
     _(HaveSameClass)                \
     _(HasClass)                     \
     _(AsmJSLoadHeap)                \
@@ -321,14 +333,18 @@
     _(AsmJSVoidReturn)              \
     _(AsmJSPassStackArg)            \
     _(AsmJSCall)                    \
+    _(AsmJSCompareExchangeHeap)     \
+    _(AsmJSAtomicBinopHeap)         \
     _(InterruptCheckPar)            \
     _(RecompileCheck)               \
+    _(MemoryBarrier)                \
     _(AssertRangeI)                 \
     _(AssertRangeD)                 \
     _(AssertRangeF)                 \
     _(AssertRangeV)                 \
     _(LexicalCheck)                 \
-    _(ThrowUninitializedLexical)
+    _(ThrowUninitializedLexical)    \
+    _(Debugger)
 
 #if defined(JS_CODEGEN_X86)
 # include "jit/x86/LOpcodes-x86.h"

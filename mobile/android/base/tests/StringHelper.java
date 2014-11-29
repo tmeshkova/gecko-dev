@@ -176,7 +176,7 @@ public class StringHelper {
     public static final String SHOW_PAGE_ADDRESS_LABEL = "Show page address";
 
     // Privacy
-    public static final String TRACKING_LABEL = "Tracking";
+    public static final String TRACKING_LABEL = "Do not track";
     public static final String COOKIES_LABEL = "Cookies";
     public static final String REMEMBER_PASSWORDS_LABEL = "Remember passwords";
     public static final String MASTER_PASSWORD_LABEL = "Use master password";
@@ -187,7 +187,7 @@ public class StringHelper {
     public static final String ABOUT_LABEL = "About " + BRAND_NAME;
     public static final String FAQS_LABEL = "FAQs";
     public static final String FEEDBACK_LABEL = "Give feedback";
-    public static final String LOCATION_SERVICES_LABEL = "Mozilla location services";
+    public static final String LOCATION_SERVICES_LABEL = "Mozilla Location Service";
     public static final String HEALTH_REPORT_LABEL = BRAND_NAME + " Health Report";
     public static final String MY_HEALTH_REPORT_LABEL = "View my Health Report";
 
@@ -243,4 +243,21 @@ public class StringHelper {
 
     // Edit Bookmark screen
     public static final String EDIT_BOOKMARK = "Edit Bookmark";
+
+    // Strings used in doorhanger messages and buttons
+    public static final String GEO_MESSAGE = "Share your location with";
+    public static final String GEO_ALLOW = "Share";
+    public static final String GEO_DENY = "Don't share";
+
+    public static final String OFFLINE_MESSAGE = "to store data on your device for offline use";
+    public static final String OFFLINE_ALLOW = "Allow";
+    public static final String OFFLINE_DENY = "Don't allow";
+
+    public static final String LOGIN_MESSAGE = "Save password";
+    public static final String LOGIN_ALLOW = "Save";
+    public static final String LOGIN_DENY = "Don't save";
+
+    public static final String POPUP_MESSAGE = "prevented this site from opening";
+    public static final String POPUP_ALLOW = "Show";
+    public static final String POPUP_DENY = "Don't show";
 }

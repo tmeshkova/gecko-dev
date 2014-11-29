@@ -21,7 +21,9 @@
 #ifdef MOZ_ENABLE_DBUS
 #include "nsDBusHandlerApp.h"
 #endif
+#ifdef MOZ_WIDGET_QT
 #include "nsMIMEInfoQt.h"
+#endif
 
 nsresult
 nsMIMEInfoUnix::LoadUriInternal(nsIURI * aURI)

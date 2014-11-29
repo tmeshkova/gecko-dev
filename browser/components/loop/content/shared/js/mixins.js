@@ -154,6 +154,10 @@ loop.shared.mixins = (function() {
      * @param {String} name The filename to play (excluding the extension).
      */
     play: function(name, options) {
+      if (this._isLoopDesktop() && rootObject.navigator.mozLoop.doNotDisturb) {
+        return;
+      }
+
       options = options || {};
       options.loop = options.loop || false;
 
@@ -222,8 +226,66 @@ loop.shared.mixins = (function() {
     }
   };
 
+  /**
+   * A mixin especially for rooms. This plays the right sound according to
+   * the state changes. Requires AudioMixin to also be used.
+   */
+  var RoomsAudioMixin = {
+    mixins: [AudioMixin],
+
+    componentWillUpdate: function(nextProps, nextState) {
+      var ROOM_STATES = loop.store.ROOM_STATES;
+
+      function isConnectedToRoom(state) {
+        return state === ROOM_STATES.HAS_PARTICIPANTS ||
+               state === ROOM_STATES.SESSION_CONNECTED;
+      }
+
+      function notConnectedToRoom(state) {
+        // Failed and full are states that the user is not
+        // really connected to the room, but we don't want to
+        // catch those here, as they get their own sounds.
+        return state === ROOM_STATES.INIT ||
+               state === ROOM_STATES.GATHER ||
+               state === ROOM_STATES.READY ||
+               state === ROOM_STATES.JOINED ||
+               state === ROOM_STATES.ENDED;
+      }
+
+      // Joining the room.
+      if (notConnectedToRoom(this.state.roomState) &&
+          isConnectedToRoom(nextState.roomState)) {
+        this.play("room-joined");
+      }
+
+      // Other people coming and leaving.
+      if (this.state.roomState === ROOM_STATES.SESSION_CONNECTED &&
+          nextState.roomState === ROOM_STATES.HAS_PARTICIPANTS) {
+        this.play("room-joined-in");
+      }
+
+      if (this.state.roomState === ROOM_STATES.HAS_PARTICIPANTS &&
+          nextState.roomState === ROOM_STATES.SESSION_CONNECTED) {
+        this.play("room-left");
+      }
+
+      // Leaving the room - same sound as if a participant leaves
+      if (isConnectedToRoom(this.state.roomState) &&
+          notConnectedToRoom(nextState.roomState)) {
+        this.play("room-left");
+      }
+
+      // Room failures
+      if (nextState.roomState === ROOM_STATES.FAILED ||
+          nextState.roomState === ROOM_STATES.FULL) {
+        this.play("failure");
+      }
+    }
+  };
+
   return {
     AudioMixin: AudioMixin,
+    RoomsAudioMixin: RoomsAudioMixin,
     setRootObject: setRootObject,
     DropdownMenuMixin: DropdownMenuMixin,
     DocumentVisibilityMixin: DocumentVisibilityMixin,

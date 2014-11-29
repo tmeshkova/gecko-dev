@@ -18,19 +18,21 @@ function getConfigFile(req, res) {
   res.send([
     "var loop = loop || {};",
     "loop.config = loop.config || {};",
-    "loop.config.serverUrl = 'http://localhost:" + loopServerPort + "';",
+    "loop.config.serverUrl = 'http://localhost:" + loopServerPort + "/v0';",
     "loop.config.feedbackApiUrl = '" + feedbackApiUrl + "';",
     "loop.config.feedbackProductName = '" + feedbackProductName + "';",
     // XXX Update with the real marketplace url once the FxOS Loop app is
     //     uploaded to the marketplace bug 1053424
     "loop.config.marketplaceUrl = 'http://fake-market.herokuapp.com/iframe-install.html'",
     "loop.config.brandWebsiteUrl = 'https://www.mozilla.org/firefox/';",
-    "loop.config.privacyWebsiteUrl = 'https://www.mozilla.org/privacy';",
+    "loop.config.privacyWebsiteUrl = 'https://www.mozilla.org/privacy/firefox-hello/';",
     "loop.config.learnMoreUrl = 'https://www.mozilla.org/hello/';",
-    "loop.config.legalWebsiteUrl = '/legal/terms';",
+    "loop.config.legalWebsiteUrl = 'https://www.mozilla.org/about/legal/terms/firefox-hello/';",
     "loop.config.fxosApp = loop.config.fxosApp || {};",
     "loop.config.fxosApp.name = 'Loop';",
-    "loop.config.fxosApp.manifestUrl = 'http://fake-market.herokuapp.com/apps/packagedApp/manifest.webapp';"
+    "loop.config.fxosApp.manifestUrl = 'http://fake-market.herokuapp.com/apps/packagedApp/manifest.webapp';",
+    "loop.config.roomsSupportUrl = 'https://support.mozilla.org/kb/group-conversations-firefox-hello-webrtc';",
+    "loop.config.guestSupportUrl = 'https://support.mozilla.org/kb/respond-firefox-hello-invitation-guest-mode';"
   ].join("\n"));
 }
 

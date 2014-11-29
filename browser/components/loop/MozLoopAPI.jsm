@@ -51,7 +51,7 @@ const cloneErrorObject = function(error, targetWindow) {
     if (typeof value != "string" && typeof value != "number") {
       value = String(value);
     }
-    
+
     Object.defineProperty(Cu.waiveXrays(obj), prop, {
       configurable: false,
       enumerable: true,
@@ -89,7 +89,15 @@ const cloneValueInto = function(value, targetWindow) {
     return cloneErrorObject(value, targetWindow);
   }
 
-  return Cu.cloneInto(value, targetWindow);
+  let clone;
+  try {
+    clone = Cu.cloneInto(value, targetWindow);
+  } catch (ex) {
+    MozLoopService.log.debug("Failed to clone value:", value);
+    throw ex;
+  }
+
+  return clone;
 };
 
 /**
@@ -106,15 +114,29 @@ const injectObjectAPI = function(api, targetWindow) {
   Object.keys(api).forEach(func => {
     injectedAPI[func] = function(...params) {
       let lastParam = params.pop();
+      let callbackIsFunction = (typeof lastParam == "function");
+      // Clone params coming from content to the current scope.
+      params = [cloneValueInto(p, api) for (p of params)];
 
       // If the last parameter is a function, assume its a callback
       // and wrap it differently.
-      if (lastParam && typeof lastParam === "function") {
+      if (callbackIsFunction) {
         api[func](...params, function(...results) {
+          // When the function was garbage collected due to async events, like
+          // closing a window, we want to circumvent a JS error.
+          if (callbackIsFunction && typeof lastParam != "function") {
+            MozLoopService.log.debug(func + ": callback function was lost.");
+            // Assume the presence of a first result argument to be an error.
+            if (results[0]) {
+              MozLoopService.log.error(func + " error:", results[0]);
+            }
+            return;
+          }
           lastParam(...[cloneValueInto(r, targetWindow) for (r of results)]);
         });
       } else {
         try {
+          lastParam = cloneValueInto(lastParam, api);
           return cloneValueInto(api[func](...params, lastParam), targetWindow);
         } catch (ex) {
           return cloneValueInto(ex, targetWindow);
@@ -231,7 +253,7 @@ function injectLoopAPI(targetWindow) {
       enumerable: true,
       writable: true,
       value: function(conversationWindowId) {
-        return Cu.cloneInto(MozLoopService.getConversationWindowData(conversationWindowId),
+        return cloneValueInto(MozLoopService.getConversationWindowData(conversationWindowId),
           targetWindow);
       }
     },
@@ -368,32 +390,6 @@ function injectLoopAPI(targetWindow) {
     },
 
     /**
-     * Call to ensure that any necessary registrations for the Loop Service
-     * have taken place.
-     *
-     * Callback parameters:
-     * - err null on successful registration, non-null otherwise.
-     *
-     * @param {LOOP_SESSION_TYPE} sessionType
-     * @param {Function} callback Will be called once registration is complete,
-     *                            or straight away if registration has already
-     *                            happened.
-     */
-    ensureRegistered: {
-      enumerable: true,
-      writable: true,
-      value: function(sessionType, callback) {
-        // We translate from a promise to a callback, as we can't pass promises from
-        // Promise.jsm across the priv versus unpriv boundary.
-        MozLoopService.promiseRegisteredWithServers(sessionType).then(() => {
-          callback(null);
-        }, err => {
-          callback(cloneValueInto(err, targetWindow));
-        }).catch(Cu.reportError);
-      }
-    },
-
-    /**
      * Used to note a call url expiry time. If the time is later than the current
      * latest expiry time, then the stored expiry time is increased. For times
      * sooner, this function is a no-op; this ensures we always have the latest
@@ -414,61 +410,41 @@ function injectLoopAPI(targetWindow) {
     },
 
     /**
-     * Set any character preference under "loop."
+     * Set any preference under "loop."
      *
      * @param {String} prefName The name of the pref without the preceding "loop."
-     * @param {String} stringValue The value to set.
+     * @param {*} value The value to set.
+     * @param {Enum} prefType Type of preference, defined at Ci.nsIPrefBranch. Optional.
      *
      * Any errors thrown by the Mozilla pref API are logged to the console
      * and cause false to be returned.
      */
-    setLoopCharPref: {
+    setLoopPref: {
       enumerable: true,
       writable: true,
-      value: function(prefName, value) {
-        MozLoopService.setLoopCharPref(prefName, value);
+      value: function(prefName, value, prefType) {
+        MozLoopService.setLoopPref(prefName, value, prefType);
       }
     },
 
     /**
-     * Return any preference under "loop." that's coercible to a character
-     * preference.
+     * Return any preference under "loop.".
      *
      * @param {String} prefName The name of the pref without the preceding
      * "loop."
+     * @param {Enum} prefType Type of preference, defined at Ci.nsIPrefBranch. Optional.
      *
      * Any errors thrown by the Mozilla pref API are logged to the console
      * and cause null to be returned. This includes the case of the preference
      * not being found.
      *
-     * @return {String} on success, null on error
+     * @return {*} on success, null on error
      */
-    getLoopCharPref: {
+    getLoopPref: {
       enumerable: true,
       writable: true,
-      value: function(prefName) {
-        return MozLoopService.getLoopCharPref(prefName);
-      }
-    },
-
-    /**
-     * Return any preference under "loop." that's coercible to a boolean
-     * preference.
-     *
-     * @param {String} prefName The name of the pref without the preceding
-     * "loop."
-     *
-     * Any errors thrown by the Mozilla pref API are logged to the console
-     * and cause null to be returned. This includes the case of the preference
-     * not being found.
-     *
-     * @return {String} on success, null on error
-     */
-    getLoopBoolPref: {
-      enumerable: true,
-      writable: true,
-      value: function(prefName) {
-        return MozLoopService.getLoopBoolPref(prefName);
+      value: function(prefName, prefType) {
+        return MozLoopService.getLoopPref(prefName);
       }
     },
 
@@ -541,9 +517,16 @@ function injectLoopAPI(targetWindow) {
       writable: true,
       value: function(sessionType, path, method, payloadObj, callback) {
         // XXX Should really return a DOM promise here.
+        let callbackIsFunction = (typeof callback == "function");
         MozLoopService.hawkRequest(sessionType, path, method, payloadObj).then((response) => {
           callback(null, response.body);
         }, hawkError => {
+          // When the function was garbage collected due to async events, like
+          // closing a window, we want to circumvent a JS error.
+          if (callbackIsFunction && typeof callback != "function") {
+            MozLoopService.log.error("hawkRequest: callback function was lost.", hawkError);
+            return;
+          }
           // The hawkError.error property, while usually a string representing
           // an HTTP response status message, may also incorrectly be a native
           // error object that will cause the cloning function to fail.
@@ -593,6 +576,20 @@ function injectLoopAPI(targetWindow) {
       writable: true,
       value: function() {
         return MozLoopService.openFxASettings();
+      },
+    },
+
+    /**
+     * Opens the Getting Started tour in the browser.
+     *
+     * @param {String} aSrc
+     *   - The UI element that the user used to begin the tour, optional.
+     */
+    openGettingStartedTour: {
+      enumerable: true,
+      writable: true,
+      value: function(aSrc) {
+        return MozLoopService.openGettingStartedTour(aSrc);
       },
     },
 

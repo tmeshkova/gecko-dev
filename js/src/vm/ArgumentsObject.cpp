@@ -8,7 +8,7 @@
 
 #include "jsinfer.h"
 
-#include "jit/IonFrames.h"
+#include "jit/JitFrames.h"
 #include "vm/GlobalObject.h"
 #include "vm/Stack.h"
 
@@ -41,12 +41,12 @@ ArgumentsObject::MaybeForwardToCallObject(AbstractFramePtr frame, ArgumentsObjec
     if (frame.fun()->isHeavyweight() && script->argsObjAliasesFormals()) {
         obj->initFixedSlot(MAYBE_CALL_SLOT, ObjectValue(frame.callObj()));
         for (AliasedFormalIter fi(script); fi; fi++)
-            data->args[fi.frameIndex()] = JS::MagicValueUint32(fi.scopeSlot());
+            data->args[fi.frameIndex()] = MagicScopeSlotValue(fi.scopeSlot());
     }
 }
 
 /* static */ void
-ArgumentsObject::MaybeForwardToCallObject(jit::IonJSFrameLayout *frame, HandleObject callObj,
+ArgumentsObject::MaybeForwardToCallObject(jit::JitFrameLayout *frame, HandleObject callObj,
                                           ArgumentsObject *obj, ArgumentsData *data)
 {
     JSFunction *callee = jit::CalleeTokenToFunction(frame->calleeToken());
@@ -55,7 +55,7 @@ ArgumentsObject::MaybeForwardToCallObject(jit::IonJSFrameLayout *frame, HandleOb
         MOZ_ASSERT(callObj && callObj->is<CallObject>());
         obj->initFixedSlot(MAYBE_CALL_SLOT, ObjectValue(*callObj.get()));
         for (AliasedFormalIter fi(script); fi; fi++)
-            data->args[fi.frameIndex()] = JS::MagicValueUint32(fi.scopeSlot());
+            data->args[fi.frameIndex()] = MagicScopeSlotValue(fi.scopeSlot());
     }
 }
 
@@ -80,12 +80,12 @@ struct CopyFrameArgs
     }
 };
 
-struct CopyIonJSFrameArgs
+struct CopyJitFrameArgs
 {
-    jit::IonJSFrameLayout *frame_;
+    jit::JitFrameLayout *frame_;
     HandleObject callObj_;
 
-    CopyIonJSFrameArgs(jit::IonJSFrameLayout *frame, HandleObject callObj)
+    CopyJitFrameArgs(jit::JitFrameLayout *frame, HandleObject callObj)
       : frame_(frame), callObj_(callObj)
     { }
 
@@ -264,14 +264,14 @@ ArgumentsObject::createUnexpected(JSContext *cx, AbstractFramePtr frame)
 }
 
 ArgumentsObject *
-ArgumentsObject::createForIon(JSContext *cx, jit::IonJSFrameLayout *frame, HandleObject scopeChain)
+ArgumentsObject::createForIon(JSContext *cx, jit::JitFrameLayout *frame, HandleObject scopeChain)
 {
     jit::CalleeToken token = frame->calleeToken();
     MOZ_ASSERT(jit::CalleeTokenIsFunction(token));
     RootedScript script(cx, jit::ScriptFromCalleeToken(token));
     RootedFunction callee(cx, jit::CalleeTokenToFunction(token));
     RootedObject callObj(cx, scopeChain->is<CallObject>() ? scopeChain.get() : nullptr);
-    CopyIonJSFrameArgs copy(frame, callObj);
+    CopyJitFrameArgs copy(frame, callObj);
     return create(cx, script, callee, frame->numActualArgs(), copy);
 }
 
@@ -359,10 +359,8 @@ ArgSetter(JSContext *cx, HandleObject obj, HandleId id, bool strict, MutableHand
 }
 
 static bool
-args_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObject objp)
+args_resolve(JSContext *cx, HandleObject obj, HandleId id, bool *resolvedp)
 {
-    objp.set(nullptr);
-
     Rooted<NormalArgumentsObject*> argsobj(cx, &obj->as<NormalArgumentsObject>());
 
     unsigned attrs = JSPROP_SHARED | JSPROP_SHADOWABLE;
@@ -386,7 +384,7 @@ args_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObject o
     if (!baseops::DefineGeneric(cx, argsobj, id, UndefinedHandleValue, ArgGetter, ArgSetter, attrs))
         return false;
 
-    objp.set(argsobj);
+    *resolvedp = true;
     return true;
 }
 
@@ -475,10 +473,8 @@ StrictArgSetter(JSContext *cx, HandleObject obj, HandleId id, bool strict, Mutab
 }
 
 static bool
-strictargs_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObject objp)
+strictargs_resolve(JSContext *cx, HandleObject obj, HandleId id, bool *resolvedp)
 {
-    objp.set(nullptr);
-
     Rooted<StrictArgumentsObject*> argsobj(cx, &obj->as<StrictArgumentsObject>());
 
     unsigned attrs = JSPROP_SHARED | JSPROP_SHADOWABLE;
@@ -506,7 +502,7 @@ strictargs_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleOb
     if (!baseops::DefineGeneric(cx, argsobj, id, UndefinedHandleValue, getter, setter, attrs))
         return false;
 
-    objp.set(argsobj);
+    *resolvedp = true;
     return true;
 }
 
@@ -571,7 +567,7 @@ ArgumentsObject::trace(JSTracer *trc, JSObject *obj)
  */
 const Class NormalArgumentsObject::class_ = {
     "Arguments",
-    JSCLASS_NEW_RESOLVE | JSCLASS_IMPLEMENTS_BARRIERS |
+    JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_RESERVED_SLOTS(NormalArgumentsObject::RESERVED_SLOTS) |
     JSCLASS_HAS_CACHED_PROTO(JSProto_Object) | JSCLASS_BACKGROUND_FINALIZE,
     JS_PropertyStub,         /* addProperty */
@@ -579,7 +575,7 @@ const Class NormalArgumentsObject::class_ = {
     JS_PropertyStub,         /* getProperty */
     JS_StrictPropertyStub,   /* setProperty */
     args_enumerate,
-    reinterpret_cast<JSResolveOp>(args_resolve),
+    args_resolve,
     JS_ConvertStub,
     ArgumentsObject::finalize,
     nullptr,                 /* call        */
@@ -595,7 +591,7 @@ const Class NormalArgumentsObject::class_ = {
  */
 const Class StrictArgumentsObject::class_ = {
     "Arguments",
-    JSCLASS_NEW_RESOLVE | JSCLASS_IMPLEMENTS_BARRIERS |
+    JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_RESERVED_SLOTS(StrictArgumentsObject::RESERVED_SLOTS) |
     JSCLASS_HAS_CACHED_PROTO(JSProto_Object) | JSCLASS_BACKGROUND_FINALIZE,
     JS_PropertyStub,         /* addProperty */
@@ -603,7 +599,7 @@ const Class StrictArgumentsObject::class_ = {
     JS_PropertyStub,         /* getProperty */
     JS_StrictPropertyStub,   /* setProperty */
     strictargs_enumerate,
-    reinterpret_cast<JSResolveOp>(strictargs_resolve),
+    strictargs_resolve,
     JS_ConvertStub,
     ArgumentsObject::finalize,
     nullptr,                 /* call        */

@@ -39,6 +39,7 @@ namespace mozilla {
 namespace image {
 class Image;
 class ImageURL;
+class ProgressTracker;
 } // namespace image
 } // namespace mozilla
 
@@ -52,8 +53,11 @@ protected:
   virtual ~imgRequestProxy();
 
 public:
-  MOZ_DECLARE_REFCOUNTED_TYPENAME(imgRequestProxy)
+  typedef mozilla::image::Image Image;
   typedef mozilla::image::ImageURL ImageURL;
+  typedef mozilla::image::ProgressTracker ProgressTracker;
+
+  MOZ_DECLARE_REFCOUNTED_TYPENAME(imgRequestProxy)
   NS_DECL_ISUPPORTS
   NS_DECL_IMGIREQUEST
   NS_DECL_NSIREQUEST
@@ -91,7 +95,7 @@ public:
   // asynchronously-called function.
   void SyncNotifyListener();
 
-  // Whether we want notifications from imgStatusTracker to be deferred until
+  // Whether we want notifications from ProgressTracker to be deferred until
   // an event it has scheduled has been fired.
   bool NotificationsDeferred() const
   {
@@ -117,7 +121,7 @@ public:
   nsresult GetURI(ImageURL **aURI);
 
 protected:
-  friend class imgStatusTracker;
+  friend class mozilla::image::ProgressTracker;
   friend class imgStatusNotifyRunnable;
   friend class imgRequestNotifyRunnable;
 
@@ -142,22 +146,21 @@ protected:
   };
 
   // The following notification functions are protected to ensure that (friend
-  // class) imgStatusTracker is the only class allowed to send us
+  // class) ProgressTracker is the only class allowed to send us
   // notifications.
 
-  /* non-virtual imgDecoderObserver methods */
-  void OnStartDecode     ();
-  void OnStartContainer  ();
-  void OnFrameUpdate     (const nsIntRect * aRect);
-  void OnStopFrame       ();
-  void OnStopDecode      ();
-  void OnDiscard         ();
-  void OnUnlockedDraw    ();
-  void OnImageIsAnimated ();
+  void OnStartDecode();
+  void OnSizeAvailable();
+  void OnFrameUpdate(const nsIntRect* aRect);
+  void OnFrameComplete();
+  void OnDecodeComplete();
+  void OnDiscard();
+  void OnUnlockedDraw();
+  void OnImageHasTransparency();
+  void OnImageIsAnimated();
 
   /* non-virtual sort-of-nsIRequestObserver methods */
-  void OnStartRequest();
-  void OnStopRequest(bool aLastPart);
+  void OnLoadComplete(bool aLastPart);
 
   /* non-virtual imgIOnloadBlocker methods */
   void BlockOnload();
@@ -173,11 +176,11 @@ protected:
     RemoveFromLoadGroup(true);
   }
 
-  // Return the imgStatusTracker associated with mOwner and/or mImage. It may
+  // Return the ProgressTracker associated with mOwner and/or mImage. It may
   // live either on mOwner or mImage, depending on whether
   //   (a) we have an mOwner at all
   //   (b) whether mOwner has instantiated its image yet
-  already_AddRefed<imgStatusTracker> GetStatusTracker() const;
+  already_AddRefed<ProgressTracker> GetProgressTracker() const;
 
   nsITimedChannel* TimedChannel()
   {
@@ -186,7 +189,7 @@ protected:
     return GetOwner()->mTimedChannel;
   }
 
-  already_AddRefed<mozilla::image::Image> GetImage() const;
+  already_AddRefed<Image> GetImage() const;
   bool HasImage() const;
   imgRequest* GetOwner() const;
 
@@ -224,10 +227,6 @@ private:
   // Whether we want to defer our notifications by the non-virtual Observer
   // interfaces as image loads proceed.
   bool mDeferNotifications;
-
-  // We only want to send OnStartContainer once for each proxy, but we might
-  // get multiple OnStartContainer calls.
-  bool mSentStartContainer;
 };
 
 // Used for static image proxies for which no requests are available, so
@@ -236,8 +235,7 @@ class imgRequestProxyStatic : public imgRequestProxy
 {
 
 public:
-  imgRequestProxyStatic(mozilla::image::Image* aImage,
-                        nsIPrincipal* aPrincipal);
+  imgRequestProxyStatic(Image* aImage, nsIPrincipal* aPrincipal);
 
   NS_IMETHOD GetImagePrincipal(nsIPrincipal** aPrincipal) MOZ_OVERRIDE;
 

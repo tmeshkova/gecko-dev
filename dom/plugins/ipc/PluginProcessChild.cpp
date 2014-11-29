@@ -126,9 +126,9 @@ PluginProcessChild::Init()
       return false;
     }
 
-    bool retval = mPlugin.Init(pluginFilename, ParentHandle(),
-                               IOThreadChild::message_loop(),
-                               IOThreadChild::channel());
+    bool retval = mPlugin.InitForChrome(pluginFilename, ParentHandle(),
+                                        IOThreadChild::message_loop(),
+                                        IOThreadChild::channel());
 #if defined(XP_MACOSX)
     if (nsCocoaFeatures::OnYosemiteOrLater()) {
       // Explicitly turn off CGEvent logging.  This works around bug 1092855.

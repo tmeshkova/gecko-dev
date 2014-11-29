@@ -73,6 +73,13 @@ SuggestAutoComplete.prototype = {
       finalComments = finalComments.concat(comments);
     }
 
+    // If no result, add the search term so that the panel of the new UI is shown anyway.
+    if (!finalResults.length &&
+        Services.prefs.getBoolPref("browser.search.showOneOffButtons")) {
+      finalResults.push(results.term);
+      finalComments.push("");
+    }
+
     // Notify the FE of our new results
     this.onResultsReady(results.term, finalResults, finalComments, results.formHistoryResult);
   },
@@ -86,13 +93,17 @@ SuggestAutoComplete.prototype = {
    */
   onResultsReady: function(searchString, results, comments, formHistoryResult) {
     if (this._listener) {
+      // Create a copy of the results array to use as labels, since
+      // FormAutoCompleteResult doesn't like being passed the same array
+      // for both.
+      let labels = results.slice();
       let result = new FormAutoCompleteResult(
           searchString,
           Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
           0,
           "",
           results,
-          results,
+          labels,
           comments,
           formHistoryResult);
 

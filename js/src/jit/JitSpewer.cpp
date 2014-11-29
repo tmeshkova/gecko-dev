@@ -82,28 +82,28 @@ jit::EnableIonDebugLogging()
 void
 jit::IonSpewNewFunction(MIRGraph *graph, HandleScript func)
 {
-    if (GetIonContext()->runtime->onMainThread())
+    if (GetJitContext()->runtime->onMainThread())
         ionspewer.beginFunction(graph, func);
 }
 
 void
 jit::IonSpewPass(const char *pass)
 {
-    if (GetIonContext()->runtime->onMainThread())
+    if (GetJitContext()->runtime->onMainThread())
         ionspewer.spewPass(pass);
 }
 
 void
 jit::IonSpewPass(const char *pass, LinearScanAllocator *ra)
 {
-    if (GetIonContext()->runtime->onMainThread())
+    if (GetJitContext()->runtime->onMainThread())
         ionspewer.spewPass(pass, ra);
 }
 
 void
 jit::IonSpewEndFunction()
 {
-    if (GetIonContext()->runtime->onMainThread())
+    if (GetJitContext()->runtime->onMainThread())
         ionspewer.endFunction();
 }
 
@@ -240,6 +240,7 @@ jit::CheckLogging()
             "  alias      Alias analysis\n"
             "  gvn        Global Value Numbering\n"
             "  licm       Loop invariant code motion\n"
+            "  sink       Sink transformation\n"
             "  regalloc   Register allocation\n"
             "  inline     Inlining\n"
             "  snapshots  Snapshot information\n"
@@ -288,6 +289,8 @@ jit::CheckLogging()
         EnableChannel(JitSpew_Unrolling);
     if (ContainsFlag(env, "licm"))
         EnableChannel(JitSpew_LICM);
+    if (ContainsFlag(env, "sink"))
+        EnableChannel(JitSpew_Sink);
     if (ContainsFlag(env, "regalloc"))
         EnableChannel(JitSpew_RegAlloc);
     if (ContainsFlag(env, "inline"))
