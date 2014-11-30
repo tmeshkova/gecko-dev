@@ -93,7 +93,6 @@ class CompositorParent : public PCompositorParent,
                          public ShadowLayersManager
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorParent)
-  friend class CompositorVsyncObserver;
 
 public:
   explicit CompositorParent(nsIWidget* aWidget,
@@ -354,7 +353,6 @@ protected:
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
 
   nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
-  nsRefPtr<CompositorVsyncObserver> mCompositorVsyncObserver;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
 };
