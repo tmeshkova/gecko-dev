@@ -46,6 +46,8 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   MOZ_ASSERT(view, "Something went wrong, Compositor not suspended on destroy?");
   EmbedLiteViewThreadParent* pview = static_cast<EmbedLiteViewThreadParent*>(view->GetImpl());
   pview->SetCompositor(this);
+  // Workaround for MOZ_ASSERT(!aOther.IsNull(), "Cannot compute with aOther null value");
+  mLastCompose = TimeStamp::Now();
 }
 
 EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
@@ -89,9 +91,6 @@ EmbedLiteCompositorParent::PrepareOffscreen()
   if (context->IsOffscreen()) {
     GLScreenBuffer* screen = context->Screen();
     if (screen) {
-      SurfaceStreamType streamType =
-        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
-                                          screen->PreserveBuffer());
       UniquePtr<SurfaceFactory> factory;
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
@@ -103,7 +102,7 @@ EmbedLiteCompositorParent::PrepareOffscreen()
         factory = MakeUnique<SurfaceFactory_GLTexture>(context, nullConsGL, screen->mCaps);
       }
       if (factory) {
-        screen->Morph(Move(factory), streamType);
+        screen->Morph(Move(factory));
       }
     }
   }
@@ -235,8 +234,12 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
   NS_ENSURE_TRUE(context, nullptr);
   NS_ENSURE_TRUE(context->IsOffscreen(), nullptr);
 
-  SharedSurface* sharedSurf = context->RequestFrame();
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+  NS_ENSURE_TRUE(screen->Front(), nullptr);
+  SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, nullptr);
+  sharedSurf->WaitSync();
 
   *width = sharedSurf->mSize.width;
   *height = sharedSurf->mSize.height;

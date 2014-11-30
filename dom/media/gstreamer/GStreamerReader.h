@@ -68,6 +68,7 @@ public:
 
   layers::ImageContainer* GetImageContainer() { return mDecoder->GetImageContainer(); }
 
+  void Suspend();
   virtual bool IsMediaSeekable() MOZ_OVERRIDE;
 
 private:

@@ -46,10 +46,10 @@ public:
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
   void TransformCoordinateToGecko(const mozilla::ScreenIntPoint& aPoint,
                                   LayoutDeviceIntPoint* aRefPointOut);
-  void ContentReceivedTouch(const ScrollableLayerGuid& aGuid, bool aPreventDefault);
+  void ContentReceivedTouch(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault);
   nsEventStatus ReceiveInputEvent(InputData& aEvent,
                                   mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
-                                  uint64_t* aOutInputBlockId);
+                                  uint64_t* aInputBlockId);
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
 

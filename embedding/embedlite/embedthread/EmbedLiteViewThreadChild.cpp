@@ -82,9 +82,9 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
   , mViewResized(false)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
+  , mPendingTouchPreventedBlockId(0)
 {
   LOGT("id:%u, parentID:%u", aId, parentId);
-  AddRef();
   // Init default prefs
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {
@@ -696,7 +696,7 @@ EmbedLiteViewThreadChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
 }
 
 bool
-EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint, const uint64_t& aInputBlockId)
+EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint, const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId)
 {
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->HandleLongTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0), aInputBlockId);
@@ -708,13 +708,16 @@ EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint, const uint
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:LongTap"), data);
   }
 
+  bool eventHandled = false;
   if (sHandleDefaultAZPC.longTap) {
-    RecvMouseEvent(NS_LITERAL_STRING("contextmenu"), aPoint.x, aPoint.y,
+    eventHandled = RecvMouseEvent(NS_LITERAL_STRING("contextmenu"), aPoint.x, aPoint.y,
                    2 /* Right button */,
                    1 /* Click count */,
                    0 /* Modifiers */,
                    false /* Ignore root scroll frame */);
   }
+
+  SendContentReceivedTouch(aGuid, aInputBlockId, eventHandled);
 
   return true;
 }
@@ -838,7 +841,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
                                          const bool&     aIgnoreRootScrollFrame)
 {
   if (!mWebBrowser) {
-    return true;
+    return false;
   }
 
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
@@ -850,7 +853,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
                         aIgnoreRootScrollFrame, 0, 0, false, 4, &ignored);
 
-  return true;
+  return !ignored;
 }
 
 bool
@@ -863,8 +866,9 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
     if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedTouch(aGuid, aInputBlockId, nsIPresShell::gPreventMouseEvents);
+      SendContentReceivedTouch(aGuid, mPendingTouchPreventedBlockId, nsIPresShell::gPreventMouseEvents);
     }
+    mPendingTouchPreventedBlockId = aInputBlockId;
     static bool sDispatchMouseEvents;
     static bool sDispatchMouseEventsCached = false;
     if (!sDispatchMouseEventsCached) {

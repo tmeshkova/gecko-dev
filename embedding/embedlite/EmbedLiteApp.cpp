@@ -398,9 +398,10 @@ EmbedLiteApp::CreateView(uint32_t aParent)
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
   mViewCreateID++;
-  EmbedLiteView* view = new EmbedLiteView(this, mViewCreateID, aParent);
+
+  EmbedLiteViewThreadParent* viewParent = static_cast<EmbedLiteViewThreadParent*>(mAppParent->SendPEmbedLiteViewConstructor(mViewCreateID, aParent));
+  EmbedLiteView* view = new EmbedLiteView(this, viewParent, mViewCreateID);
   mViews[mViewCreateID] = view;
-  unused << mAppParent->SendCreateView(mViewCreateID, aParent);
   return view;
 }
 

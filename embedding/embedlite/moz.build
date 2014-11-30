@@ -66,8 +66,23 @@ IPDL_SOURCES += [
 ]
 
 LOCAL_INCLUDES += [
+     '/dom/base',
+     '/dom/ipc',
      '/gfx/layers',
+     '/gfx/layers/apz/util',
+     '/js/xpconnect/src',
      '/widget',
+     'embedhelpers',
+     'embedthread',
+     'modules',
+     'utils',
 ]
+
+DEFINES['EMBED_LITE_INTERNAL'] = True
+DEFINES['OS_TARGET'] = '"%s"' % (CONFIG['OS_TARGET'])
+DEFINES['MOZ_WIDGET_TOOLKIT'] = '"%s"' % (CONFIG['MOZ_WIDGET_TOOLKIT'])
+if CONFIG['TARGET_XPCOM_ABI']:
+    DEFINES['TARGET_OS_ABI'] = '"%s_%s"' % (CONFIG['OS_TARGET'],
+                                            CONFIG['TARGET_XPCOM_ABI'])
 
 include('/ipc/chromium/chromium-config.mozbuild')

@@ -69,7 +69,7 @@ class EmbedLiteApp;
 class EmbedLiteView
 {
 public:
-  EmbedLiteView(EmbedLiteApp* aApp, uint32_t aViewID, uint32_t aParent);
+  EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteViewThreadParent* aViewImpl, uint32_t aViewId);
   virtual ~EmbedLiteView();
 
   // Listener setup, call this with null pointer if listener destroyed before EmbedLiteView
@@ -137,15 +137,13 @@ public:
 private:
   friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteCompositorParent;
-  void SetImpl(EmbedLiteViewThreadParent*);
   EmbedLiteViewIface* GetImpl();
 
   EmbedLiteApp* mApp;
   EmbedLiteViewListener* mListener;
   EmbedLiteViewIface* mViewImpl;
   PEmbedLiteViewParent* mViewParent;
-  uint32_t mUniqueID;
-  uint32_t mParent;
+  const uint32_t mUniqueID;
 };
 
 } // namespace embedlite

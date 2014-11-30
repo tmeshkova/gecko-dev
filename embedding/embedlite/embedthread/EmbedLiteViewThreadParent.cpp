@@ -27,7 +27,6 @@ namespace embedlite {
 
 EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId)
   : mId(id)
-  , mView(EmbedLiteApp::GetInstance()->GetViewByID(id))
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
   , mUILoop(MessageLoop::current())
@@ -36,8 +35,6 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mController(new EmbedContentController(this, mUILoop))
 {
   MOZ_COUNT_CTOR(EmbedLiteViewThreadParent);
-  MOZ_ASSERT(mView, "View destroyed during OMTC view construction");
-  mView->SetImpl(this);
 }
 
 EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
@@ -47,9 +44,6 @@ EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
   bool mHadCompositor = mCompositor.get() != nullptr;
   mController = nullptr;
 
-  if (mView) {
-    mView->SetImpl(NULL);
-  }
   // If we haven't had compositor created, then noone will notify app that view destroyed
   // Let's do it here
   if (!mHadCompositor) {
@@ -284,7 +278,7 @@ bool
 EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
   if (mController->GetManager()) {
-    mController->GetManager()->ContentReceivedTouch(aGuid, aPreventDefault);
+    mController->GetManager()->ContentReceivedTouch(aInputBlockId, aPreventDefault);
   }
   return true;
 }
@@ -430,7 +424,8 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
-    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, nullptr);
+    uint64_t outInputBlockId;
+    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, &outInputBlockId);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       LayoutDeviceIntPoint lpt;
@@ -443,9 +438,9 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
         translatedEvent.mTouches.AppendElement(newData);
       }
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        unused << SendInputDataTouchMoveEvent(guid, translatedEvent, 0);
+        unused << SendInputDataTouchMoveEvent(guid, translatedEvent, outInputBlockId);
       } else {
-        unused << SendInputDataTouchEvent(guid, translatedEvent, 0);
+        unused << SendInputDataTouchEvent(guid, translatedEvent, outInputBlockId);
       }
     }
   }

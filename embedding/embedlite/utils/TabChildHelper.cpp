@@ -247,8 +247,8 @@ TabChildHelper::Observe(nsISupports* aSubject,
         if (HasValidInnerSize()) {
           InitializeRootMetrics();
 
-          utils->SetResolution(mLastRootMetrics.mResolution.scale,
-                               mLastRootMetrics.mResolution.scale);
+          utils->SetResolution(mLastRootMetrics.mPresShellResolution,
+                               mLastRootMetrics.mPresShellResolution);
           HandlePossibleViewportChange(mInnerSize);
           // Relay frame metrics to subscribed listeners
           mView->RelayFrameMetrics(mLastRootMetrics);

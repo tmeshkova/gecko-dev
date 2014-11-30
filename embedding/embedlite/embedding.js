@@ -45,6 +45,9 @@ pref("layers.use-deprecated-textures", false);
 pref("layers.enable-tiles", true);
 pref("layers.async-pan-zoom.enabled", true);
 pref("font.size.inflation.disabledInMasterProcess", true);
+
+// APZC preferences.
+
 pref("apz.asyncscroll.throttle", 15);
 pref("apz.y_skate_size_multiplier", "4.5f");
 pref("apz.y_stationary_size_multiplier", "4.5f");
@@ -53,6 +56,38 @@ pref("apz.acceleration_multiplier", "1.125f");
 pref("apz.fling_friction", "0.00345f");
 pref("apz.min_skate_speed", "10.0f");
 pref("apz.axis_lock_mode", 2);
+
+// Gaia relies heavily on scroll events for now, so lets fire them
+// more often than the default value (100).
+
+// APZ physics settings, tuned by UX designers
+pref("apz.fling_curve_function_x1", "0.0");
+pref("apz.fling_curve_function_y1", "0.0");
+pref("apz.fling_curve_function_x2", "0.58");
+pref("apz.fling_curve_function_y2", "1.0");
+pref("apz.fling_curve_threshold_inches_per_ms", "0.03");
+pref("apz.fling_friction", "0.003");
+pref("apz.max_velocity_inches_per_ms", "0.07");
+
+// Tweak default displayport values to reduce the risk of running out of
+// memory when zooming in
+pref("apz.x_skate_size_multiplier", "1.25");
+pref("apz.y_skate_size_multiplier", "1.5");
+pref("apz.x_stationary_size_multiplier", "1.5");
+pref("apz.y_stationary_size_multiplier", "1.8");
+pref("apz.enlarge_displayport_when_clipped", true);
+// Use "sticky" axis locking
+pref("apz.axis_lock.mode", 2);
+pref("apz.subframe.enabled", true);
+
+// Overscroll-related settings
+pref("apz.overscroll.enabled", false);
+pref("apz.overscroll.stretch_factor", "0.5");
+pref("apz.overscroll.spring_stiffness", "0.001");
+pref("apz.overscroll.spring_friction", "0.015");
+pref("apz.overscroll.stop_distance_threshold", "5.0");
+pref("apz.overscroll.stop_velocity_threshold", "0.01");
+
 pref("ui.dragThresholdX", 25);
 pref("ui.dragThresholdY", 25);
 pref("embedlite.dispatch_mouse_events", false); // Will dispatch mouse events if page using them
