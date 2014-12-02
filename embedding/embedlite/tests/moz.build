@@ -5,16 +5,18 @@
 
 DIRS += ['shared']
 
-GeckoSimplePrograms([
+SimplePrograms([
     'embedLiteCoreInitTest',
     'embedLiteViewInitTest',
-], linkage='standalone')
+])
 
 DEFINES['XPCOM_GLUE'] = True
+
 DISABLE_STL_WRAPPING = True
 
 USE_LIBS += [
     'qmessagepump',
+    'xpcomglue',
 ]
 
 OS_LIBS += CONFIG['TK_LIBS']
