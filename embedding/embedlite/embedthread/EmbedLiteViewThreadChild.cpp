@@ -512,7 +512,6 @@ EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
     return true;
   }
 
-  mHelper->mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
   mWidget->Resize(0, 0, aSize.width, aSize.height, true);
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
