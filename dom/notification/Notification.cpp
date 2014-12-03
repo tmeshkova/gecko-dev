@@ -628,7 +628,7 @@ Notification::ShowInternal()
   alertService->ShowAlertNotification(absoluteUrl, mTitle, mBody, true,
                                       uniqueCookie, observer, mAlertName,
                                       DirectionToString(mDir), mLang,
-                                      dataStr, GetPrincipal());
+                                      dataStr, GetPrincipal(), false);
 }
 
 void

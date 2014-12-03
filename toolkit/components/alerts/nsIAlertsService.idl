@@ -62,7 +62,8 @@ interface nsIAlertsService : nsISupports
                               [optional] in AString dir,
                               [optional] in AString lang,
                               [optional] in AString data,
-                              [optional] in nsIPrincipal principal);
+                              [optional] in nsIPrincipal principal,
+                              [optional] in boolean inPrivateBrowsing);
 
    /**
     * Close alerts created by the service.

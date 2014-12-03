@@ -565,7 +565,8 @@ parent:
                           nsString bidi,
                           nsString lang,
                           nsString data,
-                          Principal principal);
+                          Principal principal,
+                          bool aInPrivateBrowsing);
 
     CloseAlert(nsString name, Principal principal);
 

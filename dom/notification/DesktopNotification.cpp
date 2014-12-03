@@ -112,7 +112,7 @@ DesktopNotification::PostDesktopNotification()
                                        NS_LITERAL_STRING("auto"),
                                        EmptyString(),
                                        EmptyString(),
-                                       principal);
+                                       principal, false);
 }
 
 DesktopNotification::DesktopNotification(const nsAString & title,
