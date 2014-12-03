@@ -259,6 +259,8 @@ pref("browser.uitour.pinnedTabUrl", "https://support.mozilla.org/%LOCALE%/kb/pin
 pref("browser.uitour.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/tour/");
 pref("browser.uitour.whitelist.add.260", "www.mozilla.org,support.mozilla.org");
 pref("browser.uitour.whitelist.add.340", "about:home");
+// Re-whitelist for Fx34 to workaround the lack of bug 1050080.
+pref("browser.uitour.whitelist.add.341", "www.mozilla.org,support.mozilla.org,about:home");
 
 pref("browser.customizemode.tip0.shown", false);
 pref("browser.customizemode.tip0.learnMoreUrl", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/customize");
@@ -399,6 +401,12 @@ pref("browser.search.order.1",                "chrome://browser-region/locale/re
 pref("browser.search.order.2",                "chrome://browser-region/locale/region.properties");
 pref("browser.search.order.3",                "chrome://browser-region/locale/region.properties");
 
+// Hack for Firefox 34
+pref("browser.search.defaultenginename.US",      "chrome://browser-region/locale/region.properties");
+pref("browser.search.order.US.1",                "chrome://browser-region/locale/region.properties");
+pref("browser.search.order.US.2",                "chrome://browser-region/locale/region.properties");
+pref("browser.search.order.US.3",                "chrome://browser-region/locale/region.properties");
+
 // search bar results always open in a new tab
 pref("browser.search.openintab", false);
 
@@ -417,10 +425,15 @@ pref("browser.search.update.interval", 21600);
 // enable search suggestions by default
 pref("browser.search.suggest.enabled", true);
 
+pref("browser.search.showOneOffButtons", false);
+
 #ifdef MOZ_OFFICIAL_BRANDING
 // {moz:official} expands to "official"
 pref("browser.search.official", true);
 #endif
+
+// How many times to show the new search highlight
+pref("browser.search.highlightCount", 5);
 
 pref("browser.sessionhistory.max_entries", 50);
 
