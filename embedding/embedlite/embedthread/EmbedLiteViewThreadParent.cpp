@@ -428,13 +428,11 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
     mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, &outInputBlockId);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
-      LayoutDeviceIntPoint lpt;
       MultiTouchInput translatedEvent(multiTouchInput.mType, multiTouchInput.mTime, TimeStamp(), multiTouchInput.modifiers);
       for (uint32_t i = 0; i < multiTouchInput.mTouches.Length(); ++i) {
         const SingleTouchData& data = multiTouchInput.mTouches[i];
-        mController->GetManager()->TransformCoordinateToGecko(ScreenIntPoint(data.mScreenPoint.x, data.mScreenPoint.y), &lpt);
         SingleTouchData newData = multiTouchInput.mTouches[i];
-        newData.mScreenPoint = ScreenIntPoint(lpt.x, lpt.y);
+        newData.mScreenPoint = data.mScreenPoint;
         translatedEvent.mTouches.AppendElement(newData);
       }
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
