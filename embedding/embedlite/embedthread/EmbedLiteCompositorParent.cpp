@@ -199,7 +199,7 @@ bool EmbedLiteCompositorParent::RenderGL()
   if (context->IsOffscreen()) {
     GLScreenBuffer* screen = context->Screen();
     MOZ_ASSERT(screen);
-    if (!screen->PublishFrame(screen->Size())) {
+    if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
       NS_ERROR("Failed to publish context frame");
       return false;
     }
