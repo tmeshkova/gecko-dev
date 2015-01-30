@@ -6,6 +6,7 @@
 
 LIBRARY_NAME = 'qmessagepump'
 FORCE_STATIC_LIB = True
+IS_COMPONENT = True
 
 GENERATED_SOURCES += [
     'moc_qmessagepump.cpp',

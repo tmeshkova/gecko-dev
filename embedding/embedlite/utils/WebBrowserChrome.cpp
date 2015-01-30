@@ -303,7 +303,9 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   navigation->GetCanGoBack(&canGoBack);
   navigation->GetCanGoForward(&canGoForward);
 
-  mListener->OnLocationChanged(spec.get(), canGoBack, canGoForward);
+  bool isSameDocument = aFlags & nsIWebProgressListener::LOCATION_CHANGE_SAME_DOCUMENT;
+
+  mListener->OnLocationChanged(spec.get(), canGoBack, canGoForward, isSameDocument);
 
   // Keep track of hash changes
   mLocationHasChanged = slocation.Equals(mLastLocation);

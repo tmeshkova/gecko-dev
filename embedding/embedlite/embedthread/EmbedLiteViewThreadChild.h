@@ -16,11 +16,9 @@
 #include "TabChildHelper.h"
 
 namespace mozilla {
-namespace layers {
-class GeckoContentController;
-}
 namespace embedlite {
 
+class EmbedLiteContentController;
 class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
@@ -29,7 +27,7 @@ class EmbedLiteViewThreadChild : public PEmbedLiteViewChild,
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewThreadChild)
 public:
-  EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId);
+  EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
@@ -46,8 +44,8 @@ public:
                                 const char16_t* aMessage,
                                 InfallibleTArray<nsString>* aJSONRetVal);
   bool HasMessageListener(const nsAString& aMessageName);
-  void AddGeckoContentListener(mozilla::layers::GeckoContentController* listener);
-  void RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener);
+  void AddGeckoContentListener(EmbedLiteContentController* listener);
+  void RemoveGeckoContentListener(EmbedLiteContentController* listener);
 
   nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
@@ -66,53 +64,53 @@ protected:
   virtual ~EmbedLiteViewThreadChild();
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
-  virtual bool RecvDestroy();
-  virtual bool RecvLoadURL(const nsString&);
-  virtual bool RecvGoBack();
-  virtual bool RecvGoForward();
-  virtual bool RecvStopLoad();
-  virtual bool RecvReload(const bool&);
+  virtual bool RecvDestroy() MOZ_OVERRIDE;
+  virtual bool RecvLoadURL(const nsString&) MOZ_OVERRIDE;
+  virtual bool RecvGoBack() MOZ_OVERRIDE;
+  virtual bool RecvGoForward() MOZ_OVERRIDE;
+  virtual bool RecvStopLoad() MOZ_OVERRIDE;
+  virtual bool RecvReload(const bool&) MOZ_OVERRIDE;
 
-  virtual bool RecvSetIsActive(const bool&);
-  virtual bool RecvSetIsFocused(const bool&);
-  virtual bool RecvSuspendTimeouts();
-  virtual bool RecvResumeTimeouts();
-  virtual bool RecvLoadFrameScript(const nsString&);
-  virtual bool RecvSetViewSize(const gfxSize&);
+  virtual bool RecvSetIsActive(const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSetIsFocused(const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSuspendTimeouts() MOZ_OVERRIDE;
+  virtual bool RecvResumeTimeouts() MOZ_OVERRIDE;
+  virtual bool RecvLoadFrameScript(const nsString&) MOZ_OVERRIDE;
+  virtual bool RecvSetViewSize(const gfxSize&) MOZ_OVERRIDE;
   virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                       const gfxSize& scrollSize);
+                                       const gfxSize& scrollSize) MOZ_OVERRIDE;
 
-  virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
-  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint);
-  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint);
-  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint);
-  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration);
+  virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
+  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
+  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
+  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint, const uint64_t& aInputBlockId) MOZ_OVERRIDE;
+  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) MOZ_OVERRIDE;
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
                               const float&    aY,
                               const int32_t&  aButton,
                               const int32_t&  aClickCount,
                               const int32_t&  aModifiers,
-                              const bool&     aIgnoreRootScrollFrame);
-  virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit);
-  virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
-  virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
-  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
-  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
+                              const bool&     aIgnoreRootScrollFrame) MOZ_OVERRIDE;
+  virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit) MOZ_OVERRIDE;
+  virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) MOZ_OVERRIDE;
+  virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) MOZ_OVERRIDE;
+  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) MOZ_OVERRIDE;
+  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) MOZ_OVERRIDE;
 
   virtual bool
-  RecvAddMessageListener(const nsCString&);
+  RecvAddMessageListener(const nsCString&) MOZ_OVERRIDE;
   virtual bool
-  RecvRemoveMessageListener(const nsCString&);
+  RecvRemoveMessageListener(const nsCString&) MOZ_OVERRIDE;
   void RecvAsyncMessage(const nsAString& aMessage,
-                        const nsAString& aData);
-  virtual bool RecvSetGLViewSize(const gfxSize&);
+                        const nsAString& aData) MOZ_OVERRIDE;
+  virtual bool RecvSetGLViewSize(const gfxSize&) MOZ_OVERRIDE;
 
   virtual bool
-  RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames);
+  RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
 
   virtual bool
-  RecvRemoveMessageListeners(const InfallibleTArray<nsString>& messageNames);
+  RecvRemoveMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
 
 private:
   friend class TabChildHelper;
@@ -123,7 +121,7 @@ private:
    * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
    */
   void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics);
-  void InitGeckoWindow(const uint32_t& parentId);
+  void InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow);
   EmbedLiteAppThreadChild* AppChild();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
 
@@ -144,7 +142,7 @@ private:
   CancelableTask* mInitWindowTask;
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
-  nsTArray<mozilla::layers::GeckoContentController*> mControllerListeners;
+  nsTArray<EmbedLiteContentController*> mControllerListeners;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadChild);
 };

@@ -77,7 +77,7 @@ EmbedLiteAppThreadChild::Init(MessageChannel* aParentChannel)
   Open(aParentChannel, mParentLoop, ipc::ChildSide);
   RecvSetBoolPref(nsDependentCString("layers.offmainthreadcomposition.enabled"), true);
 
-  nsresult rv = InitAppService();
+  mozilla::DebugOnly<nsresult> rv = InitAppService();
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   SendInitialized();
@@ -162,19 +162,13 @@ EmbedLiteAppThreadChild::ActorDestroy(ActorDestroyReason aWhy)
   LOGT("reason:%i", aWhy);
 }
 
-bool
-EmbedLiteAppThreadChild::RecvCreateView(const uint32_t& id, const uint32_t& parentId)
-{
-  LOGT("id:%u, parentId:%u", id, parentId);
-  return SendPEmbedLiteViewConstructor(id, parentId);
-}
-
 PEmbedLiteViewChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId)
+EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
-  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(id, parentId);
+  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(id, parentId, isPrivateWindow);
   mWeakViewMap[id] = view;
+  view->AddRef();
   return view;
 }
 
@@ -189,7 +183,8 @@ EmbedLiteAppThreadChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
     }
   }
   mWeakViewMap.erase(it);
-  delete actor;
+  EmbedLiteViewThreadChild* p = static_cast<EmbedLiteViewThreadChild*>(actor);
+  p->Release();
   return true;
 }
 

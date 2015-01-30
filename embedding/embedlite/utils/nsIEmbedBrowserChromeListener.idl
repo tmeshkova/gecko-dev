@@ -17,7 +17,8 @@
 [scriptable, uuid(ff88f95e-48d9-11e2-bca5-6b3dfc3f4672)]
 interface nsIEmbedBrowserChromeListener
 {
-    void onLocationChanged(in string aLocation, in boolean aCanGoBack, in boolean aCanGoForward);
+    void onLocationChanged(in string aLocation, in boolean aCanGoBack,
+                           in boolean aCanGoForward, in boolean aIsSameDocument);
     void onLoadStarted(in string aLocation);
     void onLoadFinished();
     void onLoadRedirect();

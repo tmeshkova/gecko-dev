@@ -24,15 +24,15 @@ namespace embedlite {
 class FakeListener : public EmbedLiteViewListener {};
 static FakeListener sFakeListener;
 
-EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, uint32_t aUniqueID, uint32_t aParent)
+EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteViewThreadParent* aViewImpl, uint32_t aViewId)
   : mApp(aApp)
   , mListener(NULL)
-  , mViewImpl(NULL)
-  , mViewParent(NULL)
-  , mUniqueID(aUniqueID)
-  , mParent(aParent)
+  , mViewImpl(aViewImpl)
+  , mViewParent(aViewImpl)
+  , mUniqueID(aViewId)
 {
   LOGT();
+  aViewImpl->mView = this;
 }
 
 EmbedLiteView::~EmbedLiteView()
@@ -63,13 +63,6 @@ EmbedLiteViewListener* const
 EmbedLiteView::GetListener() const
 {
   return mListener ? mListener : &sFakeListener;
-}
-
-void
-EmbedLiteView::SetImpl(EmbedLiteViewThreadParent* aViewImpl)
-{
-  mViewImpl = aViewImpl;
-  mViewParent = aViewImpl;
 }
 
 EmbedLiteViewIface*

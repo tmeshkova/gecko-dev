@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -104,7 +104,7 @@ public:
   // Must be called from same thread as StartChildThread, and before Stop()
   virtual bool StopChildThread();
 
-  virtual EmbedLiteView* CreateView(uint32_t aParent = 0);
+  virtual EmbedLiteView* CreateView(uint32_t aParent = 0, bool aIsPrivateWindow = false);
   virtual void DestroyView(EmbedLiteView* aView);
 
   virtual void SetIsAccelerated(bool aIsAccelerated);
@@ -132,8 +132,35 @@ public:
   // Only one EmbedHelper object allowed
   static EmbedLiteApp* GetInstance();
 
+  // TODO: this must be hidden for API users
+  void Shutdown();
+
 private:
   EmbedLiteApp();
+
+  /*
+   * States of EmbedLiteApp's lifecycle
+   */
+  enum State {
+    // This is the initial and final state of EmbedLiteApp's lifecycle
+    // Allowed next states: STARTING
+    STOPPED,
+
+    // The app is in a start-up process. No messages can be sent to the
+    // EmbedLiteApp instance from a toolkit in this state except Stop().
+    // Allowed next states: INITIALIZED, DESTROYING
+    STARTING,
+
+    // The app is ready to operate with views.
+    // Allowed next states: DESTROYING
+    INITIALIZED,
+
+    // The app is in shutdown process.
+    // Allowed next states: STOPPED
+    DESTROYING
+  };
+
+  void SetState(State aState);
 
   static void StartChild(EmbedLiteApp* aApp);
   void Initialized();
@@ -162,7 +189,7 @@ private:
   EmbedType mEmbedType;
   std::map<uint32_t, EmbedLiteView*> mViews;
   uint32_t mViewCreateID;
-  bool mDestroying;
+  State mState;
   RenderType mRenderType;
   char* mProfilePath;
   bool mIsAsyncLoop;

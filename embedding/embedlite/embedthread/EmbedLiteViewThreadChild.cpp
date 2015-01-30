@@ -19,6 +19,7 @@
 #include "nsIDocShell.h"
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
+#include "nsIWebBrowserChrome.h"
 
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
@@ -33,6 +34,7 @@
 
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
+#include "EmbedLiteContentController.h"
 
 using namespace mozilla::layers;
 using namespace mozilla::widget;
@@ -75,7 +77,7 @@ static void ReadAZPCPrefs()
   Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
 }
 
-EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const uint32_t& parentId)
+EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const uint32_t& parentId, const bool& isPrivateWindow)
   : mId(aId)
   , mOuterId(0)
   , mViewSize(0, 0)
@@ -84,7 +86,6 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
   , mIMEComposing(false)
 {
   LOGT("id:%u, parentID:%u", aId, parentId);
-  AddRef();
   // Init default prefs
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {
@@ -92,7 +93,7 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
     ReadAZPCPrefs();
   }
   mInitWindowTask = NewRunnableMethod(this,
-                                      &EmbedLiteViewThreadChild::InitGeckoWindow, parentId);
+                                      &EmbedLiteViewThreadChild::InitGeckoWindow, parentId, isPrivateWindow);
   MessageLoop::current()->PostTask(FROM_HERE, mInitWindowTask);
 }
 
@@ -141,7 +142,7 @@ bool EmbedLiteViewThreadChild::RecvDestroy()
 }
 
 void
-EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
+EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow)
 {
   if (mInitWindowTask) {
     mInitWindowTask->Cancel();
@@ -187,6 +188,10 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
   mChrome = new WebBrowserChrome(this);
   uint32_t aChromeFlags = 0; // View()->GetWindowFlags();
 
+  if (isPrivateWindow || Preferences::GetBool("browser.privatebrowsing.autostart")) {
+    aChromeFlags = nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW|nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
+  }
+
   mWebBrowser->SetContainerWindow(mChrome);
 
   mChrome->SetChromeFlags(aChromeFlags);
@@ -226,7 +231,20 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
   }
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebBrowser);
+
+  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
+    nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
+    MOZ_ASSERT(docShell);
+
+    docShell->SetAffectPrivateSessionLifetime(true);
+  }
+
+  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW) {
+    nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(mWebNavigation);
+    MOZ_ASSERT(loadContext);
+
+    loadContext->SetPrivateBrowsing(true);
+  }
 
   mChrome->SetWebBrowser(mWebBrowser);
 
@@ -541,13 +559,13 @@ EmbedLiteViewThreadChild::RecvSetGLViewSize(const gfxSize& aSize)
 }
 
 void
-EmbedLiteViewThreadChild::AddGeckoContentListener(mozilla::layers::GeckoContentController* listener)
+EmbedLiteViewThreadChild::AddGeckoContentListener(EmbedLiteContentController* listener)
 {
   mControllerListeners.AppendElement(listener);
 }
 
 void
-EmbedLiteViewThreadChild::RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener)
+EmbedLiteViewThreadChild::RemoveGeckoContentListener(EmbedLiteContentController* listener)
 {
   mControllerListeners.RemoveElement(listener);
 }
@@ -696,10 +714,10 @@ EmbedLiteViewThreadChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
 }
 
 bool
-EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint)
+EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint, const uint64_t& aInputBlockId)
 {
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleLongTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0));
+    mControllerListeners[i]->HandleLongTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0), aInputBlockId);
   }
 
   if (sPostAZPCAsJson.longTap) {
@@ -855,7 +873,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
 }
 
 bool
-EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData)
+EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
   WidgetTouchEvent localEvent;
   if (mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
@@ -864,7 +882,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
     if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedTouch(aGuid, nsIPresShell::gPreventMouseEvents);
+      SendContentReceivedTouch(aGuid, aInputBlockId, nsIPresShell::gPreventMouseEvents);
     }
     static bool sDispatchMouseEvents;
     static bool sDispatchMouseEventsCached = false;
@@ -889,14 +907,17 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
 }
 
 bool
-EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData)
+EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
-  return RecvInputDataTouchEvent(aGuid, aData);
+  return RecvInputDataTouchEvent(aGuid, aData, aInputBlockId);
 }
 
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward)
 {
+//  if (!aIsSameDocument) {
+//    mHelper->mContentDocumentIsDisplayed = false;
+//  }
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
 
