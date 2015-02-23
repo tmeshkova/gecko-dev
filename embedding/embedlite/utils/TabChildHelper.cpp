@@ -187,7 +187,7 @@ TabChildHelper::InitTabChildGlobal()
   nsISupports* scopeSupports = NS_ISUPPORTS_CAST(nsIDOMEventTarget*, scope);
 
   // Not sure if
-  NS_ENSURE_TRUE(InitTabChildGlobalInternal(scopeSupports, nsCString("intProcessEmbedChildGlobal")), false);
+  NS_ENSURE_TRUE(InitChildGlobalInternal(scopeSupports, nsCString("intProcessEmbedChildGlobal")), false);
 
   scope->Init();
 
@@ -313,7 +313,7 @@ TabChildHelper::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
     return false;
   }
 
-  LoadFrameScriptInternal(aURL, aRunInGlobalScope);
+  LoadScriptInternal(aURL, aRunInGlobalScope);
   return true;
 }
 

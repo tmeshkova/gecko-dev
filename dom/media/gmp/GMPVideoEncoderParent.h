@@ -11,6 +11,7 @@
 #include "mozilla/gmp/PGMPVideoEncoderParent.h"
 #include "GMPMessageUtils.h"
 #include "GMPSharedMemManager.h"
+#include "GMPUtils.h"
 #include "GMPVideoHost.h"
 #include "GMPVideoEncoderProxy.h"
 

@@ -119,14 +119,13 @@ NS_IMETHODIMP
 EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
                               nsNativeWidget   aNativeParent,
                               const nsIntRect&  aRect,
-                              nsDeviceContext* aContext,
                               nsWidgetInitData* aInitData)
 {
   LOGT();
-  NS_ABORT_IF_FALSE(!aNativeParent, "got a non-Puppet native parent");
+  MOZ_ASSERT(!aNativeParent, "got a non-Puppet native parent");
 
   mParent = aParent;
-  BaseCreate(aParent, aRect, aContext, aInitData);
+  BaseCreate(aParent, aRect, aInitData);
 
   mBounds = aRect;
   mEnabled = true;
@@ -149,7 +148,6 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
 
 already_AddRefed<nsIWidget>
 EmbedLitePuppetWidget::CreateChild(const nsIntRect&  aRect,
-                                   nsDeviceContext*  aContext,
                                    nsWidgetInitData* aInitData,
                                    bool              aForceUseIWidgetParent)
 {
@@ -158,7 +156,7 @@ EmbedLitePuppetWidget::CreateChild(const nsIntRect&  aRect,
   nsCOMPtr<nsIWidget> widget = new EmbedLitePuppetWidget(mEmbed, mId);
   return ((widget &&
            NS_SUCCEEDED(widget->Create(isPopup ? nullptr: this, nullptr, aRect,
-                                       aContext, aInitData))) ?
+                                       aInitData))) ?
           widget.forget() : nullptr);
 }
 
@@ -284,7 +282,7 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
 NS_IMETHODIMP
 EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 {
-  NS_ABORT_IF_FALSE(!mChild || mChild->mWindowType == eWindowType_popup,
+  MOZ_ASSERT(!mChild || mChild->mWindowType == eWindowType_popup,
                     "Unexpected event dispatch!");
 
   aStatus = nsEventStatus_eIgnore;
@@ -292,7 +290,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
 
-  NS_ABORT_IF_FALSE(listener, "No listener!");
+  MOZ_ASSERT(listener, "No listener!");
 
   if (event->mClass == eKeyboardEventClass) {
     RemoveIMEComposition();

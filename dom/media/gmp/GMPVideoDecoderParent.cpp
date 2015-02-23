@@ -8,6 +8,7 @@
 #include "mozilla/unused.h"
 #include "nsAutoRef.h"
 #include "nsThreadUtils.h"
+#include "GMPUtils.h"
 #include "GMPVideoEncodedFrameImpl.h"
 #include "GMPVideoi420FrameImpl.h"
 #include "GMPParent.h"

@@ -563,8 +563,7 @@ gfxPlatform::Init()
     // Request the imgITools service, implicitly initializing ImageLib.
     nsCOMPtr<imgITools> imgTools = do_GetService("@mozilla.org/image/tools;1");
     if (!imgTools) {
-//      return;
-//      NS_RUNTIMEABORT("Could not initialize ImageLib");
+      NS_RUNTIMEABORT("Could not initialize ImageLib");
     }
 
     RegisterStrongMemoryReporter(new GfxMemoryImageReporter());

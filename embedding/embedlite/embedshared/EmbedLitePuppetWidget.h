@@ -26,8 +26,7 @@
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLitePuppetWidget : public nsBaseWidget,
-                              public nsSupportsWeakReference
+class EmbedLitePuppetWidget : public nsBaseWidget
 {
   typedef nsBaseWidget Base;
 
@@ -42,12 +41,10 @@ public:
   NS_IMETHOD Create(nsIWidget*        aParent,
                     nsNativeWidget    aNativeParent,
                     const nsIntRect&  aRect,
-                    nsDeviceContext*  aContext,
                     nsWidgetInitData* aInitData = nullptr);
 
   virtual already_AddRefed<nsIWidget>
   CreateChild(const nsIntRect&  aRect,
-              nsDeviceContext*  aContext,
               nsWidgetInitData* aInitData = nullptr,
               bool             aForceUseIWidgetParent = false);
 
@@ -110,9 +107,9 @@ public:
     return NS_ERROR_UNEXPECTED;
   }
   // PuppetWidgets are always at <0, 0>.
-  virtual nsIntPoint WidgetToScreenOffset() {
+  virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() {
     LOGF();
-    return nsIntPoint(0, 0);
+    return LayoutDeviceIntPoint(0,0);
   }
   NS_IMETHOD DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus);
   NS_IMETHOD CaptureRollupEvents(nsIRollupListener* aListener,

@@ -100,7 +100,9 @@
 #endif
 
 #ifdef MOZ_FFMPEG
+#ifdef MOZ_FMP4
 #include "FFmpegRuntimeLinker.h"
+#endif
 #endif
 
 #include "CubebUtils.h"
@@ -378,7 +380,9 @@ nsLayoutStatics::Shutdown()
 #endif
 
 #ifdef MOZ_FFMPEG
+#ifdef MOZ_FMP4
   FFmpegRuntimeLinker::Unlink();
+#endif
 #endif
 
   CubebUtils::ShutdownLibrary();

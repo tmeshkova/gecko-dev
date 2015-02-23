@@ -218,3 +218,11 @@ EmbedLiteXulAppInfo::GetAccessibilityEnabled(bool* aResult)
 #endif
   return NS_OK;
 }
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetAccessibilityIsUIA(bool* aResult)
+{
+  *aResult = false;
+
+  return NS_OK;
+}

@@ -66,10 +66,12 @@ public:
   virtual void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
                                    const uint64_t& aTransactionId,
                                    const TargetConfig& aTargetConfig,
+                                   const InfallibleTArray<PluginWindowData>& aPlugins,
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
                                    uint32_t aPaintSequenceNumber,
                                    bool aIsRepeatTransaction) MOZ_OVERRIDE;
+
   virtual void ForceComposite(LayerTransactionParent* aLayerTree) MOZ_OVERRIDE;
   virtual bool SetTestSampleTime(LayerTransactionParent* aLayerTree,
                                  const TimeStamp& aTime) MOZ_OVERRIDE;

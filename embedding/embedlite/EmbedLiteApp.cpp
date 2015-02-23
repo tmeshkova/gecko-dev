@@ -196,7 +196,7 @@ EmbedLiteApp::Start(EmbedType aEmbedType)
     mSubThread->Stop();
     mSubThread = NULL;
   } else if (mListener) {
-    NS_ABORT_IF_FALSE(mListener->StopChildThread(),
+    MOZ_ASSERT(mListener->StopChildThread(),
                       "StopChildThread must be implemented when ExecuteChildThread defined");
   }
   if (mUILoop) {
@@ -321,7 +321,7 @@ EmbedLiteApp::Shutdown()
         mSubThread->Stop();
         mSubThread = NULL;
       } else if (mListener) {
-        NS_ABORT_IF_FALSE(mListener->StopChildThread(),
+        MOZ_ASSERT(mListener->StopChildThread(),
             "StopChildThread must be implemented when ExecuteChildThread defined");
       }
     } else if (mEmbedType == EMBED_PROCESS) {

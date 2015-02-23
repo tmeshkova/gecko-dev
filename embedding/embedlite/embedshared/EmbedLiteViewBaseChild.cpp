@@ -163,8 +163,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   mWidget->Create(
     nullptr, 0,              // no parents
     nsIntRect(nsIntPoint(0, 0), nsIntSize(mGLViewSize.width, mGLViewSize.height)),
-    nullptr,                 // HandleWidgetEvent
-    &widgetInit              // nsDeviceContext
+    &widgetInit              // HandleWidgetEvent
   );
 
   if (!mWidget) {
@@ -762,7 +761,7 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
     nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
     WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
     InitEvent(event, nullptr);
-    mHelper->DispatchWidgetEvent(event);
+    APZCCallbackHelper::DispatchWidgetEvent(event);
     mIMEComposing = false;
   }
 
@@ -838,7 +837,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   if (StartComposite) {
     WidgetCompositionEvent event(true, NS_COMPOSITION_START, widget);
     InitEvent(event, nullptr);
-    mHelper->DispatchWidgetEvent(event);
+    APZCCallbackHelper::DispatchWidgetEvent(event);
   }
 
   if (StartComposite || ChangeComposite || EndComposite) {
@@ -858,7 +857,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
         event.mRanges = new TextRangeArray();
         event.mRanges->AppendElement(range);
       }
-      mHelper->DispatchWidgetEvent(event);
+      APZCCallbackHelper::DispatchWidgetEvent(event);
     }
 
     nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
@@ -878,7 +877,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   if (EndComposite) {
     WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
     InitEvent(event, nullptr);
-    mHelper->DispatchWidgetEvent(event);
+    APZCCallbackHelper::DispatchWidgetEvent(event);
   }
 
   return true;
@@ -957,7 +956,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid
   WidgetTouchEvent localEvent;
   if (mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
     nsEventStatus status =
-      mHelper->DispatchWidgetEvent(localEvent);
+      APZCCallbackHelper::DispatchWidgetEvent(localEvent);
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
     if (innerWindow && innerWindow->HasTouchEventListeners()) {
@@ -973,7 +972,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid
     }
     if (status != nsEventStatus_eConsumeNoDefault && mDispatchSynthMouseEvents && sDispatchMouseEvents) {
       // Touch event not handled
-      status = mHelper->DispatchSynthesizedMouseEvent(localEvent.message, localEvent.time, localEvent.refPoint, localEvent.widget);
+      status = APZCCallbackHelper::DispatchSynthesizedMouseEvent(localEvent.message, localEvent.time, localEvent.refPoint, localEvent.widget);
       if (status != nsEventStatus_eConsumeNoDefault && status != nsEventStatus_eConsumeDoDefault) {
         mDispatchSynthMouseEvents = false;
       }
