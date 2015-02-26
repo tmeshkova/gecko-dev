@@ -2268,8 +2268,8 @@ TemporaryTypeSet::propertyNeedsBarrier(CompilerConstraintList *constraints, jsid
     return false;
 }
 
-static inline bool
-ClassCanHaveExtraProperties(const Class *clasp)
+bool
+js::ClassCanHaveExtraProperties(const Class *clasp)
 {
     return clasp->resolve
         || clasp->ops.lookupProperty
@@ -2765,7 +2765,7 @@ ObjectGroup::anyNewScript()
 }
 
 void
-ObjectGroup::detachNewScript(bool writeBarrier)
+ObjectGroup::detachNewScript(bool writeBarrier, ObjectGroup *replacement)
 {
     // Clear the TypeNewScript from this ObjectGroup and, if it has been
     // analyzed, remove it from the newObjectGroups table so that it will not be
@@ -2775,8 +2775,16 @@ ObjectGroup::detachNewScript(bool writeBarrier)
     MOZ_ASSERT(newScript);
 
     if (newScript->analyzed()) {
-        newScript->function()->compartment()->objectGroups.removeDefaultNewGroup(nullptr, proto(),
-                                                                                 newScript->function());
+        ObjectGroupCompartment &objectGroups = newScript->function()->compartment()->objectGroups;
+        if (replacement) {
+            MOZ_ASSERT(replacement->newScript()->function() == newScript->function());
+            objectGroups.replaceDefaultNewGroup(nullptr, proto(), newScript->function(),
+                                                replacement);
+        } else {
+            objectGroups.removeDefaultNewGroup(nullptr, proto(), newScript->function());
+        }
+    } else {
+        MOZ_ASSERT(!replacement);
     }
 
     if (this->newScript())
@@ -2800,13 +2808,13 @@ ObjectGroup::maybeClearNewScriptOnOOM()
     addFlags(OBJECT_FLAG_NEW_SCRIPT_CLEARED);
 
     // This method is called during GC sweeping, so don't trigger pre barriers.
-    detachNewScript(/* writeBarrier = */ false);
+    detachNewScript(/* writeBarrier = */ false, nullptr);
 
     js_delete(newScript);
 }
 
 void
-ObjectGroup::clearNewScript(ExclusiveContext *cx)
+ObjectGroup::clearNewScript(ExclusiveContext *cx, ObjectGroup *replacement /* = nullptr*/)
 {
     TypeNewScript *newScript = anyNewScript();
     if (!newScript)
@@ -2814,15 +2822,17 @@ ObjectGroup::clearNewScript(ExclusiveContext *cx)
 
     AutoEnterAnalysis enter(cx);
 
-    // Invalidate any Ion code constructing objects of this type.
-    setFlags(cx, OBJECT_FLAG_NEW_SCRIPT_CLEARED);
+    if (!replacement) {
+        // Invalidate any Ion code constructing objects of this type.
+        setFlags(cx, OBJECT_FLAG_NEW_SCRIPT_CLEARED);
 
-    // Mark the constructing function as having its 'new' script cleared, so we
-    // will not try to construct another one later.
-    if (!newScript->function()->setNewScriptCleared(cx))
-        cx->recoverFromOutOfMemory();
+        // Mark the constructing function as having its 'new' script cleared, so we
+        // will not try to construct another one later.
+        if (!newScript->function()->setNewScriptCleared(cx))
+            cx->recoverFromOutOfMemory();
+    }
 
-    detachNewScript(/* writeBarrier = */ true);
+    detachNewScript(/* writeBarrier = */ true, replacement);
 
     if (cx->isJSContext()) {
         bool found = newScript->rollbackPartiallyInitializedObjects(cx->asJSContext(), this);
@@ -3073,11 +3083,20 @@ js::TypeMonitorCallSlow(JSContext *cx, JSObject *callee, const CallArgs &args, b
 static inline bool
 IsAboutToBeFinalized(TypeSet::ObjectKey **keyp)
 {
-    // Mask out the low bit indicating whether this is a group or JS object.
-    uintptr_t flagBit = uintptr_t(*keyp) & 1;
-    gc::Cell *tmp = reinterpret_cast<gc::Cell *>(uintptr_t(*keyp) & ~1);
-    bool isAboutToBeFinalized = IsCellAboutToBeFinalized(&tmp);
-    *keyp = reinterpret_cast<TypeSet::ObjectKey *>(uintptr_t(tmp) | flagBit);
+    TypeSet::ObjectKey *key = *keyp;
+    bool isAboutToBeFinalized;
+    if (key->isGroup()) {
+        ObjectGroup *group = key->groupNoBarrier();
+        isAboutToBeFinalized = IsObjectGroupAboutToBeFinalized(&group);
+        if (!isAboutToBeFinalized)
+            *keyp = TypeSet::ObjectKey::get(group);
+    } else {
+        MOZ_ASSERT(key->isSingleton());
+        JSObject *singleton = key->singletonNoBarrier();
+        isAboutToBeFinalized = IsObjectAboutToBeFinalized(&singleton);
+        if (!isAboutToBeFinalized)
+            *keyp = TypeSet::ObjectKey::get(singleton);
+    }
     return isAboutToBeFinalized;
 }
 
@@ -3257,6 +3276,33 @@ TypeNewScript::make(JSContext *cx, ObjectGroup *group, JSFunction *fun)
     group->setNewScript(newScript.forget());
 
     gc::TraceTypeNewScript(group);
+}
+
+// Make a TypeNewScript with the same initializer list as |newScript| but with
+// a new template object.
+/* static */ TypeNewScript *
+TypeNewScript::makeNativeVersion(JSContext *cx, TypeNewScript *newScript,
+                                 PlainObject *templateObject)
+{
+    MOZ_ASSERT(cx->zone()->types.activeAnalysis);
+
+    ScopedJSDeletePtr<TypeNewScript> nativeNewScript(cx->new_<TypeNewScript>());
+    if (!nativeNewScript)
+        return nullptr;
+
+    nativeNewScript->function_ = newScript->function();
+    nativeNewScript->templateObject_ = templateObject;
+
+    Initializer *cursor = newScript->initializerList;
+    while (cursor->kind != Initializer::DONE) { cursor++; }
+    size_t initializerLength = cursor - newScript->initializerList + 1;
+
+    nativeNewScript->initializerList = cx->zone()->pod_calloc<Initializer>(initializerLength);
+    if (!nativeNewScript->initializerList)
+        return nullptr;
+    PodCopy(nativeNewScript->initializerList, newScript->initializerList, initializerLength);
+
+    return nativeNewScript.forget();
 }
 
 size_t

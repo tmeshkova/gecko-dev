@@ -7,6 +7,7 @@
 #include "vm/SavedStacks.h"
 
 #include "mozilla/Attributes.h"
+#include "mozilla/DebugOnly.h"
 
 #include <math.h>
 
@@ -30,6 +31,7 @@
 #include "vm/NativeObject-inl.h"
 
 using mozilla::AddToHash;
+using mozilla::DebugOnly;
 using mozilla::HashString;
 
 namespace js {
@@ -76,7 +78,7 @@ class MOZ_STACK_CLASS SavedFrame::AutoLookupVector : public JS::CustomAutoRooter
 
     typedef Vector<Lookup, 20> LookupVector;
     inline LookupVector *operator->() { return &lookups; }
-    inline Lookup &operator[](size_t i) { return lookups[i]; }
+    inline HandleLookup operator[](size_t i) { return HandleLookup(lookups[i]); }
 
   private:
     LookupVector lookups;
@@ -341,7 +343,7 @@ SavedFrame::checkThis(JSContext *cx, CallArgs &args, const char *fnName,
     const Value &thisValue = args.thisv();
 
     if (!thisValue.isObject()) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_NOT_NONNULL_OBJECT);
+        JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_NOT_NONNULL_OBJECT, InformalValueTypeName(thisValue));
         return false;
     }
 
@@ -626,7 +628,7 @@ SavedStacks::insertFrames(JSContext *cx, FrameIter &iter, MutableHandleSavedFram
     // actual SavedFrame instances.
     RootedSavedFrame parentFrame(cx, nullptr);
     for (size_t i = stackChain->length(); i != 0; i--) {
-        SavedFrame::AutoLookupRooter lookup(cx, &stackChain[i-1]);
+        SavedFrame::HandleLookup lookup = stackChain[i-1];
         lookup->parent = parentFrame;
         parentFrame.set(getOrCreateSavedFrame(cx, lookup));
         if (!parentFrame)
@@ -640,7 +642,7 @@ SavedStacks::insertFrames(JSContext *cx, FrameIter &iter, MutableHandleSavedFram
 SavedFrame *
 SavedStacks::getOrCreateSavedFrame(JSContext *cx, SavedFrame::HandleLookup lookup)
 {
-    const SavedFrame::Lookup &lookupInstance = *lookup;
+    const SavedFrame::Lookup &lookupInstance = lookup.get();
     DependentAddPtr<SavedFrame::Set> p(cx, frames, lookupInstance);
     if (p)
         return *p;

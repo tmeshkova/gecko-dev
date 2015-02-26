@@ -1416,11 +1416,10 @@ bool AudioCodingModuleImpl::REDStatus() const {
 }
 
 // Configure RED status i.e on/off.
-int AudioCodingModuleImpl::SetREDStatus(
-#ifdef WEBRTC_CODEC_RED
-    bool enable_red) {
+int AudioCodingModuleImpl::SetREDStatus(bool enable_red) {
   CriticalSectionScoped lock(acm_crit_sect_);
 
+#ifdef WEBRTC_CODEC_RED
   if (enable_red == true && codec_fec_enabled_ == true) {
     WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceAudioCoding, id_,
                  "Codec internal FEC and RED cannot be co-enabled.");
@@ -1439,7 +1438,6 @@ int AudioCodingModuleImpl::SetREDStatus(
   is_first_red_ = true;  // Make sure we restart RED.
   return 0;
 #else
-    bool /* enable_red */) {
   red_enabled_ = false;
   WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceAudioCoding, id_,
                "  WEBRTC_CODEC_RED is undefined => red_enabled_ = %d",
@@ -2072,7 +2070,7 @@ bool AudioCodingImpl::RegisterSendCodec(int encoder_type,
 
 const AudioEncoder* AudioCodingImpl::GetSenderInfo() const {
   FATAL() << "Not implemented yet.";
-  return reinterpret_cast<const AudioEncoder*>(NULL);
+  return NULL;
 }
 
 const CodecInst* AudioCodingImpl::GetSenderCodecInst() {
@@ -2091,7 +2089,7 @@ int AudioCodingImpl::Add10MsAudio(const AudioFrame& audio_frame) {
 
 const ReceiverInfo* AudioCodingImpl::GetReceiverInfo() const {
   FATAL() << "Not implemented yet.";
-  return reinterpret_cast<const ReceiverInfo*>(NULL);
+  return NULL;
 }
 
 bool AudioCodingImpl::RegisterReceiveCodec(AudioDecoder* receive_codec) {
