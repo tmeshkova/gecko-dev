@@ -675,7 +675,7 @@ secure_getenv(const char *name)
 		return (NULL);
 }
 #  else
-static char *
+char *
 secure_getenv(const char *name)
 {
 
