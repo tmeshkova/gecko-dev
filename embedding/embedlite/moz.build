@@ -89,6 +89,7 @@ LOCAL_INCLUDES += [
     '/gfx/layers',
     '/gfx/layers/apz/util',
     '/js/xpconnect/src',
+    '/layout/base',
     '/widget',
     '/xpcom/base',
     '/xpcom/build',

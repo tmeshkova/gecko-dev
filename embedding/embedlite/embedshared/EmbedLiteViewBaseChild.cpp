@@ -31,6 +31,7 @@
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
 #include "gfxPrefs.h"
+#include "TouchManager.h"
 
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
@@ -960,7 +961,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
     if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId, nsIPresShell::gPreventMouseEvents);
+      SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId, TouchManager::gPreventMouseEvents);
     }
     mPendingTouchPreventedBlockId = aInputBlockId;
     static bool sDispatchMouseEvents;
