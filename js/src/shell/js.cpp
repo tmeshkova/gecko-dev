@@ -3968,7 +3968,7 @@ WrapWithProto(JSContext *cx, unsigned argc, jsval *vp)
 
     WrapperOptions options(cx);
     options.setProto(proto.toObjectOrNull());
-    JSObject *wrapped = Wrapper::New(cx, &obj.toObject(), &obj.toObject().global(),
+    JSObject *wrapped = Wrapper::New(cx, &obj.toObject(),
                                      &Wrapper::singletonWithPrototype, options);
     if (!wrapped)
         return false;
@@ -5370,7 +5370,7 @@ dom_constructor(JSContext* cx, unsigned argc, JS::Value *vp)
     }
 
     RootedObject proto(cx, &protov.toObject());
-    RootedObject domObj(cx, JS_NewObjectWithGivenProto(cx, &dom_class, proto, JS::NullPtr()));
+    RootedObject domObj(cx, JS_NewObjectWithGivenProto(cx, &dom_class, proto));
     if (!domObj)
         return false;
 

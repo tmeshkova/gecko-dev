@@ -219,6 +219,7 @@
 #include "gc/Memory.h"
 #include "jit/BaselineJIT.h"
 #include "jit/IonCode.h"
+#include "jit/JitcodeMap.h"
 #include "js/SliceBudget.h"
 #include "proxy/DeadObjectProxy.h"
 #include "vm/Debugger.h"
@@ -1887,7 +1888,10 @@ ArenaLists::allocateFromArenaInner(JS::Zone *zone, ArenaHeader *aheader, AllocKi
 bool
 GCRuntime::shouldCompact()
 {
-    return invocationKind == GC_SHRINK && isCompactingGCEnabled();
+    // Compact on shrinking GC if enabled, but skip compacting in incremental
+    // GCs if we are currently animating.
+    return invocationKind == GC_SHRINK && isCompactingGCEnabled() &&
+        (!isIncremental || rt->lastAnimationTime + PRMJ_USEC_PER_SEC < PRMJ_Now());
 }
 
 void
@@ -5178,6 +5182,7 @@ GCRuntime::beginSweepPhase(bool lastGC)
 #endif
 
     DropStringWrappers(rt);
+
     findZoneGroups();
     endMarkingZoneGroup();
     beginSweepingZoneGroup();
@@ -5517,10 +5522,6 @@ GCRuntime::compactPhase(JS::gcreason::Reason reason)
     }
 #endif
 
-    // Ensure execess chunks are returns to the system and free arenas
-    // decommitted.
-    shrinkBuffers();
-
 #ifdef DEBUG
     CheckHashTablesAfterMovingGC(rt);
     for (GCZonesIter zone(rt); !zone.done(); zone.next()) {
@@ -5566,11 +5567,22 @@ GCRuntime::finishCollection(JS::gcreason::Reason reason)
         MOZ_ASSERT(!zone->wasGCStarted());
     }
 
+    if (invocationKind == GC_SHRINK) {
+        // Ensure excess chunks are returns to the system and free arenas
+        // decommitted.
+        shrinkBuffers();
+    }
+
     lastGCTime = currentTime;
 
     // If this is an OOM GC reason, wait on the background sweeping thread
-    // before returning to ensure that we free as much as possible.
-    if (reason == JS::gcreason::LAST_DITCH || reason == JS::gcreason::MEM_PRESSURE) {
+    // before returning to ensure that we free as much as possible. If this is
+    // a zeal-triggered GC, we want to ensure that the mutator can continue
+    // allocating on the same pages to reduce fragmentation.
+    if (reason == JS::gcreason::LAST_DITCH ||
+        reason == JS::gcreason::MEM_PRESSURE ||
+        reason == JS::gcreason::DEBUG_GC)
+    {
         gcstats::AutoPhase ap(stats, gcstats::PHASE_WAIT_BACKGROUND_THREAD);
         rt->gc.waitBackgroundSweepOrAllocEnd();
     }

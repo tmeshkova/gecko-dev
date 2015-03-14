@@ -1081,6 +1081,7 @@ pref("javascript.options.mem.gc_compacting", true);
 pref("javascript.options.mem.log", false);
 pref("javascript.options.mem.notify", false);
 pref("javascript.options.gc_on_memory_pressure", true);
+pref("javascript.options.compact_on_user_inactive", true);
 
 pref("javascript.options.mem.gc_high_frequency_time_limit_ms", 1000);
 pref("javascript.options.mem.gc_high_frequency_low_limit_mb", 100);
@@ -2152,6 +2153,10 @@ pref("layout.css.prefixes.transitions", true);
 pref("layout.css.prefixes.animations", true);
 pref("layout.css.prefixes.box-sizing", true);
 pref("layout.css.prefixes.font-features", true);
+
+// Is the CSS Unprefixing Service enabled? (This service emulates support
+// for certain vendor-prefixed properties & values, for sites on a "fixlist".)
+pref("layout.css.unprefixing-service.enabled", false);
 
 // Is support for the :scope selector enabled?
 pref("layout.css.scope-pseudo.enabled", true);
@@ -4560,8 +4565,8 @@ pref("reader.parse-on-load.enabled", true);
 // is disabled by default.
 pref("reader.parse-on-load.force-enabled", false);
 
-// The default relative font size in reader mode (1-5)
-pref("reader.font_size", 3);
+// The default relative font size in reader mode (1-9)
+pref("reader.font_size", 5);
 
 // The default color scheme in reader mode (light, dark, sepia, auto)
 // auto = color automatically adjusts according to ambient light level

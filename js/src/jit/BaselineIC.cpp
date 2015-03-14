@@ -3220,7 +3220,7 @@ EffectlesslyLookupProperty(JSContext *cx, HandleObject obj, HandlePropertyName n
         if (*shadowsResult == ShadowCheckFailed)
             return false;
 
-        if (*shadowsResult == Shadows) {
+        if (DOMProxyIsShadowing(*shadowsResult)) {
             holder.set(obj);
             return true;
         }
@@ -6519,7 +6519,7 @@ TryAttachNativeGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc,
     }
 
     // If it's a shadowed listbase proxy property, attach stub to call Proxy::get instead.
-    if (isDOMProxy && domProxyShadowsResult == Shadows) {
+    if (isDOMProxy && DOMProxyIsShadowing(domProxyShadowsResult)) {
         MOZ_ASSERT(obj == holder);
 #if JS_HAS_NO_SUCH_METHOD
         if (isCallProp)
@@ -8246,6 +8246,8 @@ DoSetPropFallback(JSContext *cx, BaselineFrame *frame, ICSetProp_Fallback *stub_
                op == JSOP_SETGNAME ||
                op == JSOP_STRICTSETGNAME ||
                op == JSOP_INITPROP ||
+               op == JSOP_INITLOCKEDPROP ||
+               op == JSOP_INITHIDDENPROP ||
                op == JSOP_SETALIASEDVAR ||
                op == JSOP_INITALIASEDLEXICAL);
 
@@ -8279,10 +8281,14 @@ DoSetPropFallback(JSContext *cx, BaselineFrame *frame, ICSetProp_Fallback *stub_
         return false;
     }
 
-    if (op == JSOP_INITPROP) {
-        MOZ_ASSERT(obj->is<PlainObject>());
-        if (!NativeDefineProperty(cx, obj.as<PlainObject>(), id, rhs,
-                                  nullptr, nullptr, JSPROP_ENUMERATE))
+    if (op == JSOP_INITPROP ||
+        op == JSOP_INITLOCKEDPROP ||
+        op == JSOP_INITHIDDENPROP)
+    {
+        MOZ_ASSERT(obj->is<JSFunction>() || obj->is<PlainObject>());
+        unsigned propAttrs = GetInitDataPropAttrs(op);
+        if (!NativeDefineProperty(cx, obj.as<NativeObject>(), id, rhs,
+                                  nullptr, nullptr, propAttrs))
         {
             return false;
         }
@@ -9169,6 +9175,7 @@ GetTemplateObjectForNative(JSContext *cx, HandleScript script, jsbytecode *pc,
 #undef ADD_INT32X4_SIMD_OP_NAME_
 #define ADD_FLOAT32X4_SIMD_OP_NAME_(OP) || native == js::simd_float32x4_##OP
        if (false
+           ARITH_COMMONX4_SIMD_OP(ADD_FLOAT32X4_SIMD_OP_NAME_)
            ARITH_FLOAT32X4_SIMD_OP(ADD_FLOAT32X4_SIMD_OP_NAME_)
            BITWISE_COMMONX4_SIMD_OP(ADD_FLOAT32X4_SIMD_OP_NAME_))
        {

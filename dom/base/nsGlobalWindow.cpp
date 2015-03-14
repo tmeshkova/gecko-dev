@@ -1057,13 +1057,15 @@ const nsChromeOuterWindowProxy
 nsChromeOuterWindowProxy::singleton;
 
 static JSObject*
-NewOuterWindowProxy(JSContext *cx, JS::Handle<JSObject*> parent, bool isChrome)
+NewOuterWindowProxy(JSContext *cx, JS::Handle<JSObject*> global, bool isChrome)
 {
-  JSAutoCompartment ac(cx, parent);
+  JSAutoCompartment ac(cx, global);
+  MOZ_ASSERT(js::GetGlobalForObjectCrossCompartment(global) == global);
+
   js::WrapperOptions options;
   options.setClass(&OuterWindowProxyClass);
   options.setSingleton(true);
-  JSObject *obj = js::Wrapper::New(cx, parent, parent,
+  JSObject *obj = js::Wrapper::New(cx, global,
                                    isChrome ? &nsChromeOuterWindowProxy::singleton
                                             : &nsOuterWindowProxy::singleton,
                                    options);
@@ -9188,7 +9190,7 @@ nsGlobalWindow::ShowModalDialog(const nsAString& aUrl, nsIVariant* aArgument,
                             (aUrl, aArgument, aOptions, aError), aError,
                             nullptr);
 
-  if (!IsShowModalDialogEnabled()) {
+  if (!IsShowModalDialogEnabled() || XRE_GetProcessType() == GeckoProcessType_Content) {
     aError.Throw(NS_ERROR_NOT_AVAILABLE);
     return nullptr;
   }

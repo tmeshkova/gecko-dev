@@ -364,7 +364,9 @@ js::AssertSameCompartment(JSObject *objA, JSObject *objB)
 JS_FRIEND_API(void)
 js::NotifyAnimationActivity(JSObject *obj)
 {
-    obj->compartment()->lastAnimationTime = PRMJ_Now();
+    int64_t timeNow = PRMJ_Now();
+    obj->compartment()->lastAnimationTime = timeNow;
+    obj->runtimeFromMainThread()->lastAnimationTime = timeNow;
 }
 
 JS_FRIEND_API(uint32_t)
@@ -620,10 +622,10 @@ JS_SetAccumulateTelemetryCallback(JSRuntime *rt, JSAccumulateTelemetryDataCallba
 }
 
 JS_FRIEND_API(JSObject *)
-JS_CloneObject(JSContext *cx, HandleObject obj, HandleObject protoArg, HandleObject parent)
+JS_CloneObject(JSContext *cx, HandleObject obj, HandleObject protoArg)
 {
     Rooted<TaggedProto> proto(cx, TaggedProto(protoArg.get()));
-    return CloneObject(cx, obj, proto, parent);
+    return CloneObject(cx, obj, proto);
 }
 
 #ifdef DEBUG
