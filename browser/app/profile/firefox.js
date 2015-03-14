@@ -1577,6 +1577,9 @@ pref("devtools.browserconsole.filter.secwarn", true);
 // Text size in the Web Console. Use 0 for the system default size.
 pref("devtools.webconsole.fontSize", 0);
 
+// Max number of inputs to store in web console history.
+pref("devtools.webconsole.inputHistoryCount", 50);
+
 // Persistent logging: |true| if you want the Web Console to keep all of the
 // logged messages after reloading the page, |false| if you want the output to
 // be cleared each time page navigation happens.
@@ -1715,15 +1718,17 @@ pref("loop.debug.dispatcher", false);
 pref("loop.debug.websocket", false);
 pref("loop.debug.sdk", false);
 #ifdef DEBUG
-pref("loop.CSP", "default-src 'self' about: file: chrome: http://localhost:*; img-src 'self' data: http://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net http://localhost:* ws://localhost:*; media-src blob:");
+pref("loop.CSP", "default-src 'self' about: file: chrome: http://localhost:*; img-src 'self' data: https://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net http://localhost:* ws://localhost:*; media-src blob:");
 #else
-pref("loop.CSP", "default-src 'self' about: file: chrome:; img-src 'self' data: http://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net; media-src blob:");
+pref("loop.CSP", "default-src 'self' about: file: chrome:; img-src 'self' data: https://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net; media-src blob:");
 #endif
 pref("loop.oauth.google.redirect_uri", "urn:ietf:wg:oauth:2.0:oob:auto");
 pref("loop.oauth.google.scope", "https://www.google.com/m8/feeds");
 pref("loop.fxa_oauth.tokendata", "");
 pref("loop.fxa_oauth.profile", "");
 pref("loop.support_url", "https://support.mozilla.org/kb/group-conversations-firefox-hello-webrtc");
+pref("loop.contacts.gravatars.show", false);
+pref("loop.contacts.gravatars.promo", true);
 
 // serverURL to be assigned by services team
 pref("services.push.serverURL", "wss://push.services.mozilla.com/");
