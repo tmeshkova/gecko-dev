@@ -211,7 +211,7 @@ NS_IMETHODIMP
 EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
 {
   AutoSafeJSContext cx;
-  JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr, JS::NullPtr()));
+  JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr));
   if (!obj) {
     return NS_ERROR_FAILURE;
   }

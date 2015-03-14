@@ -55,8 +55,6 @@ TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
 {
   LOGT();
 
-  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
-
   // Init default prefs
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {
