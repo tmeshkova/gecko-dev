@@ -490,7 +490,7 @@ nsSVGUtils::PaintFrameWithEffects(nsIFrame *aFrame,
     return;
 
   const nsIContent* content = aFrame->GetContent();
-  if (content->IsSVG() &&
+  if (content->IsSVGElement() &&
       !static_cast<const nsSVGElement*>(content)->HasValidDimensions()) {
     return;
   }
@@ -706,7 +706,7 @@ nsSVGUtils::HitTestChildren(nsSVGDisplayContainerFrame* aFrame,
   // First we transform aPoint into the coordinate space established by aFrame
   // for its children (e.g. take account of any 'viewBox' attribute):
   gfxPoint point = aPoint;
-  if (aFrame->GetContent()->IsSVG()) { // must check before cast
+  if (aFrame->GetContent()->IsSVGElement()) { // must check before cast
     gfxMatrix m = static_cast<const nsSVGElement*>(aFrame->GetContent())->
                     PrependLocalTransformsTo(gfxMatrix(),
                                              nsSVGElement::eChildToUserSpace);
@@ -727,14 +727,14 @@ nsSVGUtils::HitTestChildren(nsSVGDisplayContainerFrame* aFrame,
     nsISVGChildFrame* SVGFrame = do_QueryFrame(current);
     if (SVGFrame) {
       const nsIContent* content = current->GetContent();
-      if (content->IsSVG() &&
+      if (content->IsSVGElement() &&
           !static_cast<const nsSVGElement*>(content)->HasValidDimensions()) {
         continue;
       }
       // GetFrameForPoint() expects a point in its frame's SVG user space, so
       // we need to convert to that space:
       gfxPoint p = point;
-      if (content->IsSVG()) { // must check before cast
+      if (content->IsSVGElement()) { // must check before cast
         gfxMatrix m = static_cast<const nsSVGElement*>(content)->
                         PrependLocalTransformsTo(gfxMatrix(),
                                                  nsSVGElement::eUserSpaceToParent);
@@ -827,9 +827,10 @@ nsSVGUtils::GetClipRectForFrame(nsIFrame *aFrame,
                                 float aX, float aY, float aWidth, float aHeight)
 {
   const nsStyleDisplay* disp = aFrame->StyleDisplay();
+  const nsStylePosition* pos = aFrame->StylePosition();
 
-  if (!(disp->mClipFlags & NS_STYLE_CLIP_RECT)) {
-    NS_ASSERTION(disp->mClipFlags == NS_STYLE_CLIP_AUTO,
+  if (!(pos->mClipFlags & NS_STYLE_CLIP_RECT)) {
+    NS_ASSERTION(pos->mClipFlags == NS_STYLE_CLIP_AUTO,
                  "We don't know about this type of clip.");
     return gfxRect(aX, aY, aWidth, aHeight);
   }
@@ -838,14 +839,14 @@ nsSVGUtils::GetClipRectForFrame(nsIFrame *aFrame,
       disp->mOverflowY == NS_STYLE_OVERFLOW_HIDDEN) {
 
     nsIntRect clipPxRect =
-      disp->mClip.ToOutsidePixels(aFrame->PresContext()->AppUnitsPerDevPixel());
+      pos->mClip.ToOutsidePixels(aFrame->PresContext()->AppUnitsPerDevPixel());
     gfxRect clipRect =
       gfxRect(clipPxRect.x, clipPxRect.y, clipPxRect.width, clipPxRect.height);
 
-    if (NS_STYLE_CLIP_RIGHT_AUTO & disp->mClipFlags) {
+    if (NS_STYLE_CLIP_RIGHT_AUTO & pos->mClipFlags) {
       clipRect.width = aWidth - clipRect.X();
     }
-    if (NS_STYLE_CLIP_BOTTOM_AUTO & disp->mClipFlags) {
+    if (NS_STYLE_CLIP_BOTTOM_AUTO & pos->mClipFlags) {
       clipRect.height = aHeight - clipRect.Y();
     }
 
@@ -899,7 +900,7 @@ nsSVGUtils::GetBBox(nsIFrame *aFrame, uint32_t aFlags)
       svg = do_QueryFrame(ancestor);
     }
     nsIContent* content = aFrame->GetContent();
-    if (content->IsSVG() &&
+    if (content->IsSVGElement() &&
         !static_cast<const nsSVGElement*>(content)->HasValidDimensions()) {
       return bbox;
     }
@@ -911,7 +912,7 @@ nsSVGUtils::GetBBox(nsIFrame *aFrame, uint32_t aFlags)
       // needs investigation to check that we won't break too much content.
       // NOTE: When changing this to apply to other frame types, make sure to
       // also update nsSVGUtils::FrameSpaceInCSSPxToUserSpaceOffset.
-      MOZ_ASSERT(content->IsSVG(), "bad cast");
+      MOZ_ASSERT(content->IsSVGElement(), "bad cast");
       nsSVGElement *element = static_cast<nsSVGElement*>(content);
       matrix = element->PrependLocalTransformsTo(matrix,
                           nsSVGElement::eChildToUserSpace);
@@ -1038,7 +1039,7 @@ nsSVGUtils::GetRelativeRect(uint16_t aUnits, const nsSVGLength2 *aXYWH,
     return GetBoundingBoxRelativeRect(aXYWH, aBBox);
   }
   nsIContent* content = aFrame->GetContent();
-  if (content->IsSVG()) {
+  if (content->IsSVGElement()) {
     nsSVGElement* svgElement = static_cast<nsSVGElement*>(content);
     return GetRelativeRect(aUnits, aXYWH, aBBox, SVGElementMetrics(svgElement));
   }
@@ -1114,7 +1115,7 @@ nsSVGUtils::GetNonScalingStrokeTransform(nsIFrame *aFrame,
   }
 
   nsIContent *content = aFrame->GetContent();
-  MOZ_ASSERT(content->IsSVG(), "bad cast");
+  MOZ_ASSERT(content->IsSVGElement(), "bad cast");
 
   *aUserToOuterSVG = ThebesMatrix(SVGContentUtils::GetCTM(
                        static_cast<nsSVGElement*>(content), true));
@@ -1162,10 +1163,9 @@ nsSVGUtils::PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
                                           nsSVGPathGeometryFrame* aFrame,
                                           const gfxMatrix& aMatrix)
 {
-  const nsIAtom* tag = aFrame->GetContent()->Tag();
-
-  bool strokeMayHaveCorners = (tag != nsGkAtoms::circle &&
-                               tag != nsGkAtoms::ellipse);
+  bool strokeMayHaveCorners =
+    !aFrame->GetContent()->IsAnyOfSVGElements(nsGkAtoms::circle,
+                                              nsGkAtoms::ellipse);
 
   // For a shape without corners the stroke can only extend half the stroke
   // width from the path in the x/y-axis directions. For shapes with corners
@@ -1175,9 +1175,11 @@ nsSVGUtils::PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
 
   // The stroke can extend even further for paths that can be affected by
   // stroke-miterlimit.
-  bool affectedByMiterlimit = (tag == nsGkAtoms::path ||
-                               tag == nsGkAtoms::polyline ||
-                               tag == nsGkAtoms::polygon);
+  bool affectedByMiterlimit =
+    aFrame->GetContent()->IsAnyOfSVGElements(nsGkAtoms::path,
+                                             nsGkAtoms::polyline,
+                                             nsGkAtoms::polygon);
+
   if (affectedByMiterlimit) {
     const nsStyleSVG* style = aFrame->StyleSVG();
     if (style->mStrokeLinejoin == NS_STYLE_STROKE_LINEJOIN_MITER &&
@@ -1441,7 +1443,7 @@ GetStrokeDashData(nsIFrame* aFrame,
 
     gfxFloat pathScale = 1.0;
 
-    if (content->Tag() == nsGkAtoms::path) {
+    if (content->IsSVGElement(nsGkAtoms::path)) {
       pathScale = static_cast<SVGPathElement*>(content)->
         GetPathLengthScale(SVGPathElement::eForStroking);
       if (pathScale <= 0) {
@@ -1595,7 +1597,7 @@ nsSVGUtils::PaintSVGGlyph(Element* aElement, gfxContext* aContext,
   aContext->GetDrawTarget()->AddUserData(&gfxTextContextPaint::sUserDataKey,
                                          aContextPaint, nullptr);
   gfxMatrix m;
-  if (frame->GetContent()->IsSVG()) {
+  if (frame->GetContent()->IsSVGElement()) {
     // PaintSVG() expects the passed transform to be the transform to its own
     // SVG user space, so we need to account for any 'transform' attribute:
     m = static_cast<nsSVGElement*>(frame->GetContent())->
@@ -1618,7 +1620,7 @@ nsSVGUtils::GetSVGGlyphExtents(Element* aElement,
 
   gfxMatrix transform(aSVGToAppSpace);
   nsIContent* content = frame->GetContent();
-  if (content->IsSVG()) {
+  if (content->IsSVGElement()) {
     transform = static_cast<nsSVGElement*>(content)->
                   PrependLocalTransformsTo(aSVGToAppSpace);
   }

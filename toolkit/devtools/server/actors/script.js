@@ -2845,11 +2845,18 @@ SourceActor.prototype = {
    */
   setBreakpoint: function (originalLine, originalColumn, condition) {
     let originalLocation = new OriginalLocation(this, originalLine, originalColumn);
+
+    let actor = this.breakpointActorMap.getActor(originalLocation);
+    if (!actor) {
+      actor = new BreakpointActor(this.threadActor, originalLocation);
+      this.threadActor.threadLifetimePool.addActor(actor);
+      this.breakpointActorMap.setActor(originalLocation, actor);
+    }
+
+    actor.condition = condition;
+
     return this.threadActor.sources.getGeneratedLocation(originalLocation)
                                    .then(generatedLocation => {
-      let actor = this._getOrCreateBreakpointActor(originalLocation,
-                                                   generatedLocation,
-                                                   condition);
       return generatedLocation.generatedSourceActor
                               .setBreakpointForActor(actor, generatedLocation);
     });
@@ -4665,15 +4672,10 @@ FrameActor.prototype.requestTypes = {
  *
  * @param ThreadActor aThreadActor
  *        The parent thread actor that contains this breakpoint.
- * @param OriginalLocation originalLocation
+ * @param OriginalLocation aOriginalLocation
  *        The original location of the breakpoint.
- * @param GeneratedLocation generatedLocation
- *        The generated location of the breakpoint.
- * @param string aCondition
- *        Optional. A condition which, when false, will cause the breakpoint to
- *        be skipped.
  */
-function BreakpointActor(aThreadActor, aOriginalLocation, aGeneratedLocation, aCondition)
+function BreakpointActor(aThreadActor, aOriginalLocation)
 {
   // The set of Debugger.Script instances that this breakpoint has been set
   // upon.
@@ -4681,8 +4683,7 @@ function BreakpointActor(aThreadActor, aOriginalLocation, aGeneratedLocation, aC
 
   this.threadActor = aThreadActor;
   this.originalLocation = aOriginalLocation;
-  this.generatedLocation = aGeneratedLocation;
-  this.condition = aCondition;
+  this.condition = null;
 }
 
 BreakpointActor.prototype = {
@@ -4722,13 +4723,27 @@ BreakpointActor.prototype = {
    *
    * @param aFrame Debugger.Frame
    *        The frame to evaluate the condition in
+   * @returns Boolean
+   *          Indicates whether to pause or not, returns undefined when
+   *          evaluation was killed
    */
-  isValidCondition: function(aFrame) {
-    if (!this.condition) {
-      return true;
+  checkCondition: function(aFrame) {
+    let completion = aFrame.eval(this.condition);
+    if (completion) {
+      if (completion.throw) {
+        // The evaluation failed and threw an error, currently
+        // we will only return true to break on the error
+        return true;
+      } else if (completion.yield) {
+        dbg_assert(false,
+                   "Shouldn't ever get yield completions from an eval");
+      } else {
+        return completion.return ? true : false;
+      }
+    } else {
+      // The evaluation was killed (possibly by the slow script dialog)
+      return undefined;
     }
-    var res = aFrame.eval(this.condition);
-    return res.return;
   },
 
   /**
@@ -4746,18 +4761,20 @@ BreakpointActor.prototype = {
     let url = originalSourceActor.url;
 
     if (this.threadActor.sources.isBlackBoxed(url)
-        || aFrame.onStep
-        || !this.isValidCondition(aFrame)) {
+        || aFrame.onStep) {
       return undefined;
     }
 
     let reason = {};
+
     if (this.threadActor._hiddenBreakpoints.has(this.actorID)) {
       reason.type = "pauseOnDOMEvents";
-    } else {
+    } else if (!this.condition || this.checkCondition(aFrame)) {
       reason.type = "breakpoint";
       // TODO: add the rest of the breakpoints on that line (bug 676602).
       reason.actors = [ this.actorID ];
+    } else {
+      return undefined;
     }
     return this.threadActor._pauseAndRespond(aFrame, reason);
   },

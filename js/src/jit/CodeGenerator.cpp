@@ -154,6 +154,7 @@ CodeGenerator::CodeGenerator(MIRGenerator *gen, LIRGraph *graph, MacroAssembler 
   : CodeGeneratorSpecific(gen, graph, masm)
   , ionScriptLabels_(gen->alloc())
   , scriptCounts_(nullptr)
+  , simdRefreshTemplatesDuringLink_(0)
 {
 }
 
@@ -753,12 +754,10 @@ CodeGenerator::visitObjectGroupDispatch(LObjectGroupDispatch *lir)
     Register input = ToRegister(lir->input());
     Register temp = ToRegister(lir->temp());
 
-    // Hold the incoming ObjectGroup.
-
+    // Load the incoming ObjectGroup in temp.
     masm.loadPtr(Address(input, JSObject::offsetOfGroup()), temp);
 
     // Compare ObjectGroups.
-
     MacroAssembler::BranchGCPtr lastBranch;
     LBlock *lastBlock = nullptr;
     InlinePropertyTable *propTable = mir->propTable();
@@ -783,7 +782,22 @@ CodeGenerator::visitObjectGroupDispatch(LObjectGroupDispatch *lir)
         MOZ_ASSERT(found);
     }
 
-    // Unknown function: jump to fallback block.
+    // Jump to fallback block if we have an unknown ObjectGroup. If there's no
+    // fallback block, we should have handled all cases.
+
+    if (!mir->hasFallback()) {
+        MOZ_ASSERT(lastBranch.isInitialized());
+#ifdef DEBUG
+        Label ok;
+        lastBranch.relink(&ok);
+        lastBranch.emit(masm);
+        masm.assumeUnreachable("Unexpected ObjectGroup");
+        masm.bind(&ok);
+#endif
+        if (!isNextBlock(lastBlock))
+            masm.jump(lastBlock->label());
+        return;
+    }
 
     LBlock *fallback = skipTrivialBlocks(mir->getFallback())->lir();
     if (!lastBranch.isInitialized()) {
@@ -2527,23 +2541,38 @@ CodeGenerator::visitGuardObjectIdentity(LGuardObjectIdentity *guard)
 }
 
 void
-CodeGenerator::visitGuardShapePolymorphic(LGuardShapePolymorphic *lir)
+CodeGenerator::visitGuardReceiverPolymorphic(LGuardReceiverPolymorphic *lir)
 {
-    const MGuardShapePolymorphic *mir = lir->mir();
+    const MGuardReceiverPolymorphic *mir = lir->mir();
     Register obj = ToRegister(lir->object());
     Register temp = ToRegister(lir->temp());
 
-    MOZ_ASSERT(mir->numShapes() > 1);
+    MOZ_ASSERT(mir->numShapes() + mir->numUnboxedGroups() > 1);
 
     Label done;
-    masm.loadObjShape(obj, temp);
 
-    for (size_t i = 0; i < mir->numShapes(); i++) {
-        Shape *shape = mir->getShape(i);
-        if (i == mir->numShapes() - 1)
-            bailoutCmpPtr(Assembler::NotEqual, temp, ImmGCPtr(shape), lir->snapshot());
-        else
-            masm.branchPtr(Assembler::Equal, temp, ImmGCPtr(shape), &done);
+    if (mir->numShapes()) {
+        masm.loadObjShape(obj, temp);
+
+        for (size_t i = 0; i < mir->numShapes(); i++) {
+            Shape *shape = mir->getShape(i);
+            if (i == mir->numShapes() - 1 && !mir->numUnboxedGroups())
+                bailoutCmpPtr(Assembler::NotEqual, temp, ImmGCPtr(shape), lir->snapshot());
+            else
+                masm.branchPtr(Assembler::Equal, temp, ImmGCPtr(shape), &done);
+        }
+    }
+
+    if (mir->numUnboxedGroups()) {
+        masm.loadObjGroup(obj, temp);
+
+        for (size_t i = 0; i < mir->numUnboxedGroups(); i++) {
+            ObjectGroup *group = mir->getUnboxedGroup(i);
+            if (i == mir->numUnboxedGroups() - 1)
+                bailoutCmpPtr(Assembler::NotEqual, temp, ImmGCPtr(group), lir->snapshot());
+            else
+                masm.branchPtr(Assembler::Equal, temp, ImmGCPtr(group), &done);
+        }
     }
 
     masm.bind(&done);
@@ -2660,9 +2689,7 @@ CodeGenerator::visitPostWriteBarrierO(LPostWriteBarrierO *lir)
     Register temp = ToTempRegisterOrInvalid(lir->temp());
 
     if (lir->object()->isConstant()) {
-#ifdef DEBUG
         MOZ_ASSERT(!IsInsideNursery(&lir->object()->toConstant()->toObject()));
-#endif
     } else {
         masm.branchPtrInNurseryRange(Assembler::Equal, ToRegister(lir->object()), temp,
                                      ool->rejoin());
@@ -4400,6 +4427,7 @@ CodeGenerator::visitSimdBox(LSimdBox *lir)
     InlineTypedObject *templateObject = lir->mir()->templateObject();
     gc::InitialHeap initialHeap = lir->mir()->initialHeap();
     MIRType type = lir->mir()->input()->type();
+    registerSimdTemplate(templateObject);
 
     MOZ_ASSERT(lir->safepoint()->liveRegs().has(in),
                "Save the input register across the oolCallVM");
@@ -4420,6 +4448,29 @@ CodeGenerator::visitSimdBox(LSimdBox *lir)
         break;
       default:
         MOZ_CRASH("Unknown SIMD kind when generating code for SimdBox.");
+    }
+}
+
+void
+CodeGenerator::registerSimdTemplate(InlineTypedObject *templateObject)
+{
+    simdRefreshTemplatesDuringLink_ |=
+        1 << uint32_t(templateObject->typeDescr().as<SimdTypeDescr>().type());
+}
+
+void
+CodeGenerator::captureSimdTemplate(JSContext *cx)
+{
+    JitCompartment *jitCompartment = cx->compartment()->jitCompartment();
+    while (simdRefreshTemplatesDuringLink_) {
+        uint32_t typeIndex = mozilla::CountTrailingZeroes32(simdRefreshTemplatesDuringLink_);
+        simdRefreshTemplatesDuringLink_ ^= 1 << typeIndex;
+        SimdTypeDescr::Type type = SimdTypeDescr::Type(typeIndex);
+
+        // Note: the weak-reference on the template object should not have been
+        // garbage collected. It is either registered by IonBuilder, or verified
+        // before using it in the EagerSimdUnbox phase.
+        jitCompartment->registerSimdTemplateObjectFor(type);
     }
 }
 
@@ -4559,7 +4610,7 @@ CodeGenerator::visitNewSingletonCallObject(LNewSingletonCallObject *lir)
     uint32_t lexicalBegin = script->bindings.aliasedBodyLevelLexicalBegin();
     OutOfLineCode *ool;
     ool = oolCallVM(NewSingletonCallObjectInfo, lir,
-                    (ArgList(), ImmGCPtr(templateObj->lastProperty()),
+                    (ArgList(), ImmGCPtr(templateObj->as<CallObject>().lastProperty()),
                                 Imm32(lexicalBegin)),
                     StoreRegisterTo(objReg));
 
@@ -4727,7 +4778,8 @@ CodeGenerator::visitCreateThisWithProto(LCreateThisWithProto *lir)
 }
 
 typedef JSObject *(*NewGCObjectFn)(JSContext *cx, gc::AllocKind allocKind,
-                                   gc::InitialHeap initialHeap, const js::Class *clasp);
+                                   gc::InitialHeap initialHeap, size_t ndynamic,
+                                   const js::Class *clasp);
 static const VMFunction NewGCObjectInfo =
     FunctionInfo<NewGCObjectFn>(js::jit::NewGCObject);
 
@@ -4738,12 +4790,15 @@ CodeGenerator::visitCreateThisWithTemplate(LCreateThisWithTemplate *lir)
     gc::AllocKind allocKind = templateObject->asTenured().getAllocKind();
     gc::InitialHeap initialHeap = lir->mir()->initialHeap();
     const js::Class *clasp = templateObject->getClass();
+    size_t ndynamic = 0;
+    if (templateObject->isNative())
+        ndynamic = templateObject->as<NativeObject>().numDynamicSlots();
     Register objReg = ToRegister(lir->output());
     Register tempReg = ToRegister(lir->temp());
 
     OutOfLineCode *ool = oolCallVM(NewGCObjectInfo, lir,
                                    (ArgList(), Imm32(allocKind), Imm32(initialHeap),
-                                    ImmPtr(clasp)),
+                                    Imm32(ndynamic), ImmPtr(clasp)),
                                    StoreRegisterTo(objReg));
 
     // Allocate. If the FreeList is empty, call to VM, which may GC.
@@ -7393,6 +7448,12 @@ CodeGenerator::link(JSContext *cx, CompilerConstraintList *constraints)
     RootedScript script(cx, gen->info().script());
     OptimizationLevel optimizationLevel = gen->optimizationInfo().level();
 
+    // Capture the SIMD template objects which are used during the
+    // compilation. This iterates over the template objects, using read-barriers
+    // to let the GC know that the generated code relies on these template
+    // objects.
+    captureSimdTemplate(cx);
+
     // We finished the new IonScript. Invalidate the current active IonScript,
     // so we can replace it with this new (probably higher optimized) version.
     if (script->hasIonScript()) {
@@ -8090,9 +8151,9 @@ CodeGenerator::visitCallSetProperty(LCallSetProperty *ins)
 
 typedef bool (*DeletePropertyFn)(JSContext *, HandleValue, HandlePropertyName, bool *);
 static const VMFunction DeletePropertyStrictInfo =
-    FunctionInfo<DeletePropertyFn>(DeleteProperty<true>);
+    FunctionInfo<DeletePropertyFn>(DeletePropertyJit<true>);
 static const VMFunction DeletePropertyNonStrictInfo =
-    FunctionInfo<DeletePropertyFn>(DeleteProperty<false>);
+    FunctionInfo<DeletePropertyFn>(DeletePropertyJit<false>);
 
 void
 CodeGenerator::visitCallDeleteProperty(LCallDeleteProperty *lir)
@@ -8108,9 +8169,9 @@ CodeGenerator::visitCallDeleteProperty(LCallDeleteProperty *lir)
 
 typedef bool (*DeleteElementFn)(JSContext *, HandleValue, HandleValue, bool *);
 static const VMFunction DeleteElementStrictInfo =
-    FunctionInfo<DeleteElementFn>(DeleteElement<true>);
+    FunctionInfo<DeleteElementFn>(DeleteElementJit<true>);
 static const VMFunction DeleteElementNonStrictInfo =
-    FunctionInfo<DeleteElementFn>(DeleteElement<false>);
+    FunctionInfo<DeleteElementFn>(DeleteElementJit<false>);
 
 void
 CodeGenerator::visitCallDeleteElement(LCallDeleteElement *lir)
@@ -8608,17 +8669,18 @@ CodeGenerator::visitLoadTypedArrayElement(LLoadTypedArrayElement *lir)
     AnyRegister out = ToAnyRegister(lir->output());
 
     Scalar::Type arrayType = lir->mir()->arrayType();
+    Scalar::Type readType  = lir->mir()->readType();
     int width = Scalar::byteSize(arrayType);
 
     Label fail;
     if (lir->index()->isConstant()) {
         Address source(elements, ToInt32(lir->index()) * width + lir->mir()->offsetAdjustment());
-        masm.loadFromTypedArray(arrayType, source, out, temp, &fail,
+        masm.loadFromTypedArray(readType, source, out, temp, &fail,
                                 lir->mir()->canonicalizeDoubles());
     } else {
         BaseIndex source(elements, ToRegister(lir->index()), ScaleFromElemWidth(width),
                          lir->mir()->offsetAdjustment());
-        masm.loadFromTypedArray(arrayType, source, out, temp, &fail,
+        masm.loadFromTypedArray(readType, source, out, temp, &fail,
                                 lir->mir()->canonicalizeDoubles());
     }
 
@@ -8669,15 +8731,18 @@ CodeGenerator::visitLoadTypedArrayElementHole(LLoadTypedArrayElementHole *lir)
 
 template <typename T>
 static inline void
-StoreToTypedArray(MacroAssembler &masm, Scalar::Type arrayType, const LAllocation *value, const T &dest)
+StoreToTypedArray(MacroAssembler &masm, Scalar::Type writeType, const LAllocation *value, const T &dest)
 {
-    if (arrayType == Scalar::Float32 || arrayType == Scalar::Float64) {
-        masm.storeToTypedFloatArray(arrayType, ToFloatRegister(value), dest);
+    if (Scalar::isSimdType(writeType) ||
+        writeType == Scalar::Float32 ||
+        writeType == Scalar::Float64)
+    {
+        masm.storeToTypedFloatArray(writeType, ToFloatRegister(value), dest);
     } else {
         if (value->isConstant())
-            masm.storeToTypedIntArray(arrayType, Imm32(ToInt32(value)), dest);
+            masm.storeToTypedIntArray(writeType, Imm32(ToInt32(value)), dest);
         else
-            masm.storeToTypedIntArray(arrayType, ToRegister(value), dest);
+            masm.storeToTypedIntArray(writeType, ToRegister(value), dest);
     }
 }
 
@@ -8687,16 +8752,16 @@ CodeGenerator::visitStoreTypedArrayElement(LStoreTypedArrayElement *lir)
     Register elements = ToRegister(lir->elements());
     const LAllocation *value = lir->value();
 
-    Scalar::Type arrayType = lir->mir()->arrayType();
-    int width = Scalar::byteSize(arrayType);
+    Scalar::Type writeType = lir->mir()->writeType();
+    int width = Scalar::byteSize(lir->mir()->arrayType());
 
     if (lir->index()->isConstant()) {
         Address dest(elements, ToInt32(lir->index()) * width + lir->mir()->offsetAdjustment());
-        StoreToTypedArray(masm, arrayType, value, dest);
+        StoreToTypedArray(masm, writeType, value, dest);
     } else {
         BaseIndex dest(elements, ToRegister(lir->index()), ScaleFromElemWidth(width),
                        lir->mir()->offsetAdjustment());
-        StoreToTypedArray(masm, arrayType, value, dest);
+        StoreToTypedArray(masm, writeType, value, dest);
     }
 }
 

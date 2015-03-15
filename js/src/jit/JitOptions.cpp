@@ -43,14 +43,10 @@ T overrideDefault(const char *param, T dflt) {
     if (!str)
         return dflt;
     if (IsBool<T>::value) {
-        if (strcmp(str, "true") == 0 ||
-            strcmp(str, "yes")) {
+        if (strcmp(str, "true") == 0 || strcmp(str, "yes") == 0)
             return true;
-        }
-        if (strcmp(str, "false") == 0 ||
-            strcmp(str, "no")) {
+        if (strcmp(str, "false") == 0 || strcmp(str, "no") == 0)
             return false;
-        }
         Warn(param, str);
     } else {
         Maybe<int> value = ParseInt(str);
@@ -80,6 +76,9 @@ JitOptions::JitOptions()
 
     // Toggle whether eager scalar replacement is globally disabled.
     SET_DEFAULT(disableScalarReplacement, false);
+
+    // Toggle whether eager simd unboxing is globally disabled.
+    SET_DEFAULT(disableEagerSimdUnbox, false);
 
     // Toggle whether global value numbering is globally disabled.
     SET_DEFAULT(disableGvn, false);

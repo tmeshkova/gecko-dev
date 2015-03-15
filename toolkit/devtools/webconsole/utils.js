@@ -1070,7 +1070,9 @@ function getMatchedProps_impl(aObj, aMatch, {chainIterator, getProperties})
       if (prop.indexOf(aMatch) != 0) {
         continue;
       }
-
+      if (prop.indexOf('-') > -1) {
+        continue;
+      }
       // If it is an array index, we can't take it.
       // This uses a trick: converting a string to a number yields NaN if
       // the operation failed, and NaN is not equal to itself.
@@ -1593,6 +1595,16 @@ function JSTermHelpers(aOwner)
   {
     aOwner.helperResult = {
       type: "clearOutput",
+    };
+  };
+
+  /**
+   * Clears the input history of the JSTerm.
+   */
+  aOwner.sandbox.clearHistory = function JSTH_clearHistory()
+  {
+    aOwner.helperResult = {
+      type: "clearHistory",
     };
   };
 

@@ -15,6 +15,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "Rect", "resource://gre/modules/Geometry
 XPCOMUtils.defineLazyModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry", "resource://gre/modules/UITelemetry.jsm");
 
+const READINGLIST_COMMAND_ID = "readingListSidebar";
+
 function dump(s) {
   Services.console.logStringMessage("AboutReader: " + s);
 }
@@ -27,6 +29,8 @@ let AboutReader = function(mm, win) {
   this._mm = mm;
   this._mm.addMessageListener("Reader:Added", this);
   this._mm.addMessageListener("Reader:Removed", this);
+  this._mm.addMessageListener("Sidebar:VisibilityChange", this);
+  this._mm.addMessageListener("ReadingList:VisibilityStatus", this);
 
   this._docRef = Cu.getWeakReference(doc);
   this._winRef = Cu.getWeakReference(win);
@@ -45,9 +49,7 @@ let AboutReader = function(mm, win) {
 
   this._scrollOffset = win.pageYOffset;
 
-  let body = doc.body;
-  body.addEventListener("touchstart", this, false);
-  body.addEventListener("click", this, false);
+  doc.getElementById("container").addEventListener("click", this, false);
 
   win.addEventListener("unload", this, false);
   win.addEventListener("scroll", this, false);
@@ -57,9 +59,16 @@ let AboutReader = function(mm, win) {
 
   this._setupStyleDropdown();
   this._setupButton("close-button", this._onReaderClose.bind(this), "aboutReader.toolbar.close");
-  this._setupButton("toggle-button", this._onReaderToggle.bind(this), "aboutReader.toolbar.addToReadingList");
   this._setupButton("share-button", this._onShare.bind(this), "aboutReader.toolbar.share");
-  this._setupButton("list-button", this._onList.bind(this), "aboutReader.toolbar.openReadingList");
+
+  try {
+    if (Services.prefs.getBoolPref("browser.readinglist.enabled")) {
+      this._setupButton("toggle-button", this._onReaderToggle.bind(this), "aboutReader.toolbar.addToReadingList");
+      this._setupButton("list-button", this._onList.bind(this), "aboutReader.toolbar.openReadingList");
+    }
+  } catch (e) {
+    // Pref doesn't exist.
+  }
 
   let colorSchemeValues = JSON.parse(Services.prefs.getCharPref("reader.color_scheme.values"));
   let colorSchemeOptions = colorSchemeValues.map((value) => {
@@ -77,12 +86,12 @@ let AboutReader = function(mm, win) {
     { name: fontTypeSample,
       description: gStrings.GetStringFromName("aboutReader.fontType.sans-serif"),
       value: "sans-serif",
-      linkClass: "sans-serif"
+      itemClass: "sans-serif-button"
     },
     { name: fontTypeSample,
       description: gStrings.GetStringFromName("aboutReader.fontType.serif"),
       value: "serif",
-      linkClass: "serif" },
+      itemClass: "serif-button" },
   ];
 
   let fontType = Services.prefs.getCharPref("reader.font_type");
@@ -94,6 +103,9 @@ let AboutReader = function(mm, win) {
   // Track status of reader toolbar add/remove toggle button
   this._isReadingListItem = -1;
   this._updateToggleButton();
+
+  // Setup initial ReadingList button styles.
+  this._updateListButton();
 
   this._loadArticle();
 }
@@ -168,6 +180,20 @@ AboutReader.prototype = {
         }
         break;
       }
+
+      // Notifys us of Sidebar updates, user clicks X to close,
+      // checks View -> Sidebar -> (Bookmarks, Histroy, Readinglist, etc).
+      case "Sidebar:VisibilityChange": {
+        let data = message.data;
+        this._updateListButtonStyle(data.isOpen && data.commandID === READINGLIST_COMMAND_ID);
+        break;
+      }
+
+      // Returns requested status of current ReadingList Sidebar.
+      case "ReadingList:VisibilityStatus": {
+        this._updateListButtonStyle(message.data.isOpen);
+        break;
+      }
     }
   },
 
@@ -177,7 +203,6 @@ AboutReader.prototype = {
 
     switch (aEvent.type) {
       case "click":
-        // XXX: Don't toggle the toolbar on double click. (See the "Gesture:DoubleTap" handler in Reader.js)
         this._toggleToolbarVisibility();
         break;
       case "scroll":
@@ -200,6 +225,8 @@ AboutReader.prototype = {
       case "unload":
         this._mm.removeMessageListener("Reader:Added", this);
         this._mm.removeMessageListener("Reader:Removed", this);
+        this._mm.removeMessageListener("Sidebar:VisibilityChange", this);
+        this._mm.removeMessageListener("ReadingList:VisibilityStatus", this);
         break;
     }
   },
@@ -267,8 +294,40 @@ AboutReader.prototype = {
     UITelemetry.addEvent("share.1", "list", null);
   },
 
+  /**
+   * Toggle ReadingList Sidebar visibility. SidebarUI will trigger
+   * _updateListButtonStyle().
+   */
   _onList: function() {
-    // To be implemented (bug 1132665)
+    this._mm.sendAsyncMessage("ReadingList:ToggleVisibility");
+  },
+
+  /**
+   * Request ReadingList Sidebar-button visibility status update.
+   * Only desktop currently responds to this message.
+   */
+  _updateListButton: function() {
+    this._mm.sendAsyncMessage("ReadingList:GetVisibility");
+  },
+
+  /**
+   * Update ReadingList toggle button styles.
+   * @param   isVisible
+   *          What Sidebar ReadingList visibility style the List
+   *          toggle-button should be set to reflect, and what
+   *          button-action the tip will provide.
+   */
+  _updateListButtonStyle: function(isVisible) {
+    let classes = this._doc.getElementById("list-button").classList;
+    if (isVisible) {
+      classes.add("on");
+      // When on, action tip is "close".
+      this._setButtonTip("list-button", "aboutReader.toolbar.closeReadingList");
+    } else {
+      classes.remove("on");
+      // When off, action tip is "open".
+      this._setButtonTip("list-button", "aboutReader.toolbar.openReadingList");
+    }
   },
 
   _setFontSize: function Reader_setFontSize(newFontSize) {
@@ -289,6 +348,10 @@ AboutReader.prototype = {
   _setupFontSizeButtons: function() {
     const FONT_SIZE_MIN = 1;
     const FONT_SIZE_MAX = 9;
+
+    // Sample text shown in Android UI.
+    let sampleText = this._doc.getElementById("font-size-sample");
+    sampleText.textContent = gStrings.GetStringFromName("aboutReader.fontTypeSample");
 
     let currentSize = Services.prefs.getIntPref("reader.font_size");
     currentSize = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, currentSize));
@@ -370,6 +433,11 @@ AboutReader.prototype = {
   },
 
   _handleVisibilityChange: function Reader_handleVisibilityChange() {
+    // ReadingList / Sidebar state might change while we're not the selected tab.
+    if (this._doc.visibilityState === "visible") {
+      this._updateListButton();
+    }
+
     let colorScheme = Services.prefs.getCharPref("reader.color_scheme");
     if (colorScheme != "auto") {
       return;
@@ -689,16 +757,15 @@ AboutReader.prototype = {
     for (let i = 0; i < options.length; i++) {
       let option = options[i];
 
-      let item = doc.createElement("li");
-      let link = doc.createElement("a");
-      link.textContent = option.name;
-      item.appendChild(link);
+      let item = doc.createElement("button");
+
+      // We make this extra span so that we can hide it if necessary.
+      let span = doc.createElement("span");
+      span.textContent = option.name;
+      item.appendChild(span);
 
       if (option.itemClass !== undefined)
         item.classList.add(option.itemClass);
-
-      if (option.linkClass !== undefined)
-        link.classList.add(option.linkClass);
 
       if (option.description !== undefined) {
         let description = doc.createElement("div");
@@ -706,7 +773,6 @@ AboutReader.prototype = {
         item.appendChild(description);
       }
 
-      link.style.MozUserSelect = 'none';
       segmentedButton.appendChild(item);
 
       item.addEventListener("click", function(aEvent) {
@@ -733,10 +799,11 @@ AboutReader.prototype = {
     }
   },
 
-  _setupButton: function Reader_setupButton(id, callback, titleEntity) {
-    let button = this._doc.getElementById(id);
-    button.setAttribute("title", gStrings.GetStringFromName(titleEntity));
+  _setupButton: function(id, callback, titleEntity) {
+    this._setButtonTip(id, titleEntity);
 
+    let button = this._doc.getElementById(id);
+    button.removeAttribute("hidden");
     button.addEventListener("click", function(aEvent) {
       if (!aEvent.isTrusted)
         return;
@@ -746,6 +813,16 @@ AboutReader.prototype = {
     }, true);
   },
 
+  /**
+   * Sets a toolTip for a button. Performed at initial button setup
+   * and dynamically as button state changes.
+   * @param   Localizable string providing UI element usage tip.
+   */
+  _setButtonTip: function(id, titleEntity) {
+    let button = this._doc.getElementById(id);
+    button.setAttribute("title", gStrings.GetStringFromName(titleEntity));
+  },
+
   _setupStyleDropdown: function Reader_setupStyleDropdown() {
     let doc = this._doc;
     let win = this._win;
@@ -753,37 +830,25 @@ AboutReader.prototype = {
     let dropdown = doc.getElementById("style-dropdown");
     let dropdownToggle = dropdown.querySelector(".dropdown-toggle");
     let dropdownPopup = dropdown.querySelector(".dropdown-popup");
-    let dropdownArrow = dropdown.querySelector(".dropdown-arrow");
 
-    let updatePopupPosition = () => {
-      if (this._isToolbarVertical) {
-        let toggleHeight = dropdownToggle.offsetHeight;
-        let toggleTop = dropdownToggle.offsetTop;
-        let popupTop = toggleTop - toggleHeight / 2;
-        dropdownPopup.style.top = popupTop + "px";
-      } else {
-        let popupWidth = dropdownPopup.offsetWidth + 30;
-        let arrowWidth = dropdownArrow.offsetWidth;
-        let toggleWidth = dropdownToggle.offsetWidth;
-        let toggleLeft = dropdownToggle.offsetLeft;
+    // Helper function used to position the popup on desktop,
+    // where there is a vertical toolbar.
+    function updatePopupPosition() {
+      let toggleHeight = dropdownToggle.offsetHeight;
+      let toggleTop = dropdownToggle.offsetTop;
+      let popupTop = toggleTop - toggleHeight / 2;
+      dropdownPopup.style.top = popupTop + "px";
+    }
 
-        let popupShift = (toggleWidth - popupWidth) / 2;
-        let popupLeft = Math.max(0, Math.min(win.innerWidth - popupWidth, toggleLeft + popupShift));
-        dropdownPopup.style.left = popupLeft + "px";
+    if (this._isToolbarVertical) {
+      win.addEventListener("resize", event => {
+        if (!event.isTrusted)
+          return;
 
-        let arrowShift = (toggleWidth - arrowWidth) / 2;
-        let arrowLeft = toggleLeft - popupLeft + arrowShift;
-        dropdownArrow.style.left = arrowLeft + "px";
-      }
-    };
-
-    win.addEventListener("resize", event => {
-      if (!event.isTrusted)
-        return;
-
-      // Wait for reflow before calculating the new position of the popup.
-      win.setTimeout(updatePopupPosition, 0);
-    }, true);
+        // Wait for reflow before calculating the new position of the popup.
+        win.setTimeout(updatePopupPosition, 0);
+      }, true);
+    }
 
     dropdownToggle.setAttribute("title", gStrings.GetStringFromName("aboutReader.toolbar.typeControls"));
     dropdownToggle.addEventListener("click", event => {
@@ -796,7 +861,9 @@ AboutReader.prototype = {
         dropdown.classList.remove("open");
       } else {
         dropdown.classList.add("open");
-        updatePopupPosition();
+        if (this._isToolbarVertical) {
+          updatePopupPosition();
+        }
       }
     }, true);
   },

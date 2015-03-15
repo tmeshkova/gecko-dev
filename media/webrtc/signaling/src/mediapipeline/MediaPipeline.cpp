@@ -104,8 +104,8 @@ MediaPipeline::DetachTransport_s()
 
   disconnect_all();
   transport_->Detach();
-  rtp_.transport_ = nullptr;
-  rtcp_.transport_ = nullptr;
+  rtp_.Detach();
+  rtcp_.Detach();
 }
 
 nsresult
@@ -1231,7 +1231,8 @@ nsresult MediaPipelineReceiveAudio::Init() {
 static void AddTrackAndListener(MediaStream* source,
                                 TrackID track_id, TrackRate track_rate,
                                 MediaStreamListener* listener, MediaSegment* segment,
-                                const RefPtr<TrackAddedCallback>& completed) {
+                                const RefPtr<TrackAddedCallback>& completed,
+                                bool queue_track) {
   // This both adds the listener and the track
 #ifdef MOZILLA_INTERNAL_API
   class Message : public ControlMessage {
@@ -1273,12 +1274,6 @@ static void AddTrackAndListener(MediaStream* source,
         mStream->AsSourceStream()->AddTrack(track_id_,
                                             current_ticks, segment_.forget());
       }
-      // AdvanceKnownTracksTicksTime(HEAT_DEATH_OF_UNIVERSE) means that in
-      // theory per the API, we can't add more tracks before that
-      // time. However, the impl actually allows it, and it avoids a whole
-      // bunch of locking that would be required (and potential blocking)
-      // if we used smaller values and updated them on each NotifyPull.
-      mStream->AsSourceStream()->AdvanceKnownTracksTime(STREAM_TIME_MAX);
 
       // We need to know how much has been "inserted" because we're given absolute
       // times in NotifyPull.
@@ -1294,27 +1289,40 @@ static void AddTrackAndListener(MediaStream* source,
 
   MOZ_ASSERT(listener);
 
-  source->GraphImpl()->AppendMessage(new Message(source, track_id, track_rate, segment, listener, completed));
-#else
+  if (!queue_track) {
+    // We're only queueing the initial set of tracks since they are added
+    // atomically and have start time 0. When not queueing we have to add
+    // the track on the MediaStreamGraph thread so it can be added with the
+    // appropriate start time.
+    source->GraphImpl()->AppendMessage(new Message(source, track_id, track_rate, segment, listener, completed));
+    MOZ_MTLOG(ML_INFO, "Dispatched track-add for track id " << track_id <<
+                       " on stream " << source);
+    return;
+  }
+#endif
   source->AddListener(listener);
   if (segment->GetType() == MediaSegment::AUDIO) {
     source->AsSourceStream()->AddAudioTrack(track_id, track_rate, 0,
-        static_cast<AudioSegment*>(segment));
+                                            static_cast<AudioSegment*>(segment),
+                                            SourceMediaStream::ADDTRACK_QUEUED);
   } else {
-    source->AsSourceStream()->AddTrack(track_id, 0, segment);
+    source->AsSourceStream()->AddTrack(track_id, 0, segment,
+                                       SourceMediaStream::ADDTRACK_QUEUED);
   }
-#endif
+  MOZ_MTLOG(ML_INFO, "Queued track-add for track id " << track_id <<
+                     " on MediaStream " << source);
 }
 
 void GenericReceiveListener::AddSelf(MediaSegment* segment) {
   RefPtr<TrackAddedCallback> callback = new GenericReceiveCallback(this);
-  AddTrackAndListener(source_, track_id_, track_rate_, this, segment, callback);
+  AddTrackAndListener(source_, track_id_, track_rate_, this, segment, callback,
+                      queue_track_);
 }
 
 MediaPipelineReceiveAudio::PipelineListener::PipelineListener(
     SourceMediaStream * source, TrackID track_id,
-    const RefPtr<MediaSessionConduit>& conduit)
-  : GenericReceiveListener(source, track_id, 16000), // XXX rate assumption
+    const RefPtr<MediaSessionConduit>& conduit, bool queue_track)
+  : GenericReceiveListener(source, track_id, 16000, queue_track), // XXX rate assumption
     conduit_(conduit)
 {
   MOZ_ASSERT(track_rate_%100 == 0);
@@ -1400,8 +1408,8 @@ nsresult MediaPipelineReceiveVideo::Init() {
 }
 
 MediaPipelineReceiveVideo::PipelineListener::PipelineListener(
-  SourceMediaStream* source, TrackID track_id)
-  : GenericReceiveListener(source, track_id, source->GraphRate()),
+  SourceMediaStream* source, TrackID track_id, bool queue_track)
+  : GenericReceiveListener(source, track_id, source->GraphRate(), queue_track),
     width_(640),
     height_(480),
 #ifdef MOZILLA_INTERNAL_API
@@ -1433,17 +1441,15 @@ void MediaPipelineReceiveVideo::PipelineListener::RenderVideoFrame(
     nsRefPtr<layers::Image> image = image_container_->CreateImage(format);
     layers::PlanarYCbCrImage* yuvImage = static_cast<layers::PlanarYCbCrImage*>(image.get());
     uint8_t* frame = const_cast<uint8_t*>(static_cast<const uint8_t*> (buffer));
-    const uint8_t lumaBpp = 8;
-    const uint8_t chromaBpp = 4;
 
     layers::PlanarYCbCrData yuvData;
     yuvData.mYChannel = frame;
     yuvData.mYSize = IntSize(width_, height_);
-    yuvData.mYStride = width_ * lumaBpp/ 8;
-    yuvData.mCbCrStride = width_ * chromaBpp / 8;
+    yuvData.mYStride = width_;
+    yuvData.mCbCrStride = (width_ + 1) >> 1;
     yuvData.mCbChannel = frame + height_ * yuvData.mYStride;
-    yuvData.mCrChannel = yuvData.mCbChannel + height_ * yuvData.mCbCrStride / 2;
-    yuvData.mCbCrSize = IntSize(width_/ 2, height_/ 2);
+    yuvData.mCrChannel = yuvData.mCbChannel + ((height_ + 1) >> 1) * yuvData.mCbCrStride;
+    yuvData.mCbCrSize = IntSize((width_ + 1) >> 1, (height_ + 1) >> 1);
     yuvData.mPicX = 0;
     yuvData.mPicY = 0;
     yuvData.mPicSize = IntSize(width_, height_);

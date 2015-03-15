@@ -77,7 +77,20 @@ protected:
       return NS_OK;
     }
 
-    mCallback->Call(cx, value);
+    JS::Rooted<JSObject*> asyncStack(cx, mPromise->mAllocationStack);
+    JS::Rooted<JSString*> asyncCause(cx, JS_NewStringCopyZ(cx, "Promise"));
+    if (!asyncCause) {
+      JS_ClearPendingException(cx);
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+
+    {
+      Maybe<JS::AutoSetAsyncStackForNewCalls> sas;
+      if (asyncStack) {
+        sas.emplace(cx, asyncStack, asyncCause);
+      }
+      mCallback->Call(cx, value);
+    }
 
     return NS_OK;
   }
@@ -212,11 +225,6 @@ protected:
     if (rv.Failed()) {
       JS::Rooted<JS::Value> exn(cx);
       if (rv.IsJSException()) {
-        // Enter the compartment of mPromise before stealing the JS exception,
-        // since the StealJSException call will use the current compartment for
-        // a security check that determines how much of the stack we're allowed
-        // to see and we'll be exposing that stack to consumers of mPromise.
-        JSAutoCompartment ac(cx, mPromise->GlobalJSObject());
         rv.StealJSException(cx, &exn);
       } else {
         // Convert the ErrorResult to a JS exception object that we can reject
@@ -509,12 +517,11 @@ Promise::JSCallbackThenableRejecter(JSContext* aCx,
 }
 
 /* static */ JSObject*
-Promise::CreateFunction(JSContext* aCx, JSObject* aParent, Promise* aPromise,
-                        int32_t aTask)
+Promise::CreateFunction(JSContext* aCx, Promise* aPromise, int32_t aTask)
 {
   JSFunction* func = js::NewFunctionWithReserved(aCx, JSCallback,
                                                  1 /* nargs */, 0 /* flags */,
-                                                 aParent, nullptr);
+                                                 nullptr);
   if (!func) {
     return nullptr;
   }
@@ -541,7 +548,7 @@ Promise::CreateThenableFunction(JSContext* aCx, Promise* aPromise, uint32_t aTas
 
   JSFunction* func = js::NewFunctionWithReserved(aCx, whichFunc,
                                                  1 /* nargs */, 0 /* flags */,
-                                                 nullptr, nullptr);
+                                                 nullptr);
   if (!func) {
     return nullptr;
   }
@@ -589,7 +596,7 @@ Promise::CallInitFunction(const GlobalObject& aGlobal,
   JSContext* cx = aGlobal.Context();
 
   JS::Rooted<JSObject*> resolveFunc(cx,
-                                    CreateFunction(cx, aGlobal.Get(), this,
+                                    CreateFunction(cx, this,
                                                    PromiseCallback::Resolve));
   if (!resolveFunc) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
@@ -597,7 +604,7 @@ Promise::CallInitFunction(const GlobalObject& aGlobal,
   }
 
   JS::Rooted<JSObject*> rejectFunc(cx,
-                                   CreateFunction(cx, aGlobal.Get(), this,
+                                   CreateFunction(cx, this,
                                                   PromiseCallback::Reject));
   if (!rejectFunc) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
@@ -610,14 +617,7 @@ Promise::CallInitFunction(const GlobalObject& aGlobal,
 
   if (aRv.IsJSException()) {
     JS::Rooted<JS::Value> value(cx);
-    { // scope for ac
-      // Enter the compartment of our global before stealing the JS exception,
-      // since the StealJSException call will use the current compartment for
-      // a security check that determines how much of the stack we're allowed
-      // to see, and we'll be exposing that stack to consumers of this promise.
-      JSAutoCompartment ac(cx, GlobalJSObject());
-      aRv.StealJSException(cx, &value);
-    }
+    aRv.StealJSException(cx, &value);
 
     // we want the same behavior as this JS implementation:
     // function Promise(arg) { try { arg(a, b); } catch (e) { this.reject(e); }}

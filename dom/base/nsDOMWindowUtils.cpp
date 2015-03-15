@@ -1030,9 +1030,7 @@ nsDOMWindowUtils::SendWheelEvent(float aX,
 
   wheelEvent.refPoint = ToWidgetPoint(CSSPoint(aX, aY), offset, presContext);
 
-  nsEventStatus status;
-  nsresult rv = widget->DispatchEvent(&wheelEvent, status);
-  NS_ENSURE_SUCCESS(rv, rv);
+  widget->DispatchAPZAwareEvent(&wheelEvent);
 
   bool failedX = false;
   if ((aOptions & WHEEL_EVENT_EXPECTED_OVERFLOW_DELTA_X_ZERO) &&
@@ -1656,20 +1654,18 @@ nsDOMWindowUtils::GetTranslationNodes(nsIDOMNode* aRoot,
   // skip the root tag from being a translation node.
   nsIContent* content = root;
   while ((limit > 0) && (content = content->GetNextNode(root))) {
-    if (!content->IsHTML()) {
+    if (!content->IsHTMLElement()) {
       continue;
     }
 
-    nsIAtom* localName = content->Tag();
-
     // Skip elements that usually contain non-translatable text content.
-    if (localName == nsGkAtoms::script ||
-        localName == nsGkAtoms::iframe ||
-        localName == nsGkAtoms::frameset ||
-        localName == nsGkAtoms::frame ||
-        localName == nsGkAtoms::code ||
-        localName == nsGkAtoms::noscript ||
-        localName == nsGkAtoms::style) {
+    if (content->IsAnyOfHTMLElements(nsGkAtoms::script,
+                                     nsGkAtoms::iframe,
+                                     nsGkAtoms::frameset,
+                                     nsGkAtoms::frame,
+                                     nsGkAtoms::code,
+                                     nsGkAtoms::noscript,
+                                     nsGkAtoms::style)) {
       continue;
     }
 
@@ -3191,7 +3187,7 @@ nsDOMWindowUtils::GetPlugins(JSContext* cx, JS::MutableHandle<JS::Value> aPlugin
 }
 
 static void
-MaybeReflowForInflationScreenWidthChange(nsPresContext *aPresContext)
+MaybeReflowForInflationScreenSizeChange(nsPresContext *aPresContext)
 {
   if (aPresContext) {
     nsIPresShell* presShell = aPresContext->GetPresShell();
@@ -3200,7 +3196,7 @@ MaybeReflowForInflationScreenWidthChange(nsPresContext *aPresContext)
     bool changed = false;
     if (presShell && presShell->FontSizeInflationEnabled() &&
         presShell->FontSizeInflationMinTwips() != 0) {
-      aPresContext->ScreenWidthInchesForFontInflation(&changed);
+      aPresContext->ScreenSizeInchesForFontInflation(&changed);
     }
 
     changed = changed ||
@@ -3258,7 +3254,7 @@ nsDOMWindowUtils::SetScrollPositionClampingScrollPortSize(float aWidth, float aH
   // size also changes, we hook in the needed updates here rather
   // than adding a separate notification just for this change.
   nsPresContext* presContext = GetPresContext();
-  MaybeReflowForInflationScreenWidthChange(presContext);
+  MaybeReflowForInflationScreenSizeChange(presContext);
 
   return NS_OK;
 }

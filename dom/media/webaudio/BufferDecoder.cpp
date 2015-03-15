@@ -83,7 +83,8 @@ BufferDecoder::NotifyBytesConsumed(int64_t aBytes, int64_t aOffset)
 }
 
 void
-BufferDecoder::NotifyDecodedFrames(uint32_t aParsed, uint32_t aDecoded)
+BufferDecoder::NotifyDecodedFrames(uint32_t aParsed, uint32_t aDecoded,
+                                   uint32_t aDropped)
 {
   // ignore
 }
@@ -140,13 +141,13 @@ BufferDecoder::IsMediaSeekable()
 }
 
 void
-BufferDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags, bool aRestoredFromDormant)
+BufferDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags, MediaDecoderEventVisibility aEventVisibility)
 {
   // ignore
 }
 
 void
-BufferDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo, bool aRestoredFromDormant)
+BufferDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo, MediaDecoderEventVisibility aEventVisibility)
 {
   // ignore
 }
@@ -165,12 +166,6 @@ BufferDecoder::RemoveMediaTracks()
 
 void
 BufferDecoder::SetMediaEndTime(int64_t aTime)
-{
-  // ignore
-}
-
-void
-BufferDecoder::UpdatePlaybackPosition(int64_t aTime)
 {
   // ignore
 }

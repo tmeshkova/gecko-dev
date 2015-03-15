@@ -94,7 +94,6 @@ class IncrementalFinalizeRunnable : public nsRunnable
   typedef CycleCollectedJSRuntime::DeferredFinalizerTable DeferredFinalizerTable;
 
   CycleCollectedJSRuntime* mRuntime;
-  nsTArray<nsISupports*> mSupports;
   DeferredFinalizeArray mDeferredFinalizeFunctions;
   uint32_t mFinalizeFunctionToRun;
   bool mReleasing;
@@ -108,7 +107,6 @@ class IncrementalFinalizeRunnable : public nsRunnable
 
 public:
   IncrementalFinalizeRunnable(CycleCollectedJSRuntime* aRt,
-                              nsTArray<nsISupports*>& aMSupports,
                               DeferredFinalizerTable& aFinalizerTable);
   virtual ~IncrementalFinalizeRunnable();
 
@@ -508,7 +506,6 @@ CycleCollectedJSRuntime::~CycleCollectedJSRuntime()
 {
   MOZ_ASSERT(mJSRuntime);
   MOZ_ASSERT(!mDeferredFinalizerTable.Count());
-  MOZ_ASSERT(!mDeferredSupports.Length());
 
   // Clear mPendingException first, since it might be cycle collected.
   mPendingException = nullptr;
@@ -619,10 +616,14 @@ CycleCollectedJSRuntime::NoteGCThingXPCOMChildren(const js::Class* aClasp,
     const DOMJSClass* domClass = GetDOMClass(aObj);
     if (domClass) {
       NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "UnwrapDOMObject(obj)");
+      // It's possible that our object is an unforgeable holder object, in
+      // which case it doesn't actually have a C++ DOM object associated with
+      // it.  Use UnwrapPossiblyNotInitializedDOMObject, which produces null in
+      // that case, since NoteXPCOMChild/NoteNativeChild are null-safe.
       if (domClass->mDOMObjectIsISupports) {
-        aCb.NoteXPCOMChild(UnwrapDOMObject<nsISupports>(aObj));
+        aCb.NoteXPCOMChild(UnwrapPossiblyNotInitializedDOMObject<nsISupports>(aObj));
       } else if (domClass->mParticipant) {
-        aCb.NoteNativeChild(UnwrapDOMObject<void>(aObj),
+        aCb.NoteNativeChild(UnwrapPossiblyNotInitializedDOMObject<void>(aObj),
                             domClass->mParticipant);
       }
     }
@@ -990,7 +991,7 @@ CycleCollectedJSRuntime::UsefulToMergeZones() const
     MOZ_ASSERT(js::IsOuterObject(obj));
     // Grab the inner from the outer.
     obj = JS_ObjectToInnerObject(cx, obj);
-    MOZ_ASSERT(!js::GetObjectParent(obj));
+    MOZ_ASSERT(JS_IsGlobalObject(obj));
     if (JS::ObjectIsMarkedGray(obj) &&
         !js::IsSystemCompartment(js::GetObjectCompartment(obj))) {
       return true;
@@ -1041,30 +1042,9 @@ CycleCollectedJSRuntime::DeferredFinalize(DeferredFinalizeAppendFunction aAppend
 void
 CycleCollectedJSRuntime::DeferredFinalize(nsISupports* aSupports)
 {
-#ifdef MOZ_CRASHREPORTER
-  // Bug 997908's crashes (in ReleaseSliceNow()) might be caused by
-  // intermittent failures here in nsTArray::AppendElement().  So if we see
-  // any failures, deliberately crash and include diagnostic information in
-  // the crash report.
-  size_t oldLength = mDeferredSupports.Length();
-  nsISupports** itemPtr = mDeferredSupports.AppendElement(aSupports);
-  size_t newLength = mDeferredSupports.Length();
-  nsISupports* item = mDeferredSupports.ElementAt(newLength - 1);
-  if ((newLength - oldLength != 1) || !itemPtr ||
-      (*itemPtr != aSupports) || (item != aSupports)) {
-    nsAutoCString debugInfo;
-    debugInfo.AppendPrintf("\noldLength [%u], newLength [%u], aSupports [%p], item [%p], itemPtr [%p], *itemPtr [%p]",
-                           oldLength, newLength, aSupports, item, itemPtr, itemPtr ? *itemPtr : NULL);
-    #define CRASH_MESSAGE "nsTArray::AppendElement() failed!"
-    CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("\nBug 997908: ") +
-                                               NS_LITERAL_CSTRING(CRASH_MESSAGE));
-    CrashReporter::AppendAppNotesToCrashReport(debugInfo);
-    MOZ_CRASH(CRASH_MESSAGE);
-    #undef CRASH_MESSAGE
-  }
-#else
-  mDeferredSupports.AppendElement(aSupports);
-#endif
+  typedef DeferredFinalizerImpl<nsISupports> Impl;
+  DeferredFinalize(Impl::AppendDeferredFinalizePointer, Impl::DeferredFinalize,
+                   aSupports);
 }
 
 void
@@ -1073,26 +1053,6 @@ CycleCollectedJSRuntime::DumpJSHeap(FILE* aFile)
   js::DumpHeapComplete(Runtime(), aFile, js::CollectNurseryBeforeDump);
 }
 
-
-bool
-ReleaseSliceNow(uint32_t aSlice, void* aData)
-{
-  MOZ_ASSERT(aSlice > 0, "nonsensical/useless call with slice == 0");
-  nsTArray<nsISupports*>* items = static_cast<nsTArray<nsISupports*>*>(aData);
-
-  uint32_t length = items->Length();
-  aSlice = std::min(aSlice, length);
-  for (uint32_t i = length; i > length - aSlice; --i) {
-    // Remove (and NS_RELEASE) the last entry in "items":
-    uint32_t lastItemIdx = i - 1;
-
-    nsISupports* wrapper = items->ElementAt(lastItemIdx);
-    items->RemoveElementAt(lastItemIdx);
-    NS_IF_RELEASE(wrapper);
-  }
-
-  return items->IsEmpty();
-}
 
 /* static */ PLDHashOperator
 IncrementalFinalizeRunnable::DeferredFinalizerEnumerator(DeferredFinalizeFunction& aFunction,
@@ -1109,19 +1069,11 @@ IncrementalFinalizeRunnable::DeferredFinalizerEnumerator(DeferredFinalizeFunctio
 }
 
 IncrementalFinalizeRunnable::IncrementalFinalizeRunnable(CycleCollectedJSRuntime* aRt,
-                                                         nsTArray<nsISupports*>& aSupports,
                                                          DeferredFinalizerTable& aFinalizers)
   : mRuntime(aRt)
   , mFinalizeFunctionToRun(0)
   , mReleasing(false)
 {
-  this->mSupports.SwapElements(aSupports);
-  DeferredFinalizeFunctionHolder* function =
-    mDeferredFinalizeFunctions.AppendElement();
-  function->run = ReleaseSliceNow;
-  function->data = &this->mSupports;
-
-  // Enumerate the hashtable into our array.
   aFinalizers.Enumerate(DeferredFinalizerEnumerator, &mDeferredFinalizeFunctions);
 }
 
@@ -1187,7 +1139,6 @@ IncrementalFinalizeRunnable::Run()
 {
   if (mRuntime->mFinalizeRunnable != this) {
     /* These items were already processed synchronously in JSGC_END. */
-    MOZ_ASSERT(!mSupports.Length());
     MOZ_ASSERT(!mDeferredFinalizeFunctions.Length());
     return NS_OK;
   }
@@ -1222,13 +1173,16 @@ CycleCollectedJSRuntime::FinalizeDeferredThings(DeferredFinalizeType aType)
       return;
     }
   }
+
+  if (mDeferredFinalizerTable.Count() == 0) {
+    return;
+  }
+
   mFinalizeRunnable = new IncrementalFinalizeRunnable(this,
-                                                      mDeferredSupports,
                                                       mDeferredFinalizerTable);
 
   // Everything should be gone now.
-  MOZ_ASSERT(!mDeferredSupports.Length());
-  MOZ_ASSERT(!mDeferredFinalizerTable.Count());
+  MOZ_ASSERT(mDeferredFinalizerTable.Count() == 0);
 
   if (aType == FinalizeIncrementally) {
     NS_DispatchToCurrentThread(mFinalizeRunnable);

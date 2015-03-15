@@ -328,6 +328,30 @@ PuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 }
 
 
+nsEventStatus
+PuppetWidget::DispatchAPZAwareEvent(WidgetInputEvent* aEvent)
+{
+  if (!gfxPrefs::AsyncPanZoomEnabled()) {
+    nsEventStatus status = nsEventStatus_eIgnore;
+    DispatchEvent(aEvent, status);
+    return status;
+  }
+
+  if (!mTabChild) {
+    return nsEventStatus_eIgnore;
+  }
+
+  switch (aEvent->mClass) {
+    case eWheelEventClass:
+      mTabChild->SendSynthesizedMouseWheelEvent(*aEvent->AsWheelEvent());
+      break;
+    default:
+      MOZ_ASSERT_UNREACHABLE("unsupported event type");
+  }
+
+  return nsEventStatus_eIgnore;
+}
+
 NS_IMETHODIMP_(bool)
 PuppetWidget::ExecuteNativeKeyBinding(NativeKeyBindingsType aType,
                                       const mozilla::WidgetKeyboardEvent& aEvent,
@@ -963,13 +987,6 @@ PuppetWidget::GetWindowPosition()
   int32_t winX, winY, winW, winH;
   NS_ENSURE_SUCCESS(GetOwningTabChild()->GetDimensions(0, &winX, &winY, &winW, &winH), nsIntPoint());
   return nsIntPoint(winX, winY);
-}
-
-NS_METHOD
-PuppetWidget::GetScreenBounds(nsIntRect &aRect) {
-  aRect.MoveTo(LayoutDeviceIntPoint::ToUntyped(WidgetToScreenOffset()));
-  aRect.SizeTo(mBounds.Size());
-  return NS_OK;
 }
 
 PuppetScreen::PuppetScreen(void *nativeScreen)

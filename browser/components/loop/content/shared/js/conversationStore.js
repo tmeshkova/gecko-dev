@@ -10,8 +10,9 @@ loop.store = loop.store || {};
 (function() {
   var sharedActions = loop.shared.actions;
   var CALL_TYPES = loop.shared.utils.CALL_TYPES;
-
   var REST_ERRNOS = loop.shared.utils.REST_ERRNOS;
+  var FAILURE_DETAILS = loop.shared.utils.FAILURE_DETAILS;
+
   /**
    * Websocket states taken from:
    * https://docs.services.mozilla.com/loop/apis.html#call-progress-state-change-progress
@@ -132,6 +133,7 @@ loop.store = loop.store || {};
       this.client = options.client;
       this.sdkDriver = options.sdkDriver;
       this.mozLoop = options.mozLoop;
+      this._isDesktop = options.isDesktop || false;
     },
 
     /**
@@ -141,6 +143,21 @@ loop.store = loop.store || {};
      * @param {sharedActions.ConnectionFailure} actionData The action data.
      */
     connectionFailure: function(actionData) {
+      /**
+       * XXX This is a workaround for desktop machines that do not have a
+       * camera installed. As we don't yet have device enumeration, when
+       * we do, this can be removed (bug 1138851), and the sdk should handle it.
+       */
+      if (this._isDesktop &&
+          actionData.reason === FAILURE_DETAILS.UNABLE_TO_PUBLISH_MEDIA &&
+          this.getStoreState().videoMuted === false) {
+        // We failed to publish with media, so due to the bug, we try again without
+        // video.
+        this.setStoreState({videoMuted: true});
+        this.sdkDriver.retryPublishWithoutVideo();
+        return;
+      }
+
       this._endSession();
       this.setStoreState({
         callState: CALL_STATES.TERMINATED,
@@ -211,7 +228,8 @@ loop.store = loop.store || {};
         "retryCall",
         "mediaConnected",
         "setMute",
-        "fetchRoomEmailLink"
+        "fetchRoomEmailLink",
+        "windowUnload"
       ]);
 
       this.setStoreState({
@@ -340,6 +358,15 @@ loop.store = loop.store || {};
         }
         this.setStoreState({"emailLink": createdRoomData.roomUrl});
       }.bind(this));
+    },
+
+    /**
+     * Called when the window is unloaded, either by code, or by the user
+     * explicitly closing it.  Expected to do any necessary housekeeping, such
+     * as shutting down the call cleanly and adding any relevant telemetry data.
+     */
+    windowUnload: function() {
+      this._endSession();
     },
 
     /**

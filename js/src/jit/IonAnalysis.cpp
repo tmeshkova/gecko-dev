@@ -373,6 +373,9 @@ MaybeFoldAndOrBlock(MIRGraph &graph, MBasicBlock *initialBlock)
     MDefinition *branchResult = phi->getOperand(phiBlock->indexForPredecessor(branchBlock));
     MDefinition *initialResult = phi->getOperand(phiBlock->indexForPredecessor(initialBlock));
 
+    if (initialResult != initialTest->input())
+        return;
+
     // OK, we found the desired pattern, now transform the graph.
 
     // Remove the phi from phiBlock.
@@ -3037,11 +3040,6 @@ AnalyzePoppedThis(JSContext *cx, ObjectGroup *group,
             if ((*accessedProperties)[i] == setprop->name())
                 return true;
         }
-
-        // Don't add definite properties to an object which won't fit in its
-        // fixed slots.
-        if (GetGCKindSlots(gc::GetGCObjectKind(baseobj->slotSpan() + 1)) <= baseobj->slotSpan())
-            return true;
 
         // Assignments to new properties must always execute.
         if (!definitelyExecuted)

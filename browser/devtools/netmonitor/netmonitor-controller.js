@@ -211,7 +211,9 @@ let NetMonitorController = {
 
     let target = this._target;
     let { client, form } = target;
-    if (target.chrome) {
+    // Some actors like AddonActor or RootActor for chrome debugging
+    // do not support attach/detach and can be used directly
+    if (!target.isTabActor) {
       this._startChromeMonitoring(client, form.consoleActor, deferred.resolve);
     } else {
       this._startMonitoringTab(client, form, deferred.resolve);
@@ -607,6 +609,8 @@ NetworkEventsHandler.prototype = {
       case "responseStart":
         NetMonitorView.RequestsMenu.updateRequest(aPacket.from, {
           httpVersion: aPacket.response.httpVersion,
+          remoteAddress: aPacket.response.remoteAddress,
+          remotePort: aPacket.response.remotePort,
           status: aPacket.response.status,
           statusText: aPacket.response.statusText,
           headersSize: aPacket.response.headersSize

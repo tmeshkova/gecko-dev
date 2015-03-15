@@ -879,15 +879,10 @@ CreateFunctionPrototype(JSContext *cx, JSProtoKey key)
     if (!tte)
         return nullptr;
 
-    bool succeeded;
     RootedFunction throwTypeError(cx, NewFunction(cx, tte, ThrowTypeError, 0,
                                                   JSFunction::NATIVE_FUN, self, js::NullPtr()));
-    if (!throwTypeError || !PreventExtensions(cx, throwTypeError, &succeeded))
+    if (!throwTypeError || !PreventExtensions(cx, throwTypeError))
         return nullptr;
-    if (!succeeded) {
-        JS_ReportErrorNumber(cx, GetErrorMessage, nullptr, JSMSG_CANT_CHANGE_EXTENSIBILITY);
-        return nullptr;
-    }
 
     self->setThrowTypeError(throwTypeError);
 
@@ -2033,7 +2028,7 @@ js::NewFunctionWithProto(ExclusiveContext *cx, HandleObject funobjArg, Native na
     RootedObject funobj(cx, funobjArg);
     if (funobj) {
         MOZ_ASSERT(funobj->is<JSFunction>());
-        MOZ_ASSERT(funobj->getParent() == parent);
+        funobj->assertParentIs(parent);
         MOZ_ASSERT_IF(native, funobj->isSingleton());
     } else {
         // Don't mark asm.js module functions as singleton since they are
@@ -2188,8 +2183,8 @@ js::DefineFunction(JSContext *cx, HandleObject obj, HandleId id, Native native,
                    unsigned nargs, unsigned flags, AllocKind allocKind /* = FinalizeKind */,
                    NewObjectKind newKind /* = GenericObject */)
 {
-    PropertyOp gop;
-    StrictPropertyOp sop;
+    GetterOp gop;
+    SetterOp sop;
     if (flags & JSFUN_STUB_GSOPS) {
         /*
          * JSFUN_STUB_GSOPS is a request flag only, not stored in fun->flags or

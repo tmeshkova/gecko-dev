@@ -270,7 +270,6 @@ include $(MOZILLA_DIR)/config/android-common.mk
 DIST_FILES =
 
 # Place the files in the order they are going to be opened by the linker
-DIST_FILES += libmozalloc.so
 ifndef MOZ_FOLD_LIBS
 DIST_FILES += \
   libnspr4.so \
@@ -364,24 +363,30 @@ INNER_MAKE_GECKOVIEW_LIBRARY=echo 'GeckoView library packaging is only enabled o
 INNER_MAKE_GECKOVIEW_EXAMPLE=echo 'GeckoView example packaging is only enabled on Nightly'
 endif
 
-# Create geckolibs Android ARchive and metadata for download by local
+# Create Android ARchives and metadata for download by local
 # developers using Gradle.
 ifdef MOZ_ANDROID_GECKOLIBS_AAR
-geckolibs-revision := $(BUILDID)
+geckoaar-revision := $(BUILDID)
 
 UPLOAD_EXTRA_FILES += \
-  geckolibs-$(geckolibs-revision).aar \
-  geckolibs-$(geckolibs-revision).aar.sha1 \
-  geckolibs-$(geckolibs-revision).pom \
-  geckolibs-$(geckolibs-revision).pom.sha1 \
-  ivy-geckolibs-$(geckolibs-revision).xml \
-  ivy-geckolibs-$(geckolibs-revision).xml.sha1 \
+  geckolibs-$(geckoaar-revision).aar \
+  geckolibs-$(geckoaar-revision).aar.sha1 \
+  geckolibs-$(geckoaar-revision).pom \
+  geckolibs-$(geckoaar-revision).pom.sha1 \
+  ivy-geckolibs-$(geckoaar-revision).xml \
+  ivy-geckolibs-$(geckoaar-revision).xml.sha1 \
+  geckoview-$(geckoaar-revision).aar \
+  geckoview-$(geckoaar-revision).aar.sha1 \
+  geckoview-$(geckoaar-revision).pom \
+  geckoview-$(geckoaar-revision).pom.sha1 \
+  ivy-geckoview-$(geckoaar-revision).xml \
+  ivy-geckoview-$(geckoaar-revision).xml.sha1 \
   $(NULL)
 
 INNER_MAKE_GECKOLIBS_AAR= \
   $(PYTHON) -m mozbuild.action.package_geckolibs_aar \
     --verbose \
-    --revision $(geckolibs-revision) \
+    --revision $(geckoaar-revision) \
     --topsrcdir '$(topsrcdir)' \
     --distdir '$(_ABS_DIST)' \
     '$(_ABS_DIST)'
@@ -552,10 +557,9 @@ endif
 
 ifdef MOZ_SIGN_PREPARED_PACKAGE_CMD
 ifeq (Darwin, $(OS_ARCH))
-MAKE_PACKAGE    = cd ./$(PKG_DMG_SOURCE) && $(MOZ_SIGN_PREPARED_PACKAGE_CMD) $(MOZ_MACBUNDLE_NAME) \
-                  && cd $(PACKAGE_BASE_DIR) \
-                  && (cd $(STAGEPATH)$(MOZ_PKG_DIR)$(_RESPATH) && $(CREATE_PRECOMPLETE_CMD)) \
-                  && $(INNER_MAKE_PACKAGE)
+MAKE_PACKAGE    = (cd $(STAGEPATH)$(MOZ_PKG_DIR)$(_RESPATH) && $(CREATE_PRECOMPLETE_CMD)) \
+                  && cd ./$(PKG_DMG_SOURCE) && $(MOZ_SIGN_PREPARED_PACKAGE_CMD) $(MOZ_MACBUNDLE_NAME) \
+                  && cd $(PACKAGE_BASE_DIR) && $(INNER_MAKE_PACKAGE)
 else
 MAKE_PACKAGE    = $(MOZ_SIGN_PREPARED_PACKAGE_CMD) $(MOZ_PKG_DIR) \
                   && $(or $(call MAKE_SIGN_EME_VOUCHER,$(STAGEPATH)$(MOZ_PKG_DIR)),true) \

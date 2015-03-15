@@ -675,6 +675,7 @@ NS_METHOD nsWindow::Destroy()
     mLayerManager->Destroy();
   }
   mLayerManager = nullptr;
+  DestroyCompositor();
 
   /* We should clear our cached resources now and not wait for the GC to
    * delete the nsWindow. */
@@ -3324,6 +3325,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild* aShadowManager,
   }
 
   if (!mLayerManager) {
+    MOZ_ASSERT(!mCompositorParent && !mCompositorChild);
     mLayerManager = CreateBasicLayerManager();
   }
 
@@ -3666,20 +3668,13 @@ bool nsWindow::DispatchKeyboardEvent(WidgetGUIEvent* event)
 
 bool nsWindow::DispatchScrollEvent(WidgetGUIEvent* aEvent)
 {
-  nsEventStatus status;
-
-  if (mAPZC && aEvent->mClass == eWheelEventClass) {
-    uint64_t inputBlockId = 0;
-    ScrollableLayerGuid guid;
-
-    nsEventStatus result = mAPZC->ReceiveInputEvent(*aEvent->AsWheelEvent(), &guid, &inputBlockId);
-    if (result == nsEventStatus_eConsumeNoDefault) {
-      return true;
-    }
-    status = DispatchEventForAPZ(aEvent, guid, inputBlockId);
-  } else {
+  if (aEvent->mClass != eWheelEventClass) {
+    nsEventStatus status;
     DispatchEvent(aEvent, status);
+    return ConvertStatus(status);
   }
+
+  nsEventStatus status = DispatchAPZAwareEvent(aEvent->AsInputEvent());
   return ConvertStatus(status);
 }
 

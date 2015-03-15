@@ -85,6 +85,14 @@ extern bool gBluetoothDebugFlag;
                                           BluetoothValue(value)))
 
 /**
+ * Wrap literal name and value into a BluetoothNamedValue
+ * and insert it to the array.
+ */
+#define BT_INSERT_NAMED_VALUE(array, index, name, value)                      \
+  array.InsertElementAt(index, BluetoothNamedValue(NS_LITERAL_STRING(name),   \
+                                                   BluetoothValue(value)))
+
+/**
  * Ensure success of system message broadcast with void return.
  */
 #define BT_ENSURE_TRUE_VOID_BROADCAST_SYSMSG(type, parameters)       \
@@ -184,11 +192,12 @@ extern bool gBluetoothDebugFlag;
 #define BLUETOOTH_APP_ORIGIN                  "app://bluetooth.gaiamobile.org"
 
 /**
- * When a remote device gets paired / unpaired with local bluetooth adapter,
- * we'll dispatch an event.
+ * When a remote device gets paired / unpaired with local bluetooth adapter or
+ * pairing process is aborted, we'll dispatch an event.
  */
 #define DEVICE_PAIRED_ID                     "devicepaired"
 #define DEVICE_UNPAIRED_ID                   "deviceunpaired"
+#define PAIRING_ABORTED_ID                   "pairingaborted"
 
 /**
  * When receiving a query about current play status from remote device, we'll
@@ -524,6 +533,11 @@ struct BluetoothAvrcpPlayerSettings {
   uint8_t mNumAttr;
   uint8_t mIds[256];
   uint8_t mValues[256];
+};
+
+enum BluetoothGattStatus {
+  GATT_STATUS_SUCCESS,
+  GATT_STATUS_ERROR
 };
 
 struct BluetoothGattAdvData {

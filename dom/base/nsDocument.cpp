@@ -642,7 +642,7 @@ nsIdentifierMapEntry::RemoveIdElement(Element* aElement)
   // This could fire in OOM situations
   // Only assert this in HTML documents for now as XUL does all sorts of weird
   // crap.
-  NS_ASSERTION(!aElement->OwnerDoc()->IsHTML() ||
+  NS_ASSERTION(!aElement->OwnerDoc()->IsHTMLDocument() ||
                mIdContentList.IndexOf(aElement) >= 0,
                "Removing id entry that doesn't exist");
 
@@ -1849,6 +1849,10 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(nsDocument)
     EventListenerManager* elm = tmp->GetExistingListenerManager();
     if (elm) {
       elm->MarkForCC();
+    }
+    if (tmp->mExpandoAndGeneration.expando.isObject()) {
+      JS::ExposeObjectToActiveJS(
+        &(tmp->mExpandoAndGeneration.expando.toObject()));
     }
     return true;
   }
@@ -4790,7 +4794,6 @@ nsDocument::SetScriptGlobalObject(nsIScriptGlobalObject *aScriptGlobalObject)
     nsLoadFlags loadFlags = 0;
     channel->GetLoadFlags(&loadFlags);
     // If we are shift-reloaded, don't associate with a ServiceWorker.
-    // FIXME(nsm): Bug 1041339.
     if (loadFlags & nsIRequest::LOAD_BYPASS_CACHE) {
       NS_WARNING("Page was shift reloaded, skipping ServiceWorker control");
       return;
@@ -5496,7 +5499,7 @@ nsIDocument::CreateElement(const nsAString& aTagName, ErrorResult& rv)
     return nullptr;
   }
 
-  bool needsLowercase = IsHTML() && !IsLowercaseASCII(aTagName);
+  bool needsLowercase = IsHTMLDocument() && !IsLowercaseASCII(aTagName);
   nsAutoString lcTagName;
   if (needsLowercase) {
     nsContentUtils::ASCIIToLower(aTagName, lcTagName);
@@ -5520,7 +5523,7 @@ nsDocument::SetupCustomElement(Element* aElement,
     return;
   }
 
-  nsCOMPtr<nsIAtom> tagAtom = aElement->Tag();
+  nsCOMPtr<nsIAtom> tagAtom = aElement->NodeInfo()->NameAtom();
   nsCOMPtr<nsIAtom> typeAtom = aTypeExtension ?
     do_GetAtom(*aTypeExtension) : tagAtom;
 
@@ -5699,7 +5702,7 @@ already_AddRefed<CDATASection>
 nsIDocument::CreateCDATASection(const nsAString& aData,
                                 ErrorResult& rv)
 {
-  if (IsHTML()) {
+  if (IsHTMLDocument()) {
     rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return nullptr;
   }
@@ -6157,7 +6160,7 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
   // Only convert NAME to lowercase in HTML documents. Note that NAME is
   // options.extends.
   nsAutoString lcName;
-  if (IsHTML()) {
+  if (IsHTMLDocument()) {
     nsContentUtils::ASCIIToLower(aOptions.mExtends, lcName);
   } else {
     lcName.Assign(aOptions.mExtends);
@@ -6348,12 +6351,12 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
       // Make sure that the element name matches the name in the definition.
       // (e.g. a definition for x-button extending button should match
       // <button is="x-button"> but not <x-button>.
-      if (elem->Tag() != nameAtom) {
+      if (elem->NodeInfo()->NameAtom() != nameAtom) {
         //Skip over this element because definition does not apply.
         continue;
       }
 
-      MOZ_ASSERT(elem->IsHTML(nameAtom));
+      MOZ_ASSERT(elem->IsHTMLElement(nameAtom));
       nsWrapperCache* cache;
       CallQueryInterface(elem, &cache);
       MOZ_ASSERT(cache, "Element doesn't support wrapper cache?");
@@ -6372,7 +6375,7 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
   // Create constructor to return. Store the name of the custom element as the
   // name of the function.
   JSFunction* constructor = JS_NewFunction(aCx, nsDocument::CustomElementConstructor, 0,
-                                           JSFUN_CONSTRUCTOR, JS::NullPtr(),
+                                           JSFUN_CONSTRUCTOR,
                                            NS_ConvertUTF16toUTF8(lcType).get());
   if (!constructor) {
     rv.Throw(NS_ERROR_OUT_OF_MEMORY);
@@ -7020,7 +7023,7 @@ Element*
 nsIDocument::GetHtmlElement() const
 {
   Element* rootElement = GetRootElement();
-  if (rootElement && rootElement->IsHTML(nsGkAtoms::html))
+  if (rootElement && rootElement->IsHTMLElement(nsGkAtoms::html))
     return rootElement;
   return nullptr;
 }
@@ -7037,7 +7040,7 @@ nsIDocument::GetHtmlChildElement(nsIAtom* aTag)
   for (nsIContent* child = html->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
-    if (child->IsHTML(aTag))
+    if (child->IsHTMLElement(aTag))
       return child->AsElement();
   }
   return nullptr;
@@ -7097,7 +7100,7 @@ nsDocument::GetTitle(nsString& aTitle)
       break;
 #endif
     case kNameSpaceID_SVG:
-      if (rootElement->Tag() == nsGkAtoms::svg) {
+      if (rootElement->IsSVGElement(nsGkAtoms::svg)) {
         GetTitleFromElement(kNameSpaceID_SVG, tmp);
         break;
       } // else fall through
@@ -7224,7 +7227,7 @@ nsDocument::GetBoxObjectFor(Element* aElement, ErrorResult& aRv)
     return nullptr;
   }
 
-  if (!mHasWarnedAboutBoxObjects && !aElement->IsXUL()) {
+  if (!mHasWarnedAboutBoxObjects && !aElement->IsXULElement()) {
     mHasWarnedAboutBoxObjects = true;
     nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
                                     NS_LITERAL_CSTRING("BoxObjects"), this,
@@ -8175,7 +8178,7 @@ nsDocument::FlushPendingNotifications(mozFlushType aType)
   // make sure that layout is started as needed.  But we can skip that
   // part if we have no presshell or if it's already done an initial
   // reflow.
-  if ((!IsHTML() ||
+  if ((!IsHTMLDocument() ||
        (aType > Flush_ContentAndNotify && mPresShell &&
         !mPresShell->DidInitialize())) &&
       (mParser || mWeakSink)) {
@@ -8348,7 +8351,7 @@ nsRadioGroupStruct*
 nsDocument::GetRadioGroupInternal(const nsAString& aName) const
 {
 #ifdef DEBUG
-  if (IsHTML()) {
+  if (IsHTMLDocument()) {
     nsAutoString lcName;
     ToLowerCase(aName, lcName);
     MOZ_ASSERT(aName == lcName);
@@ -8367,7 +8370,7 @@ nsRadioGroupStruct*
 nsDocument::GetRadioGroup(const nsAString& aName) const
 {
   nsAutoString tmKey(aName);
-  if (IsHTML()) {
+  if (IsHTMLDocument()) {
     ToLowerCase(tmKey); //should case-insensitive.
   }
 
@@ -8378,7 +8381,7 @@ nsRadioGroupStruct*
 nsDocument::GetOrCreateRadioGroup(const nsAString& aName)
 {
   nsAutoString tmKey(aName);
-  if (IsHTML()) {
+  if (IsHTMLDocument()) {
     ToLowerCase(tmKey); //should case-insensitive.
   }
 
@@ -8448,7 +8451,7 @@ nsDocument::GetNextRadioButton(const nsAString& aName,
     else if (++index >= numRadios) {
       index = 0;
     }
-    NS_ASSERTION(static_cast<nsGenericHTMLFormElement*>(radioGroup->mRadioButtons[index])->IsHTML(nsGkAtoms::input),
+    NS_ASSERTION(static_cast<nsGenericHTMLFormElement*>(radioGroup->mRadioButtons[index])->IsHTMLElement(nsGkAtoms::input),
                  "mRadioButtons holding a non-radio button");
     radio = static_cast<HTMLInputElement*>(radioGroup->mRadioButtons[index]);
   } while (radio->Disabled() && radio != currentRadio);

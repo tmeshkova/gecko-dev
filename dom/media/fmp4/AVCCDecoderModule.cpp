@@ -9,6 +9,7 @@
 #include "MediaTaskQueue.h"
 #include "mp4_demuxer/DecoderData.h"
 #include "mp4_demuxer/AnnexB.h"
+#include "mp4_demuxer/H264.h"
 
 namespace mozilla
 {
@@ -35,6 +36,7 @@ public:
   virtual void AllocateMediaResources() MOZ_OVERRIDE;
   virtual void ReleaseMediaResources() MOZ_OVERRIDE;
   virtual void ReleaseDecoder() MOZ_OVERRIDE;
+  virtual bool IsHardwareAccelerated() const MOZ_OVERRIDE;
 
 private:
   // Will create the required MediaDataDecoder if we have a AVC SPS.
@@ -204,11 +206,28 @@ AVCCMediaDataDecoder::CreateDecoderAndInit(mp4_demuxer::MP4Sample* aSample)
   if (!mp4_demuxer::AnnexB::HasSPS(extra_data)) {
     return NS_ERROR_NOT_INITIALIZED;
   }
+  mp4_demuxer::SPSData spsdata;
+  if (mp4_demuxer::H264::DecodeSPSFromExtraData(extra_data, spsdata) &&
+      spsdata.pic_width > 0 && spsdata.pic_height > 0) {
+    mCurrentConfig.image_width = spsdata.pic_width;
+    mCurrentConfig.image_height = spsdata.pic_height;
+    mCurrentConfig.display_width = spsdata.display_width;
+    mCurrentConfig.display_height = spsdata.display_height;
+  }
   mCurrentConfig.extra_data = extra_data;
 
   nsresult rv = CreateDecoder();
   NS_ENSURE_SUCCESS(rv, rv);
   return Init();
+}
+
+bool
+AVCCMediaDataDecoder::IsHardwareAccelerated() const
+{
+  if (mDecoder) {
+    return mDecoder->IsHardwareAccelerated();
+  }
+  return MediaDataDecoder::IsHardwareAccelerated();
 }
 
 // AVCCDecoderModule

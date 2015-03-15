@@ -348,12 +348,12 @@ JSPropertyDescriptor::trace(JSTracer *trc)
     if ((attrs & JSPROP_GETTER) && getter) {
         JSObject *tmp = JS_FUNC_TO_DATA_PTR(JSObject *, getter);
         MarkObjectRoot(trc, &tmp, "Descriptor::get");
-        getter = JS_DATA_TO_FUNC_PTR(JSPropertyOp, tmp);
+        getter = JS_DATA_TO_FUNC_PTR(JSGetterOp, tmp);
     }
     if ((attrs & JSPROP_SETTER) && setter) {
         JSObject *tmp = JS_FUNC_TO_DATA_PTR(JSObject *, setter);
         MarkObjectRoot(trc, &tmp, "Descriptor::set");
-        setter = JS_DATA_TO_FUNC_PTR(JSStrictPropertyOp, tmp);
+        setter = JS_DATA_TO_FUNC_PTR(JSSetterOp, tmp);
     }
 }
 
@@ -430,7 +430,7 @@ js::gc::GCRuntime::markRuntime(JSTracer *trc,
             if (!c->zone()->isCollecting())
                 c->markCrossCompartmentWrappers(trc);
         }
-        Debugger::markAllCrossCompartmentEdges(trc);
+        Debugger::markIncomingCrossCompartmentEdges(trc);
     }
 
     {
@@ -450,6 +450,14 @@ js::gc::GCRuntime::markRuntime(JSTracer *trc,
 
         MarkPersistentRootedChains(trc);
     }
+
+    if (rt->asyncStackForNewActivations)
+        MarkObjectRoot(trc, &rt->asyncStackForNewActivations,
+                       "asyncStackForNewActivations");
+
+    if (rt->asyncCauseForNewActivations)
+        MarkStringRoot(trc, &rt->asyncCauseForNewActivations,
+                       "asyncCauseForNewActivations");
 
     if (rt->scriptAndCountsVector) {
         ScriptAndCountsVector &vec = *rt->scriptAndCountsVector;

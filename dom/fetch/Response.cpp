@@ -112,6 +112,8 @@ Response::Redirect(const GlobalObject& aGlobal, const nsAString& aUrl,
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
+  r->GetInternalHeaders()->SetGuard(HeadersGuardEnum::Immutable, aRv);
+  MOZ_ASSERT(!aRv.Failed());
 
   return r.forget();
 }
@@ -208,6 +210,13 @@ Response::SetBody(nsIInputStream* aBody)
 {
   MOZ_ASSERT(!BodyUsed());
   mInternalResponse->SetBody(aBody);
+}
+
+already_AddRefed<InternalResponse>
+Response::GetInternalResponse() const
+{
+  nsRefPtr<InternalResponse> ref = mInternalResponse;
+  return ref.forget();
 }
 
 Headers*

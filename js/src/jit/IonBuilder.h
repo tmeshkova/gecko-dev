@@ -398,8 +398,12 @@ class IonBuilder
     MDefinition *addMaybeCopyElementsForWrite(MDefinition *object);
     MInstruction *addBoundsCheck(MDefinition *index, MDefinition *length);
     MInstruction *addShapeGuard(MDefinition *obj, Shape *const shape, BailoutKind bailoutKind);
-    MInstruction *addShapeGuardPolymorphic(MDefinition *obj,
-                                           const BaselineInspector::ShapeVector &shapes);
+    MInstruction *addGroupGuard(MDefinition *obj, ObjectGroup *group, BailoutKind bailoutKind);
+
+    MInstruction *
+    addShapeGuardPolymorphic(MDefinition *obj,
+                             const BaselineInspector::ShapeVector &shapes,
+                             const BaselineInspector::ObjectGroupVector &unboxedGroups);
 
     MDefinition *convertShiftToMaskForStaticTypedArray(MDefinition *id,
                                                        Scalar::Type viewType);
@@ -435,6 +439,7 @@ class IonBuilder
                                 TemporaryTypeSet *types);
     bool getPropTryInlineAccess(bool *emitted, MDefinition *obj, PropertyName *name,
                                 BarrierKind barrier, TemporaryTypeSet *types);
+    bool getPropTrySimdGetter(bool *emitted, MDefinition *obj, PropertyName *name);
     bool getPropTryTypedObject(bool *emitted, MDefinition *obj, PropertyName *name);
     bool getPropTryScalarPropOfTypedObject(bool *emitted, MDefinition *typedObj,
                                            int32_t fieldOffset,
@@ -610,6 +615,7 @@ class IonBuilder
         return length;
     }
 
+    bool improveThisTypesForCall();
 
     MDefinition *getCallee();
     MDefinition *getAliasedVar(ScopeCoordinate sc);
@@ -809,9 +815,34 @@ class IonBuilder
     // SIMD intrinsics and natives.
     InliningStatus inlineConstructSimdObject(CallInfo &callInfo, SimdTypeDescr *target);
 
+    //  helpers
+    static MIRType SimdTypeDescrToMIRType(SimdTypeDescr::Type type);
+    bool checkInlineSimd(CallInfo &callInfo, JSNative native, SimdTypeDescr::Type type,
+                         unsigned numArgs, InlineTypedObject **templateObj);
+    IonBuilder::InliningStatus boxSimd(CallInfo &callInfo, MInstruction *ins,
+                                       InlineTypedObject *templateObj);
+
     template <typename T>
     InliningStatus inlineBinarySimd(CallInfo &callInfo, JSNative native,
                                     typename T::Operation op, SimdTypeDescr::Type type);
+    InliningStatus inlineCompSimd(CallInfo &callInfo, JSNative native,
+                                  MSimdBinaryComp::Operation op, SimdTypeDescr::Type compType);
+    InliningStatus inlineUnarySimd(CallInfo &callInfo, JSNative native,
+                                   MSimdUnaryArith::Operation op, SimdTypeDescr::Type type);
+    InliningStatus inlineSimdWith(CallInfo &callInfo, JSNative native, SimdLane lane,
+                                  SimdTypeDescr::Type type);
+    InliningStatus inlineSimdSplat(CallInfo &callInfo, JSNative native, SimdTypeDescr::Type type);
+    InliningStatus inlineSimdSwizzle(CallInfo &callInfo, JSNative native, SimdTypeDescr::Type type);
+    InliningStatus inlineSimdCheck(CallInfo &callInfo, JSNative native, SimdTypeDescr::Type type);
+    InliningStatus inlineSimdConvert(CallInfo &callInfo, JSNative native, bool isCast,
+                                     SimdTypeDescr::Type from, SimdTypeDescr::Type to);
+    InliningStatus inlineSimdSelect(CallInfo &callInfo, JSNative native, bool isElementWise,
+                                    SimdTypeDescr::Type type);
+
+    bool prepareForSimdLoadStore(CallInfo &callInfo, Scalar::Type simdType, MInstruction **elements,
+                                 MDefinition **index, Scalar::Type *arrayType);
+    InliningStatus inlineSimdLoad(CallInfo &callInfo, JSNative native, SimdTypeDescr::Type type);
+    InliningStatus inlineSimdStore(CallInfo &callInfo, JSNative native, SimdTypeDescr::Type type);
 
     // Utility intrinsics.
     InliningStatus inlineIsCallable(CallInfo &callInfo);
@@ -879,9 +910,11 @@ class IonBuilder
     bool testShouldDOMCall(TypeSet *inTypes,
                            JSFunction *func, JSJitInfo::OpType opType);
 
-    MDefinition *addShapeGuardsForGetterSetter(MDefinition *obj, JSObject *holder, Shape *holderShape,
-                                               const BaselineInspector::ShapeVector &receiverShapes,
-                                               bool isOwnProperty);
+    MDefinition *
+    addShapeGuardsForGetterSetter(MDefinition *obj, JSObject *holder, Shape *holderShape,
+                                  const BaselineInspector::ShapeVector &receiverShapes,
+                                  const BaselineInspector::ObjectGroupVector &receiverGroups,
+                                  bool isOwnProperty);
 
     bool annotateGetPropertyCache(MDefinition *obj, MGetPropertyCache *getPropCache,
                                   TemporaryTypeSet *objTypes,
@@ -1253,6 +1286,13 @@ class CallInfo
     MDefinition *getArg(uint32_t i) const {
         MOZ_ASSERT(i < argc());
         return args_[i];
+    }
+
+    MDefinition *getArgWithDefault(uint32_t i, MDefinition *defaultValue) const {
+        if (i < argc())
+            return args_[i];
+
+        return defaultValue;
     }
 
     void setArg(uint32_t i, MDefinition *def) {

@@ -440,7 +440,11 @@ WebConsoleFrame.prototype = {
    * @type boolean
    */
   get persistLog() {
-    return Services.prefs.getBoolPref(PREF_PERSISTLOG);
+    // For the browser console, we receive tab navigation
+    // when the original top level window we attached to is closed,
+    // but we don't want to reset console history and just switch to
+    // the next available window.
+    return this.owner._browserConsole || Services.prefs.getBoolPref(PREF_PERSISTLOG);
   },
 
   /**
@@ -3116,10 +3120,25 @@ JSTerm.prototype = {
   },
 
   /**
-   * Stores the console history for future sessions.
+   * Clear the console history altogether.  Note that this will not affect
+   * other consoles that are already opened (since they have their own copy),
+   * but it will reset the array for all newly-opened consoles.
+   * @returns Promise
+   *          Resolves once the changes have been persisted.
+   */
+  clearHistory: function() {
+    this.history = [];
+    this.historyIndex = this.historyPlaceHolder = 0;
+    return this.storeHistory();
+  },
+
+  /**
+   * Stores the console history for future console instances.
+   * @returns Promise
+   *          Resolves once the changes have been persisted.
    */
   storeHistory: function() {
-    asyncStorage.setItem("webConsoleHistory", this.history);
+    return asyncStorage.setItem("webConsoleHistory", this.history);
   },
 
   /**
@@ -3312,6 +3331,9 @@ JSTerm.prototype = {
         case "clearOutput":
           this.clearOutput();
           break;
+        case "clearHistory":
+          this.clearHistory();
+          break;
         case "inspectObject":
           if (aAfterMessage) {
             if (!aAfterMessage._objectActors) {
@@ -3408,7 +3430,7 @@ JSTerm.prototype = {
 
     let selectedNodeActor = null;
     let inspectorSelection = this.hud.owner.getInspectorSelection();
-    if (inspectorSelection) {
+    if (inspectorSelection && inspectorSelection.nodeFront) {
       selectedNodeActor = inspectorSelection.nodeFront.actorID;
     }
 
@@ -5077,7 +5099,7 @@ WebConsoleConnectionProxy.prototype = {
     this.target.on("navigate", this._onTabNavigated);
 
     this._consoleActor = this.target.form.consoleActor;
-    if (!this.target.chrome) {
+    if (this.target.isTabActor) {
       let tab = this.target.form;
       this.owner.onLocationChange(tab.url, tab.title);
     }

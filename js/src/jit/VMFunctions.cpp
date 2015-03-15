@@ -88,9 +88,9 @@ InvokeFunction(JSContext *cx, HandleObject obj, uint32_t argc, Value *argv, Valu
 
 JSObject *
 NewGCObject(JSContext *cx, gc::AllocKind allocKind, gc::InitialHeap initialHeap,
-            const js::Class *clasp)
+            size_t ndynamic, const js::Class *clasp)
 {
-    return js::NewGCObject<CanGC>(cx, allocKind, 0, initialHeap, clasp);
+    return js::Allocate<JSObject>(cx, allocKind, ndynamic, initialHeap, clasp);
 }
 
 bool
@@ -183,12 +183,7 @@ MutatePrototype(JSContext *cx, HandlePlainObject obj, HandleValue value)
         return true;
 
     RootedObject newProto(cx, value.toObjectOrNull());
-
-    bool succeeded;
-    if (!SetPrototype(cx, obj, newProto, &succeeded))
-        return false;
-    MOZ_ASSERT(succeeded);
-    return true;
+    return SetPrototype(cx, obj, newProto);
 }
 
 bool
@@ -448,18 +443,24 @@ SetProperty(JSContext *cx, HandleObject obj, HandlePropertyName name, HandleValu
         return true;
     }
 
+    ObjectOpResult result;
     if (MOZ_LIKELY(!obj->getOps()->setProperty)) {
-        return NativeSetProperty(
-            cx, obj.as<NativeObject>(), obj.as<NativeObject>(), id,
-            (op == JSOP_SETNAME || op == JSOP_STRICTSETNAME ||
-             op == JSOP_SETGNAME || op == JSOP_STRICTSETGNAME)
-            ? Unqualified
-            : Qualified,
-            &v,
-            strict);
+        if (!NativeSetProperty(
+                cx, obj.as<NativeObject>(), obj.as<NativeObject>(), id,
+                (op == JSOP_SETNAME || op == JSOP_STRICTSETNAME ||
+                 op == JSOP_SETGNAME || op == JSOP_STRICTSETGNAME)
+                ? Unqualified
+                : Qualified,
+                &v,
+                result))
+        {
+            return false;
+        }
+    } else {
+        if (!SetProperty(cx, obj, obj, id, &v, result))
+            return false;
     }
-
-    return SetProperty(cx, obj, obj, id, &v, strict);
+    return result.checkStrictErrorOrWarning(cx, obj, id, strict);
 }
 
 bool
@@ -1143,8 +1144,8 @@ AssertValidObjectPtr(JSContext *cx, JSObject *obj)
     MOZ_ASSERT(obj->compartment() == cx->compartment());
     MOZ_ASSERT(obj->runtimeFromMainThread() == cx->runtime());
 
-    MOZ_ASSERT_IF(!obj->hasLazyGroup(),
-                  obj->group()->clasp() == obj->lastProperty()->getObjectClass());
+    MOZ_ASSERT_IF(!obj->hasLazyGroup() && obj->maybeShape(),
+                  obj->group()->clasp() == obj->maybeShape()->getObjectClass());
 
     if (obj->isTenured()) {
         MOZ_ASSERT(obj->isAligned());

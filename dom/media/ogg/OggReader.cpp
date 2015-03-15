@@ -899,8 +899,7 @@ bool OggReader::DecodeVideoFrame(bool &aKeyframeSkip,
 
   // Record number of frames decoded and parsed. Automatically update the
   // stats counters using the AutoNotifyDecoded stack-based class.
-  uint32_t parsed = 0, decoded = 0;
-  AbstractMediaDecoder::AutoNotifyDecoded autoNotify(mDecoder, parsed, decoded);
+  AbstractMediaDecoder::AutoNotifyDecoded a(mDecoder);
 
   // Read the next data packet. Skip any non-data packets we encounter.
   ogg_packet* packet = 0;
@@ -915,7 +914,7 @@ bool OggReader::DecodeVideoFrame(bool &aKeyframeSkip,
   }
   nsAutoRef<ogg_packet> autoRelease(packet);
 
-  parsed++;
+  a.mParsed++;
   NS_ASSERTION(packet && packet->granulepos != -1,
                 "Must know first packet's granulepos");
   bool eos = packet->e_o_s;
@@ -925,7 +924,7 @@ bool OggReader::DecodeVideoFrame(bool &aKeyframeSkip,
   {
     aKeyframeSkip = false;
     nsresult res = DecodeTheora(packet, aTimeThreshold);
-    decoded++;
+    a.mDecoded++;
     if (NS_FAILED(res)) {
       return false;
     }
@@ -1183,8 +1182,9 @@ int64_t OggReader::RangeEndTime(int64_t aStartOffset,
 nsresult OggReader::GetSeekRanges(nsTArray<SeekRange>& aRanges)
 {
   NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
+  AutoPinned<MediaResource> resource(mDecoder->GetResource());
   nsTArray<MediaByteRange> cached;
-  nsresult res = mDecoder->GetResource()->GetCachedRanges(cached);
+  nsresult res = resource->GetCachedRanges(cached);
   NS_ENSURE_SUCCESS(res, res);
 
   for (uint32_t index = 0; index < cached.Length(); index++) {
@@ -1457,12 +1457,6 @@ nsresult OggReader::SeekInternal(int64_t aTarget, int64_t aEndTime)
 
     res = ResetDecode(true);
     NS_ENSURE_SUCCESS(res,res);
-
-    NS_ASSERTION(mStartTime != -1, "mStartTime should be known");
-    {
-      ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-      mDecoder->UpdatePlaybackPosition(mStartTime);
-    }
   } else {
     // TODO: This may seek back unnecessarily far in the video, but we don't
     // have a way of asking Skeleton to seek to a different target for each

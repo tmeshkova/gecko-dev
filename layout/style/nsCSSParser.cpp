@@ -954,6 +954,10 @@ protected:
   bool ParseMarker();
   bool ParsePaintOrder();
   bool ParseAll();
+  bool ParseScrollSnapType();
+  bool ParseScrollSnapPoints(nsCSSValue& aValue, nsCSSProperty aPropID);
+  bool ParseScrollSnapDestination(nsCSSValue& aValue);
+  bool ParseScrollSnapCoordinate(nsCSSValue& aValue);
 
   /**
    * Parses a variable value from a custom property declaration.
@@ -1208,6 +1212,17 @@ protected:
   // sites.
   bool mDidUnprefixWebkitBoxInEarlierDecl; // not :1 so we can use AutoRestore
 
+#ifdef DEBUG
+  // True if any parsing of URL values requires a sheet principal to have
+  // been passed in the nsCSSScanner constructor.  This is usually the case.
+  // It can be set to false, for example, when we create an nsCSSParser solely
+  // to parse a property value to test it for syntactic correctness.  When
+  // false, an assertion that mSheetPrincipal is non-null is skipped.  Should
+  // not be set to false if any nsCSSValues created during parsing can escape
+  // out of the parser.
+  bool mSheetPrincipalRequired;
+#endif
+
   // Stack of rule groups; used for @media and such.
   InfallibleTArray<nsRefPtr<css::GroupRule> > mGroupStack;
 
@@ -1285,6 +1300,9 @@ CSSParserImpl::CSSParserImpl()
     mInFailingSupportsRule(false),
     mSuppressErrors(false),
     mDidUnprefixWebkitBoxInEarlierDecl(false),
+#ifdef DEBUG
+    mSheetPrincipalRequired(true),
+#endif
     mNextFree(nullptr)
 {
 }
@@ -5326,18 +5344,29 @@ CSSParserImpl::ParseAttributeSelector(int32_t&       aDataMask,
     return eSelectorParsingStatus_Error;
   }
 
+  bool gotEOF = false;
   if (! GetToken(true)) { // premature EOF
+    // Treat this just like we saw a ']', but do still output the
+    // warning, similar to what ExpectSymbol does.
     REPORT_UNEXPECTED_EOF(PEAttSelInnerEOF);
-    return eSelectorParsingStatus_Error;
+    gotEOF = true;
   }
-  if ((eCSSToken_Symbol == mToken.mType) ||
+  if (gotEOF ||
+      (eCSSToken_Symbol == mToken.mType) ||
       (eCSSToken_Includes == mToken.mType) ||
       (eCSSToken_Dashmatch == mToken.mType) ||
       (eCSSToken_Beginsmatch == mToken.mType) ||
       (eCSSToken_Endsmatch == mToken.mType) ||
       (eCSSToken_Containsmatch == mToken.mType)) {
     uint8_t func;
-    if (eCSSToken_Includes == mToken.mType) {
+    // Important: Check the EOF/']' case first, since if gotEOF we
+    // don't want to be examining mToken.
+    if (gotEOF || ']' == mToken.mSymbol) {
+      aDataMask |= SEL_MASK_ATTRIB;
+      aSelector.AddAttribute(nameSpaceID, attr);
+      func = NS_ATTR_FUNC_SET;
+    }
+    else if (eCSSToken_Includes == mToken.mType) {
       func = NS_ATTR_FUNC_INCLUDES;
     }
     else if (eCSSToken_Dashmatch == mToken.mType) {
@@ -5351,11 +5380,6 @@ CSSParserImpl::ParseAttributeSelector(int32_t&       aDataMask,
     }
     else if (eCSSToken_Containsmatch == mToken.mType) {
       func = NS_ATTR_FUNC_CONTAINSMATCH;
-    }
-    else if (']' == mToken.mSymbol) {
-      aDataMask |= SEL_MASK_ATTRIB;
-      aSelector.AddAttribute(nameSpaceID, attr);
-      func = NS_ATTR_FUNC_SET;
     }
     else if ('=' == mToken.mSymbol) {
       func = NS_ATTR_FUNC_EQUALS;
@@ -5372,11 +5396,15 @@ CSSParserImpl::ParseAttributeSelector(int32_t&       aDataMask,
       }
       if ((eCSSToken_Ident == mToken.mType) || (eCSSToken_String == mToken.mType)) {
         nsAutoString  value(mToken.mIdent);
+        bool gotClosingBracket;
         if (! GetToken(true)) { // premature EOF
+          // Report a warning, but then treat it as a closing bracket.
           REPORT_UNEXPECTED_EOF(PEAttSelCloseEOF);
-          return eSelectorParsingStatus_Error;
+          gotClosingBracket = true;
+        } else {
+          gotClosingBracket = mToken.IsSymbol(']');
         }
-        if (mToken.IsSymbol(']')) {
+        if (gotClosingBracket) {
           bool isCaseSensitive = true;
 
           // For cases when this style sheet is applied to an HTML
@@ -7598,8 +7626,9 @@ bool
 CSSParserImpl::SetValueToURL(nsCSSValue& aValue, const nsString& aURL)
 {
   if (!mSheetPrincipal) {
-    NS_NOTREACHED("Codepaths that expect to parse URLs MUST pass in an "
-                  "origin principal");
+    NS_ASSERTION(!mSheetPrincipalRequired,
+                 "Codepaths that expect to parse URLs MUST pass in an "
+                 "origin principal");
     return false;
   }
 
@@ -10106,6 +10135,8 @@ CSSParserImpl::ParsePropertyByFunction(nsCSSProperty aPropID)
     return ParsePaintOrder();
   case eCSSProperty_clip_path:
     return ParseClipPath();
+  case eCSSProperty_scroll_snap_type:
+    return ParseScrollSnapType();
   case eCSSProperty_all:
     return ParseAll();
   default:
@@ -10166,6 +10197,14 @@ CSSParserImpl::ParseSingleValueProperty(nsCSSValue& aValue,
         return ParseListStyleType(aValue);
       case eCSSProperty_marks:
         return ParseMarks(aValue);
+      case eCSSProperty_scroll_snap_points_x:
+        return ParseScrollSnapPoints(aValue, eCSSProperty_scroll_snap_points_x);
+      case eCSSProperty_scroll_snap_points_y:
+        return ParseScrollSnapPoints(aValue, eCSSProperty_scroll_snap_points_y);
+      case eCSSProperty_scroll_snap_destination:
+        return ParseScrollSnapDestination(aValue);
+      case eCSSProperty_scroll_snap_coordinate:
+        return ParseScrollSnapCoordinate(aValue);
       case eCSSProperty_text_align:
         return ParseTextAlign(aValue);
       case eCSSProperty_text_align_last:
@@ -10571,8 +10610,8 @@ CSSParserImpl::ParseBackgroundItem(CSSParserImpl::BackgroundParseState& aState)
   return haveSomething;
 }
 
-// This function is very similar to ParseBackgroundPosition and
-// ParseBackgroundSize.
+// This function is very similar to ParseScrollSnapCoordinate,
+// ParseBackgroundPosition, and ParseBackgroundSize.
 bool
 CSSParserImpl::ParseValueList(nsCSSProperty aPropID)
 {
@@ -10647,7 +10686,8 @@ CSSParserImpl::ParseBackgroundRepeatValues(nsCSSValuePair& aValue)
   return false;
 }
 
-// This function is very similar to ParseBackgroundList and ParseBackgroundSize.
+// This function is very similar to ParseScrollSnapCoordinate,
+// ParseBackgroundList, and ParseBackgroundSize.
 bool
 CSSParserImpl::ParseBackgroundPosition()
 {
@@ -10951,8 +10991,8 @@ CSSParserImpl::ParsePositionValue(nsCSSValue& aOut)
   return true;
 }
 
-// This function is very similar to ParseBackgroundList and
-// ParseBackgroundPosition.
+// This function is very similar to ParseScrollSnapCoordinate,
+// ParseBackgroundList, and ParseBackgroundPosition.
 bool
 CSSParserImpl::ParseBackgroundSize()
 {
@@ -15030,6 +15070,94 @@ CSSParserImpl::ParseVariableDeclaration(CSSVariableDeclarations::Type* aType,
 }
 
 bool
+CSSParserImpl::ParseScrollSnapType()
+{
+  nsCSSValue value;
+  if (!ParseVariant(value, VARIANT_HK, nsCSSProps::kScrollSnapTypeKTable)) {
+    return false;
+  }
+  AppendValue(eCSSProperty_scroll_snap_type_x, value);
+  AppendValue(eCSSProperty_scroll_snap_type_y, value);
+  return true;
+}
+
+bool
+CSSParserImpl::ParseScrollSnapPoints(nsCSSValue& aValue, nsCSSProperty aPropID)
+{
+  if (ParseVariant(aValue, VARIANT_INHERIT | VARIANT_NONE, nullptr)) {
+    return true;
+  }
+  if (!GetToken(true)) {
+    return false;
+  }
+  if (mToken.mType == eCSSToken_Function &&
+      nsCSSKeywords::LookupKeyword(mToken.mIdent) == eCSSKeyword_repeat) {
+    nsCSSValue lengthValue;
+    if (!ParseNonNegativeVariant(lengthValue,
+                                 VARIANT_LENGTH | VARIANT_PERCENT | VARIANT_CALC,
+                                 nullptr)) {
+      REPORT_UNEXPECTED(PEExpectedNonnegativeNP);
+      SkipUntil(')');
+      return false;
+    }
+    if (!ExpectSymbol(')', true)) {
+      REPORT_UNEXPECTED(PEExpectedCloseParen);
+      SkipUntil(')');
+      return false;
+    }
+    nsRefPtr<nsCSSValue::Array> functionArray =
+      aValue.InitFunction(eCSSKeyword_repeat, 1);
+    functionArray->Item(1) = lengthValue;
+    return true;
+  }
+  return false;
+}
+
+
+bool
+CSSParserImpl::ParseScrollSnapDestination(nsCSSValue& aValue)
+{
+  if (ParseVariant(aValue, VARIANT_INHERIT, nullptr)) {
+    return true;
+  }
+  nsCSSValue itemValue;
+  if (!ParsePositionValue(aValue)) {
+    REPORT_UNEXPECTED_TOKEN(PEExpectedPosition);
+    return false;
+  }
+  return true;
+}
+
+// This function is very similar to ParseBackgroundPosition, ParseBackgroundList
+// and ParseBackgroundSize.
+bool
+CSSParserImpl::ParseScrollSnapCoordinate(nsCSSValue& aValue)
+{
+  if (ParseVariant(aValue, VARIANT_INHERIT | VARIANT_NONE, nullptr)) {
+    return true;
+  }
+  nsCSSValue itemValue;
+  if (!ParsePositionValue(itemValue)) {
+    REPORT_UNEXPECTED_TOKEN(PEExpectedPosition);
+    return false;
+  }
+  nsCSSValueList* item = aValue.SetListValue();
+  for (;;) {
+    item->mValue = itemValue;
+    if (!ExpectSymbol(',', true)) {
+      break;
+    }
+    if (!ParsePositionValue(itemValue)) {
+      REPORT_UNEXPECTED_TOKEN(PEExpectedPosition);
+      return false;
+    }
+    item->mNext = new nsCSSValueList;
+    item = item->mNext;
+  }
+  return true;
+}
+
+bool
 CSSParserImpl::ParseValueWithVariables(CSSVariableDeclarations::Type* aType,
                                        bool* aDropBackslash,
                                        nsString& aImpliedCharacters,
@@ -15265,6 +15393,17 @@ CSSParserImpl::IsValueValidForProperty(const nsCSSProperty aPropID,
   nsCSSScanner scanner(aPropValue, 0);
   css::ErrorReporter reporter(scanner, mSheet, mChildLoader, nullptr);
   InitScanner(scanner, reporter, nullptr, nullptr, nullptr);
+
+#ifdef DEBUG
+  // We normally would need to pass in a sheet principal to InitScanner,
+  // because we might parse a URL value.  However, we will never use the
+  // parsed nsCSSValue (and so whether we have a sheet principal or not
+  // doesn't really matter), so to avoid failing the assertion in
+  // SetValueToURL, we set mSheetPrincipalRequired to false to declare
+  // that it's safe to skip the assertion.
+  AutoRestore<bool> autoRestore(mSheetPrincipalRequired);
+  mSheetPrincipalRequired = false;
+#endif
 
   nsAutoSuppressErrors suppressErrors(this);
 

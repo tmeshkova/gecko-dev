@@ -55,6 +55,8 @@ loop.store.ActiveRoomStore = (function() {
         throw new Error("Missing option sdkDriver");
       }
       this._sdkDriver = options.sdkDriver;
+
+      this._isDesktop = options.isDesktop || false;
     },
 
     /**
@@ -356,6 +358,21 @@ loop.store.ActiveRoomStore = (function() {
      * @param {sharedActions.ConnectionFailure} actionData
      */
     connectionFailure: function(actionData) {
+      /**
+       * XXX This is a workaround for desktop machines that do not have a
+       * camera installed. As we don't yet have device enumeration, when
+       * we do, this can be removed (bug 1138851), and the sdk should handle it.
+       */
+      if (this._isDesktop &&
+          actionData.reason === FAILURE_DETAILS.UNABLE_TO_PUBLISH_MEDIA &&
+          this.getStoreState().videoMuted === false) {
+        // We failed to publish with media, so due to the bug, we try again without
+        // video.
+        this.setStoreState({videoMuted: true});
+        this._sdkDriver.retryPublishWithoutVideo();
+        return;
+      }
+
       // Treat all reasons as something failed. In theory, clientDisconnected
       // could be a success case, but there's no way we should be intentionally
       // sending that and still have the window open.
@@ -396,6 +413,41 @@ loop.store.ActiveRoomStore = (function() {
     },
 
     /**
+     * Handles switching browser (aka tab) sharing to a new window. Should
+     * only be used for browser sharing.
+     *
+     * @param {Number} windowId  The new windowId to start sharing.
+     */
+    _handleSwitchBrowserShare: function(err, windowId) {
+      if (err) {
+        console.error("Error getting the windowId: " + err);
+        this.dispatchAction(new sharedActions.ScreenSharingState({
+          state: SCREEN_SHARE_STATES.INACTIVE
+        }));
+        return;
+      }
+
+      var screenSharingState = this.getStoreState().screenSharingState;
+
+      if (screenSharingState === SCREEN_SHARE_STATES.INACTIVE) {
+        // Screen sharing is still pending, so assume that we need to kick it off.
+        var options = {
+          videoSource: "browser",
+          constraints: {
+            browserWindow: windowId,
+            scrollWithPage: true
+          },
+        };
+        this._sdkDriver.startScreenShare(options);
+      } else if (screenSharingState === SCREEN_SHARE_STATES.ACTIVE) {
+        // Just update the current share.
+        this._sdkDriver.switchAcquiredWindow(windowId);
+      } else {
+        console.error("Unexpectedly received windowId for browser sharing when pending");
+      }
+    },
+
+    /**
      * Initiates a screen sharing publisher.
      *
      * @param {sharedActions.StartScreenShare} actionData
@@ -409,19 +461,12 @@ loop.store.ActiveRoomStore = (function() {
         videoSource: actionData.type
       };
       if (options.videoSource === "browser") {
-        this._mozLoop.getActiveTabWindowId(function(err, windowId) {
-          if (err || !windowId) {
-            this.dispatchAction(new sharedActions.ScreenSharingState({
-              state: SCREEN_SHARE_STATES.INACTIVE
-            }));
-            return;
-          }
-          options.constraints = {
-            browserWindow: windowId,
-            scrollWithPage: true
-          };
-          this._sdkDriver.startScreenShare(options);
-        }.bind(this));
+        this._browserSharingListener = this._handleSwitchBrowserShare.bind(this);
+
+        // Set up a listener for watching screen shares. This will get notified
+        // with the first windowId when it is added, so we start off the sharing
+        // from within the listener.
+        this._mozLoop.addBrowserSharingListener(this._browserSharingListener);
       } else {
         this._sdkDriver.startScreenShare(options);
       }
@@ -431,6 +476,12 @@ loop.store.ActiveRoomStore = (function() {
      * Ends an active screenshare session.
      */
     endScreenShare: function() {
+      if (this._browserSharingListener) {
+        // Remove the browser sharing listener as we don't need it now.
+        this._mozLoop.removeBrowserSharingListener(this._browserSharingListener);
+        this._browserSharingListener = null;
+      }
+
       if (this._sdkDriver.endScreenShare()) {
         this.dispatchAction(new sharedActions.ScreenSharingState({
           state: SCREEN_SHARE_STATES.INACTIVE
@@ -466,13 +517,6 @@ loop.store.ActiveRoomStore = (function() {
     windowUnload: function() {
       this._leaveRoom(ROOM_STATES.CLOSING);
 
-      // If we're closing the window, then ensure the screensharing state
-      // is cleared. We don't do this on leave room, as we might still be
-      // sharing.
-      this._mozLoop.setScreenShareState(
-        this.getStoreState().windowId,
-        false);
-
       if (!this._onUpdateListener) {
         return;
       }
@@ -489,7 +533,7 @@ loop.store.ActiveRoomStore = (function() {
      * Handles a room being left.
      */
     leaveRoom: function() {
-      this._leaveRoom();
+      this._leaveRoom(ROOM_STATES.ENDED);
     },
 
     /**
@@ -523,14 +567,24 @@ loop.store.ActiveRoomStore = (function() {
      * Handles leaving a room. Clears any membership timeouts, then
      * signals to the server the leave of the room.
      *
-     * @param {ROOM_STATES} nextState Optional; the next state to switch to.
-     *                                Switches to READY if undefined.
+     * @param {ROOM_STATES} nextState The next state to switch to.
      */
     _leaveRoom: function(nextState) {
       if (loop.standaloneMedia) {
         loop.standaloneMedia.multiplexGum.reset();
       }
 
+      this._mozLoop.setScreenShareState(
+        this.getStoreState().windowId,
+        false);
+
+      if (this._browserSharingListener) {
+        // Remove the browser sharing listener as we don't need it now.
+        this._mozLoop.removeBrowserSharingListener(this._browserSharingListener);
+        this._browserSharingListener = null;
+      }
+
+      // We probably don't need to end screen share separately, but lets be safe.
       this._sdkDriver.disconnectSession();
 
       if (this._timeout) {
@@ -546,7 +600,7 @@ loop.store.ActiveRoomStore = (function() {
           this._storeState.sessionToken);
       }
 
-      this.setStoreState({roomState: nextState || ROOM_STATES.ENDED});
+      this.setStoreState({roomState: nextState});
     },
 
     /**

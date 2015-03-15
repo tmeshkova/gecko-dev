@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ClearKeyUtils.h"
+#include "ClearKeyBase64.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Endian.h"
@@ -362,68 +363,11 @@ GetNextLabel(ParserContext& aCtx, string& aOutLabel)
   return false;
 }
 
-/**
- * Take a base64-encoded string, convert (in-place) each character to its
- * corresponding value in the [0x00, 0x3f] range, and truncate any padding.
- */
-static bool
-Decode6Bit(string& aStr)
-{
-  for (size_t i = 0; i < aStr.length(); i++) {
-    if (aStr[i] >= 'A' && aStr[i] <= 'Z') {
-      aStr[i] -= 'A';
-    } else if (aStr[i] >= 'a' && aStr[i] <= 'z') {
-      aStr[i] -= 'a' - 26;
-    } else if (aStr[i] >= '0' && aStr[i] <= '9') {
-      aStr[i] -= '0' - 52;
-    } else if (aStr[i] == '-' || aStr[i] == '+') {
-      aStr[i] = 62;
-    } else if (aStr[i] == '_' || aStr[i] == '/') {
-      aStr[i] = 63;
-    } else {
-      // Truncate '=' padding at the end of the aString.
-      if (aStr[i] != '=') {
-        return false;
-      }
-      aStr[i] = '\0';
-      aStr.resize(i);
-      break;
-    }
-  }
-
-  return true;
-}
-
-static bool
-DecodeBase64(string& aEncoded, vector<uint8_t>& aOutDecoded)
-{
-  if (!Decode6Bit(aEncoded)) {
-    return false;
-  }
-
-  // The number of bytes we haven't yet filled in the current byte, mod 8.
-  int shift = 0;
-
-  aOutDecoded.resize(aEncoded.length() * 6 / 8);
-  aOutDecoded.reserve(aEncoded.length() * 6 / 8 + 1);
-  auto out = aOutDecoded.begin();
-  for (size_t i = 0; i < aEncoded.length(); i++) {
-    if (!shift) {
-      *out = aEncoded[i] << 2;
-    } else {
-      *out |= aEncoded[i] >> (6 - shift);
-      *(++out) = aEncoded[i] << (shift + 2);
-    }
-    shift = (shift + 2) % 8;
-  }
-
-  return true;
-}
-
 static bool
 DecodeKey(string& aEncoded, Key& aOutDecoded)
 {
-  return DecodeBase64(aEncoded, aOutDecoded) &&
+  return
+    DecodeBase64KeyOrId(aEncoded, aOutDecoded) &&
     // Key should be 128 bits long.
     aOutDecoded.size() == CLEARKEY_KEY_LEN;
 }
@@ -477,7 +421,7 @@ ParseKeyObject(ParserContext& aCtx, KeyIdPair& aOutKey)
 
   return !key.empty() &&
          !keyId.empty() &&
-         DecodeBase64(keyId, aOutKey.mKeyId) &&
+         DecodeBase64KeyOrId(keyId, aOutKey.mKeyId) &&
          DecodeKey(key, aOutKey.mKey) &&
          GetNextSymbol(aCtx) == '}';
 }

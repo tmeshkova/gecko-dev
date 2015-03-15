@@ -487,6 +487,8 @@ StringFromMIRType(MIRType type)
       return "MagicUninitializedLexical";
     case MIRType_Value:
       return "Value";
+    case MIRType_ObjectOrNull:
+      return "ObjectOrNull";
     case MIRType_None:
       return "None";
     case MIRType_Slots:
@@ -495,10 +497,16 @@ StringFromMIRType(MIRType type)
       return "Elements";
     case MIRType_Pointer:
       return "Pointer";
-    case MIRType_Int32x4:
-      return "Int32x4";
+    case MIRType_Shape:
+      return "Shape";
+    case MIRType_ObjectGroup:
+      return "ObjectGroup";
     case MIRType_Float32x4:
       return "Float32x4";
+    case MIRType_Int32x4:
+      return "Int32x4";
+    case MIRType_Doublex2:
+      return "Doublex2";
     default:
       MOZ_CRASH("Unknown MIRType.");
   }
@@ -551,6 +559,32 @@ SimdTypeToLength(MIRType type)
 {
     MOZ_ASSERT(IsSimdType(type));
     return 1 << ((type >> VECTOR_SCALE_SHIFT) & VECTOR_SCALE_MASK);
+}
+
+static inline MIRType
+ScalarTypeToMIRType(Scalar::Type type)
+{
+    switch (type) {
+      case Scalar::Int8:
+      case Scalar::Uint8:
+      case Scalar::Int16:
+      case Scalar::Uint16:
+      case Scalar::Int32:
+      case Scalar::Uint32:
+      case Scalar::Uint8Clamped:
+        return MIRType_Int32;
+      case Scalar::Float32:
+        return MIRType_Float32;
+      case Scalar::Float64:
+        return MIRType_Double;
+      case Scalar::Float32x4:
+        return MIRType_Float32x4;
+      case Scalar::Int32x4:
+        return MIRType_Int32x4;
+      case Scalar::MaxTypedArrayViewType:
+        break;
+    }
+    MOZ_CRASH("unexpected SIMD kind");
 }
 
 static inline unsigned

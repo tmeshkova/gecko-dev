@@ -150,6 +150,8 @@ static uint32_t ToLinkMask(const nsAString& aLink, nsIPrincipal* aPrincipal)
   else if (aLink.EqualsLiteral("import") &&
            nsStyleLinkElement::IsImportEnabled())
     return nsStyleLinkElement::eHTMLIMPORT;
+  else if (aLink.EqualsLiteral("preconnect"))
+    return nsStyleLinkElement::ePRECONNECT;
   else 
     return 0;
 }
@@ -227,8 +229,8 @@ IsScopedStyleElement(nsIContent* aContent)
   // This is quicker than, say, QIing aContent to nsStyleLinkElement
   // and then calling its virtual GetStyleSheetInfo method to find out
   // if it is scoped.
-  return (aContent->IsHTML(nsGkAtoms::style) ||
-          aContent->IsSVG(nsGkAtoms::style)) &&
+  return (aContent->IsHTMLElement(nsGkAtoms::style) ||
+          aContent->IsSVGElement(nsGkAtoms::style)) &&
          aContent->HasAttr(kNameSpaceID_None, nsGkAtoms::scoped);
 }
 
@@ -307,7 +309,7 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
   // Check for a ShadowRoot because link elements are inert in a
   // ShadowRoot.
   ShadowRoot* containingShadow = thisContent->GetContainingShadow();
-  if (thisContent->IsHTML(nsGkAtoms::link) &&
+  if (thisContent->IsHTMLElement(nsGkAtoms::link) &&
       (aOldShadowRoot || containingShadow)) {
     return NS_OK;
   }
@@ -405,7 +407,7 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
       return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    MOZ_ASSERT(thisContent->Tag() != nsGkAtoms::link,
+    MOZ_ASSERT(thisContent->NodeInfo()->NameAtom() != nsGkAtoms::link,
                "<link> is not 'inline', and needs different CSP checks");
     if (!nsStyleUtil::CSPAllowsInlineStyle(thisContent,
                                            thisContent->NodePrincipal(),

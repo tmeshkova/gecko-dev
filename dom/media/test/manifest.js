@@ -672,6 +672,14 @@ var gEMETests = [
   },
 ];
 
+var gEMENonFragmentedTests = [
+  {
+    name:"short-cenc.mp4",
+    type:"video/mp4; codecs=\"avc1.64000d,mp4a.40.2\"",
+    duration:0.47,
+  },
+];
+
 function checkMetadata(msg, e, test) {
   if (test.width) {
     is(e.videoWidth, test.width, msg + " video width");
@@ -727,6 +735,19 @@ function removeNodeAndSource(n) {
   while (n.firstChild) {
     n.removeChild(n.firstChild);
   }
+}
+
+function once(target, name, cb) {
+  var p = new Promise(function(resolve, reject) {
+    target.addEventListener(name, function() {
+      target.removeEventListener(name, cb);
+      resolve();
+    });
+  });
+  if (cb) {
+    p.then(cb);
+  }
+  return p;
 }
 
 // Number of tests to run in parallel.

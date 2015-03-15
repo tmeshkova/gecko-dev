@@ -697,6 +697,7 @@ let gDevToolsBrowser = {
       DebuggerServer.init();
       DebuggerServer.addBrowserActors();
     }
+    DebuggerServer.allowChromeProcess = true;
 
     let transport = DebuggerServer.connectPipe();
     let client = new DebuggerClient(transport);
@@ -718,7 +719,8 @@ let gDevToolsBrowser = {
                 let options = {
                   form: response.form,
                   client: client,
-                  chrome: true
+                  chrome: true,
+                  isTabActor: false
                 };
                 return devtools.TargetFactory.forRemoteTab(options);
               })
@@ -777,6 +779,11 @@ let gDevToolsBrowser = {
     let widgetWrapper = CustomizableUI.getWidget("webide-button");
     return !!(widgetWrapper && widgetWrapper.provider == CustomizableUI.PROVIDER_API);
   },
+
+  /**
+   * The deferred promise will be resolved by WebIDE's UI.init()
+   */
+  isWebIDEInitialized: promise.defer(),
 
   /**
    * Uninstall WebIDE widget

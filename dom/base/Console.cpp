@@ -858,7 +858,7 @@ Console::Assert(JSContext* aCx, bool aCondition,
 METHOD(Count, "count")
 
 void
-Console::__noSuchMethod__()
+Console::NoopMethod()
 {
   // Nothing to do.
 }
@@ -1243,7 +1243,7 @@ Console::ProcessCallData(ConsoleCallData* aData)
       }
     } else {
       JSFunction* fun = js::NewFunctionWithReserved(cx, LazyStackGetter, 0, 0,
-                                                    eventObj, "stacktrace");
+                                                    "stacktrace");
       if (!fun) {
         return;
       }

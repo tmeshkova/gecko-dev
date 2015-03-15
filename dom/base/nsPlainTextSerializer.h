@@ -113,6 +113,7 @@ private:
   bool PopBool(nsTArray<bool>& aStack);
 
   bool ShouldReplaceContainerWithPlaceholder(nsIAtom* aTag);
+  bool IsIgnorableRubyAnnotation(nsIAtom* aTag);
 
   bool IsElementPreformatted(mozilla::dom::Element* aElement);
   bool IsElementBlock(mozilla::dom::Element* aElement);
@@ -164,7 +165,8 @@ private:
                                 // line and -1 if we are in a line.
 
   bool             mInWhitespace;
-  bool             mPreFormatted;
+  bool             mPreFormattedMail; // we're dealing with special DOM
+                                      // used by Thunderbird code.
   bool             mStartedOutput; // we've produced at least a character
 
   // While handling a new tag, this variable should remind if any line break
@@ -173,6 +175,9 @@ private:
   bool             mLineBreakDue;
 
   bool             mPreformattedBlockBoundary;
+
+  // Whether the output should include ruby annotations.
+  bool             mWithRubyAnnotation;
 
   nsString         mURL;
   int32_t          mHeaderStrategy;    /* Header strategy (pref)

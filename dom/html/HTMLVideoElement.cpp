@@ -179,7 +179,7 @@ double HTMLVideoElement::MozFrameDelay()
 bool HTMLVideoElement::MozHasAudio() const
 {
   MOZ_ASSERT(NS_IsMainThread(), "Should be on main thread.");
-  return mHasAudio;
+  return HasAudio();
 }
 
 JSObject*
@@ -215,8 +215,8 @@ HTMLVideoElement::GetVideoPlaybackQuality()
     if (mDecoder) {
       MediaDecoder::FrameStatistics& stats = mDecoder->GetFrameStatistics();
       totalFrames = stats.GetParsedFrames();
-      droppedFrames = totalFrames - stats.GetPresentedFrames();
-      corruptedFrames = totalFrames - stats.GetDecodedFrames();
+      droppedFrames = stats.GetDroppedFrames();
+      corruptedFrames = 0;
     }
   }
 
@@ -253,7 +253,7 @@ HTMLVideoElement::UpdateScreenWakeLock()
     return;
   }
 
-  if (!mScreenWakeLock && !mPaused && !hidden && mHasVideo) {
+  if (!mScreenWakeLock && !mPaused && !hidden && HasVideo()) {
     nsRefPtr<power::PowerManagerService> pmService =
       power::PowerManagerService::GetInstance();
     NS_ENSURE_TRUE_VOID(pmService);

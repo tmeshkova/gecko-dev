@@ -854,7 +854,10 @@ pref("media.gmp-provider.enabled", true);
 pref("reader.color_scheme", "auto");
 
 // Color scheme values available in reader mode UI.
-pref("reader.color_scheme.values", "[\"light\",\"dark\",\"auto\"]");
+pref("reader.color_scheme.values", "[\"dark\",\"auto\",\"light\"]");
 
 // Whether to use a vertical or horizontal toolbar.
 pref("reader.toolbar.vertical", false);
+
+// Whether or not to display buttons related to reading list in reader view.
+pref("browser.readinglist.enabled", true);

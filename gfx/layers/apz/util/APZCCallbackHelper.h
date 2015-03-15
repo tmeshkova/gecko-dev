@@ -81,6 +81,14 @@ public:
                                              uint32_t* aPresShellIdOut,
                                              FrameMetrics::ViewID* aViewIdOut);
 
+    /* Tell layout to perform scroll snapping for the scrollable frame with the
+     * given scroll id. aDestination specifies the expected landing position of
+     * a current fling or scrolling animation that should be used to select
+     * the scroll snap point.
+     */
+    static void RequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
+                                 const mozilla::CSSPoint& aDestination);
+
     /* Tell layout that we received the scroll offset update for the given view ID, so
        that it accepts future scroll offset updates from APZ. */
     static void AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
@@ -123,6 +131,7 @@ public:
     static nsEventStatus DispatchSynthesizedMouseEvent(uint32_t aMsg,
                                                        uint64_t aTime,
                                                        const LayoutDevicePoint& aRefPoint,
+                                                       Modifiers aModifiers,
                                                        nsIWidget* aWidget);
 
     /* Dispatch a mouse event with the given parameters.
@@ -139,6 +148,7 @@ public:
     /* Fire a single-tap event at the given point. The event is dispatched
      * via the given widget. */
     static void FireSingleTapEvent(const LayoutDevicePoint& aPoint,
+                                   Modifiers aModifiers,
                                    nsIWidget* aWidget);
 
     /* Perform hit-testing on the touch points of |aEvent| to determine

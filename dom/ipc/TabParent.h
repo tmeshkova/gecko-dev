@@ -22,7 +22,6 @@
 #include "Units.h"
 #include "WritingModes.h"
 #include "js/TypeDecls.h"
-#include "nsIDOMEventListener.h"
 
 class nsFrameLoader;
 class nsIFrameLoader;
@@ -59,8 +58,7 @@ class nsIContentParent;
 class Element;
 struct StructuredCloneData;
 
-class TabParent : public PBrowserParent
-                , public nsIDOMEventListener
+class TabParent : public PBrowserParent 
                 , public nsITabParent 
                 , public nsIAuthPromptProvider
                 , public nsISecureBrowserUI
@@ -99,9 +97,6 @@ public:
     void SetBrowserDOMWindow(nsIBrowserDOMWindow* aBrowserDOMWindow) {
         mBrowserDOMWindow = aBrowserDOMWindow;
     }
-
-    // nsIDOMEventListener interfaces 
-    NS_DECL_NSIDOMEVENTLISTENER
 
     already_AddRefed<nsILoadContext> GetLoadContext();
 
@@ -236,6 +231,7 @@ public:
                                                const bool& aPreventDefault) MOZ_OVERRIDE;
     virtual bool RecvSetTargetAPZC(const uint64_t& aInputBlockId,
                                    nsTArray<ScrollableLayerGuid>&& aTargets) MOZ_OVERRIDE;
+    virtual bool RecvSynthesizedMouseWheelEvent(const mozilla::WidgetWheelEvent& aEvent) MOZ_OVERRIDE;
 
     virtual PColorPickerParent*
     AllocPColorPickerParent(const nsString& aTitle, const nsString& aInitialColor) MOZ_OVERRIDE;
@@ -245,23 +241,26 @@ public:
     // XXX/cjones: it's not clear what we gain by hiding these
     // message-sending functions under a layer of indirection and
     // eating the return values
-    void Show(const nsIntSize& size, bool aParentIsActive);
-    void UpdateDimensions(const nsIntRect& rect, const nsIntSize& size);
+    void Show(const ScreenIntSize& size, bool aParentIsActive);
+    void UpdateDimensions(const nsIntRect& rect, const ScreenIntSize& size,
+                          const nsIntPoint& chromeDisp);
     void UpdateFrame(const layers::FrameMetrics& aFrameMetrics);
     void UIResolutionChanged();
+    void RequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
+                          const mozilla::CSSPoint& aDestination);
     void AcknowledgeScrollUpdate(const ViewID& aScrollId, const uint32_t& aScrollGeneration);
     void HandleDoubleTap(const CSSPoint& aPoint,
-                         int32_t aModifiers,
+                         Modifiers aModifiers,
                          const ScrollableLayerGuid& aGuid);
     void HandleSingleTap(const CSSPoint& aPoint,
-                         int32_t aModifiers,
+                         Modifiers aModifiers,
                          const ScrollableLayerGuid& aGuid);
     void HandleLongTap(const CSSPoint& aPoint,
-                       int32_t aModifiers,
+                       Modifiers aModifiers,
                        const ScrollableLayerGuid& aGuid,
                        uint64_t aInputBlockId);
     void HandleLongTapUp(const CSSPoint& aPoint,
-                         int32_t aModifiers,
+                         Modifiers aModifiers,
                          const ScrollableLayerGuid& aGuid);
     void NotifyAPZStateChange(ViewID aViewId,
                               APZStateChange aChange,
@@ -287,10 +286,10 @@ public:
     bool SendMouseWheelEvent(mozilla::WidgetWheelEvent& event);
     bool SendRealKeyEvent(mozilla::WidgetKeyboardEvent& event);
     bool SendRealTouchEvent(WidgetTouchEvent& event);
-    bool SendHandleSingleTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid);
-    bool SendHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId);
-    bool SendHandleLongTapUp(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid);
-    bool SendHandleDoubleTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid);
+    bool SendHandleSingleTap(const CSSPoint& aPoint, const Modifiers& aModifiers, const ScrollableLayerGuid& aGuid);
+    bool SendHandleLongTap(const CSSPoint& aPoint, const Modifiers& aModifiers, const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId);
+    bool SendHandleLongTapUp(const CSSPoint& aPoint, const Modifiers& aModifiers, const ScrollableLayerGuid& aGuid);
+    bool SendHandleDoubleTap(const CSSPoint& aPoint, const Modifiers& aModifiers, const ScrollableLayerGuid& aGuid);
 
     virtual PDocumentRendererParent*
     AllocPDocumentRendererParent(const nsRect& documentRect,
@@ -376,6 +375,11 @@ public:
     bool SendLoadRemoteScript(const nsString& aURL,
                               const bool& aRunInGlobalScope);
 
+    // See nsIFrameLoader requestNotifyLayerTreeReady.
+    bool RequestNotifyLayerTreeReady();
+    bool RequestNotifyLayerTreeCleared();
+    bool LayerTreeUpdate(bool aActive);
+
 protected:
     bool ReceiveMessage(const nsString& aMessage,
                         bool aSync,
@@ -440,7 +444,7 @@ protected:
     int32_t mEventCaptureDepth;
 
     nsIntRect mRect;
-    nsIntSize mDimensions;
+    ScreenIntSize mDimensions;
     ScreenOrientation mOrientation;
     float mDPI;
     CSSToLayoutDeviceScale mDefaultScale;

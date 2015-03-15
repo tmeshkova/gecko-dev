@@ -115,7 +115,14 @@ enum : uint32_t {
     /* Whether this group is associated with some allocation site. */
     OBJECT_FLAG_FROM_ALLOCATION_SITE  = 0x1,
 
-    /* (0x2 and 0x4 are unused) */
+    /* Whether this group is associated with a single object. */
+    OBJECT_FLAG_SINGLETON             = 0x2,
+
+    /*
+     * Whether this group is used by objects whose singleton groups have not
+     * been created yet.
+     */
+    OBJECT_FLAG_LAZY_SINGLETON        = 0x4,
 
     /* Mask/shift for the number of properties in propertySet */
     OBJECT_FLAG_PROPERTY_COUNT_MASK   = 0xfff8,
@@ -438,7 +445,7 @@ class TypeSet
 
     /* Get a list of all types in this set. */
     typedef Vector<Type, 1, SystemAllocPolicy> TypeList;
-    bool enumerateTypes(TypeList *list) const;
+    template <class TypeListT> bool enumerateTypes(TypeListT *list) const;
 
     /*
      * Iterate through the objects in this set. getObjectCount overapproximates
@@ -520,6 +527,9 @@ class TypeSet
     static inline Type GetMaybeUntrackedValueType(const Value &val);
 
     static void MarkTypeRoot(JSTracer *trc, Type *v, const char *name);
+    static void MarkTypeUnbarriered(JSTracer *trc, Type *v, const char *name);
+    static bool IsTypeMarkedFromAnyThread(Type *v);
+    static bool IsTypeAboutToBeFinalized(Type *v);
 };
 
 /*

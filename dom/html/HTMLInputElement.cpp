@@ -1885,7 +1885,7 @@ HTMLInputElement::GetList() const
   }
 
   Element* element = doc->GetElementById(dataListId);
-  if (!element || !element->IsHTML(nsGkAtoms::datalist)) {
+  if (!element || !element->IsHTMLElement(nsGkAtoms::datalist)) {
     return nullptr;
   }
 
@@ -7219,7 +7219,7 @@ HTMLInputElement::GetCols()
 NS_IMETHODIMP_(int32_t)
 HTMLInputElement::GetWrapCols()
 {
-  return -1; // only textarea's can have wrap cols
+  return 0; // only textarea's can have wrap cols
 }
 
 NS_IMETHODIMP_(int32_t)

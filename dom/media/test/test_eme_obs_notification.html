@@ -52,7 +52,7 @@ function startTest(test, token)
     manager.finished(token);
   });
 
-  LoadTest(test, v, token);
+  PlayFragmented(test, v, token);
 }
 
 function beginTest() {
@@ -61,7 +61,7 @@ function beginTest() {
 
 var prefs = [
   [ "media.mediasource.enabled", true ],
-  [ "media.mediasource.youtubeonly", false ],
+  [ "media.mediasource.whitelist", false ],
   [ "media.mediasource.mp4.enabled", true ],
 ];
 

@@ -1964,7 +1964,7 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
     if (mLineContainer->HasAnyStateBits(TEXT_IS_IN_TOKEN_MATHML)) {
       // All MathML tokens except <mtext> use 'math' script.
       if (!(parent && parent->GetContent() &&
-          parent->GetContent()->Tag() == nsGkAtoms::mtext_)) {
+          parent->GetContent()->IsMathMLElement(nsGkAtoms::mtext_))) {
         textFlags |= gfxTextRunFactory::TEXT_USE_MATH_SCRIPT;
       }
       nsIMathMLFrame* mathFrame = do_QueryFrame(parent);
@@ -4915,7 +4915,7 @@ nsTextFrame::GetTextDecorations(
 
     // In quirks mode, if we're on an HTML table element, we're done.
     if (compatMode == eCompatibility_NavQuirks &&
-        f->GetContent()->IsHTML(nsGkAtoms::table)) {
+        f->GetContent()->IsHTMLElement(nsGkAtoms::table)) {
       break;
     }
 
@@ -8672,7 +8672,7 @@ nsTextFrame::TrimTrailingWhiteSpace(nsRenderingContext* aRC)
 }
 
 nsOverflowAreas
-nsTextFrame::RecomputeOverflow(const nsHTMLReflowState& aBlockReflowState)
+nsTextFrame::RecomputeOverflow(nsIFrame* aBlockFrame)
 {
   nsRect bounds(nsPoint(0, 0), GetSize());
   nsOverflowAreas result(bounds, bounds);
@@ -8701,8 +8701,7 @@ nsTextFrame::RecomputeOverflow(const nsHTMLReflowState& aBlockReflowState)
   }
   nsRect &vis = result.VisualOverflow();
   vis.UnionRect(vis, boundingBox);
-  UnionAdditionalOverflow(PresContext(), aBlockReflowState.frame, provider,
-                          &vis, true);
+  UnionAdditionalOverflow(PresContext(), aBlockFrame, provider, &vis, true);
   return result;
 }
 
@@ -8997,18 +8996,9 @@ nsTextFrame::HasAnyNoncollapsedCharacters()
 bool
 nsTextFrame::UpdateOverflow()
 {
-  const nsRect rect(nsPoint(0, 0), GetSize());
-  nsOverflowAreas overflowAreas(rect, rect);
-
   if (GetStateBits() & NS_FRAME_FIRST_REFLOW) {
     return false;
   }
-  gfxSkipCharsIterator iter = EnsureTextRun(nsTextFrame::eInflated);
-  if (!mTextRun) {
-    return false;
-  }
-  PropertyProvider provider(this, iter, nsTextFrame::eInflated);
-  provider.InitializeForDisplay(true);
 
   nsIFrame* decorationsBlock;
   if (IsFloatingFirstLetterChild()) {
@@ -9030,8 +9020,8 @@ nsTextFrame::UpdateOverflow()
     }
   }
 
-  UnionAdditionalOverflow(PresContext(), decorationsBlock, provider,
-                          &overflowAreas.VisualOverflow(), true);
+  nsOverflowAreas overflowAreas = RecomputeOverflow(decorationsBlock);
+
   return FinishAndStoreOverflow(overflowAreas, GetSize());
 }
 

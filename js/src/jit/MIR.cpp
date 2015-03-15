@@ -886,7 +886,7 @@ MSimdValueX4::foldsTo(TempAllocator &alloc)
     }
 
     MOZ_ASSERT(allSame);
-    return MSimdSplatX4::New(alloc, type(), getOperand(0));
+    return MSimdSplatX4::New(alloc, getOperand(0), type());
 }
 
 MDefinition*
@@ -946,6 +946,56 @@ MSimdSwizzle::foldsTo(TempAllocator &alloc)
     if (lanesMatch(0, 1, 2, 3))
         return input();
     return this;
+}
+
+MDefinition *
+MSimdGeneralSwizzle::foldsTo(TempAllocator &alloc)
+{
+    int32_t lanes[4];
+    for (size_t i = 0; i < 4; i++) {
+        if (!lane(i)->isConstant() || lane(i)->type() != MIRType_Int32)
+            return this;
+        lanes[i] = lane(i)->toConstant()->value().toInt32();
+        if (lanes[i] < 0 || lanes[i] >= 4)
+            return this;
+    }
+    return MSimdSwizzle::New(alloc, input(), type(), lanes[0], lanes[1], lanes[2], lanes[3]);
+}
+
+template <typename T>
+static void
+PrintOpcodeOperation(T *mir, FILE *fp)
+{
+    mir->MDefinition::printOpcode(fp);
+    fprintf(fp, " (%s)", T::OperationName(mir->operation()));
+}
+
+void
+MSimdBinaryArith::printOpcode(FILE *fp) const
+{
+    PrintOpcodeOperation(this, fp);
+}
+void
+MSimdBinaryBitwise::printOpcode(FILE *fp) const
+{
+    PrintOpcodeOperation(this, fp);
+}
+void
+MSimdUnaryArith::printOpcode(FILE *fp) const
+{
+    PrintOpcodeOperation(this, fp);
+}
+void
+MSimdBinaryComp::printOpcode(FILE *fp) const
+{
+    PrintOpcodeOperation(this, fp);
+}
+
+void
+MSimdInsertElement::printOpcode(FILE *fp) const
+{
+    MDefinition::printOpcode(fp);
+    fprintf(fp, " (%s)", MSimdInsertElement::LaneName(lane()));
 }
 
 MCloneLiteral *
@@ -1335,7 +1385,7 @@ MFloor::trySpecializeFloat32(TempAllocator &alloc)
 {
     MOZ_ASSERT(type() == MIRType_Int32);
     if (EnsureFloatInputOrConvert(this, alloc))
-        setPolicyType(MIRType_Float32);
+        specialization_ = MIRType_Float32;
 }
 
 void
@@ -1343,7 +1393,7 @@ MCeil::trySpecializeFloat32(TempAllocator &alloc)
 {
     MOZ_ASSERT(type() == MIRType_Int32);
     if (EnsureFloatInputOrConvert(this, alloc))
-        setPolicyType(MIRType_Float32);
+        specialization_ = MIRType_Float32;
 }
 
 void
@@ -1351,7 +1401,7 @@ MRound::trySpecializeFloat32(TempAllocator &alloc)
 {
     MOZ_ASSERT(type() == MIRType_Int32);
     if (EnsureFloatInputOrConvert(this, alloc))
-        setPolicyType(MIRType_Float32);
+        specialization_ = MIRType_Float32;
 }
 
 MCompare *
@@ -2284,7 +2334,7 @@ MMathFunction::trySpecializeFloat32(TempAllocator &alloc)
     }
 
     setResultType(MIRType_Float32);
-    setPolicyType(MIRType_Float32);
+    specialization_ = MIRType_Float32;
 }
 
 MHypot *MHypot::New(TempAllocator &alloc, const MDefinitionVector & vector)
@@ -4059,17 +4109,24 @@ MLoadElement::foldsTo(TempAllocator &alloc)
 }
 
 bool
-MGuardShapePolymorphic::congruentTo(const MDefinition *ins) const
+MGuardReceiverPolymorphic::congruentTo(const MDefinition *ins) const
 {
-    if (!ins->isGuardShapePolymorphic())
+    if (!ins->isGuardReceiverPolymorphic())
         return false;
 
-    const MGuardShapePolymorphic *other = ins->toGuardShapePolymorphic();
+    const MGuardReceiverPolymorphic *other = ins->toGuardReceiverPolymorphic();
+
     if (numShapes() != other->numShapes())
         return false;
-
     for (size_t i = 0; i < numShapes(); i++) {
         if (getShape(i) != other->getShape(i))
+            return false;
+    }
+
+    if (numUnboxedGroups() != other->numUnboxedGroups())
+        return false;
+    for (size_t i = 0; i < numUnboxedGroups(); i++) {
+        if (getUnboxedGroup(i) != other->getUnboxedGroup(i))
             return false;
     }
 
@@ -4127,6 +4184,16 @@ InlinePropertyTable::hasFunction(JSFunction *func) const
 {
     for (size_t i = 0; i < numEntries(); i++) {
         if (entries_[i]->func == func)
+            return true;
+    }
+    return false;
+}
+
+bool
+InlinePropertyTable::hasObjectGroup(ObjectGroup *group) const
+{
+    for (size_t i = 0; i < numEntries(); i++) {
+        if (entries_[i]->group == group)
             return true;
     }
     return false;
@@ -4306,7 +4373,7 @@ MSqrt::trySpecializeFloat32(TempAllocator &alloc) {
     }
 
     setResultType(MIRType_Float32);
-    setPolicyType(MIRType_Float32);
+    specialization_ = MIRType_Float32;
 }
 
 MDefinition *
@@ -4538,7 +4605,7 @@ jit::PropertyReadNeedsTypeBarrier(JSContext *propertycx,
         if (key->isSingleton())
             obj = key->singleton();
         else
-            obj = key->proto().toObjectOrNull();
+            obj = key->proto().isLazy() ? nullptr : key->proto().toObjectOrNull();
 
         while (obj) {
             if (!obj->getClass()->isNative())

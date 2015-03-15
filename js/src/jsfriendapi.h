@@ -57,8 +57,7 @@ extern JS_FRIEND_API(bool)
 JS_SplicePrototype(JSContext *cx, JS::HandleObject obj, JS::HandleObject proto);
 
 extern JS_FRIEND_API(JSObject *)
-JS_NewObjectWithUniqueType(JSContext *cx, const JSClass *clasp, JS::HandleObject proto,
-                           JS::HandleObject parent);
+JS_NewObjectWithUniqueType(JSContext *cx, const JSClass *clasp, JS::HandleObject proto);
 
 // Allocate an object in exactly the same way as JS_NewObjectWithGivenProto, but
 // without invoking the metadata callback on it.  This allows creation of
@@ -188,41 +187,47 @@ AddRawValueRoot(JSContext *cx, JS::Value *vp, const char *name);
 JS_FRIEND_API(void)
 RemoveRawValueRoot(JSContext *cx, JS::Value *vp);
 
-} /* namespace js */
-
 #ifdef JS_DEBUG
 
 /*
  * Routines to print out values during debugging.  These are FRIEND_API to help
- * the debugger find them and to support temporarily hacking js_Dump* calls
+ * the debugger find them and to support temporarily hacking js::Dump* calls
  * into other code.
  */
 
 extern JS_FRIEND_API(void)
-js_DumpString(JSString *str);
+DumpString(JSString *str);
 
 extern JS_FRIEND_API(void)
-js_DumpAtom(JSAtom *atom);
+DumpAtom(JSAtom *atom);
 
 extern JS_FRIEND_API(void)
-js_DumpObject(JSObject *obj);
+DumpObject(JSObject *obj);
 
 extern JS_FRIEND_API(void)
-js_DumpChars(const char16_t *s, size_t n);
+DumpChars(const char16_t *s, size_t n);
 
 extern JS_FRIEND_API(void)
-js_DumpValue(const JS::Value &val);
+DumpValue(const JS::Value &val);
 
 extern JS_FRIEND_API(void)
-js_DumpId(jsid id);
+DumpId(jsid id);
 
 extern JS_FRIEND_API(void)
-js_DumpInterpreterFrame(JSContext *cx, js::InterpreterFrame *start = nullptr);
+DumpInterpreterFrame(JSContext *cx, InterpreterFrame *start = nullptr);
+
+extern JS_FRIEND_API(bool)
+DumpPC(JSContext *cx);
+
+extern JS_FRIEND_API(bool)
+DumpScript(JSContext *cx, JSScript *scriptArg);
 
 #endif
 
 extern JS_FRIEND_API(void)
-js_DumpBacktrace(JSContext *cx);
+DumpBacktrace(JSContext *cx);
+
+} // namespace js
 
 namespace JS {
 
@@ -355,7 +360,8 @@ proxy_LookupProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::M
                     JS::MutableHandle<Shape*> propp);
 extern JS_FRIEND_API(bool)
 proxy_DefineProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue value,
-                     JSPropertyOp getter, JSStrictPropertyOp setter, unsigned attrs);
+                     JSGetterOp getter, JSSetterOp setter, unsigned attrs,
+                     JS::ObjectOpResult &result);
 extern JS_FRIEND_API(bool)
 proxy_HasProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id, bool *foundp);
 extern JS_FRIEND_API(bool)
@@ -363,12 +369,13 @@ proxy_GetProperty(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver
                   JS::MutableHandleValue vp);
 extern JS_FRIEND_API(bool)
 proxy_SetProperty(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver, JS::HandleId id,
-                  JS::MutableHandleValue bp, bool strict);
+                  JS::MutableHandleValue bp, JS::ObjectOpResult &result);
 extern JS_FRIEND_API(bool)
 proxy_GetOwnPropertyDescriptor(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
                                JS::MutableHandle<JSPropertyDescriptor> desc);
 extern JS_FRIEND_API(bool)
-proxy_DeleteProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id, bool *succeeded);
+proxy_DeleteProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                     JS::ObjectOpResult &result);
 
 extern JS_FRIEND_API(void)
 proxy_Trace(JSTracer *trc, JSObject *obj);
@@ -480,6 +487,8 @@ struct WeakMapTracer;
  * weak map that was live at the time of the last garbage collection.
  *
  * m will be nullptr if the weak map is not contained in a JS Object.
+ *
+ * The callback should not GC (and will assert in a debug build if it does so.)
  */
 typedef void
 (* WeakMapTraceCallback)(WeakMapTracer *trc, JSObject *m, JS::GCCellPtr key, JS::GCCellPtr value);
@@ -538,13 +547,12 @@ namespace shadow {
 struct ObjectGroup {
     const Class *clasp;
     JSObject    *proto;
+    JSCompartment *compartment;
 };
 
 struct BaseShape {
     const js::Class *clasp_;
     JSObject *parent;
-    JSObject *_1;
-    JSCompartment *compartment;
 };
 
 class Shape {
@@ -556,11 +564,12 @@ public:
     static const uint32_t FIXED_SLOTS_SHIFT = 27;
 };
 
-// This layout is shared by all objects except for Typed Objects (which still
-// have a shape and group).
+// This layout is shared by all native objects. For non-native objects, the
+// group may always be accessed safely, and other members may be as well,
+// depending on the object's specific layout.
 struct Object {
-    shadow::Shape       *shape;
     shadow::ObjectGroup *group;
+    shadow::Shape       *shape;
     JS::Value           *slots;
     void                *_1;
 
@@ -676,21 +685,14 @@ IsScopeObject(JSObject *obj);
 JS_FRIEND_API(bool)
 IsCallObject(JSObject *obj);
 
-inline JSObject *
-GetObjectParent(JSObject *obj)
-{
-    MOZ_ASSERT(!IsScopeObject(obj));
-    return reinterpret_cast<shadow::Object*>(obj)->shape->base->parent;
-}
+JS_FRIEND_API(bool)
+CanAccessObjectShape(JSObject *obj);
 
 static MOZ_ALWAYS_INLINE JSCompartment *
 GetObjectCompartment(JSObject *obj)
 {
-    return reinterpret_cast<shadow::Object*>(obj)->shape->base->compartment;
+    return reinterpret_cast<shadow::Object*>(obj)->group->compartment;
 }
-
-JS_FRIEND_API(JSObject *)
-GetObjectParentMaybeScope(JSObject *obj);
 
 JS_FRIEND_API(JSObject *)
 GetGlobalForObjectCrossCompartment(JSObject *obj);
@@ -734,17 +736,20 @@ DefineFunctionWithReserved(JSContext *cx, JSObject *obj, const char *name, JSNat
 
 JS_FRIEND_API(JSFunction *)
 NewFunctionWithReserved(JSContext *cx, JSNative call, unsigned nargs, unsigned flags,
-                        JSObject *parent, const char *name);
+                        const char *name);
 
 JS_FRIEND_API(JSFunction *)
 NewFunctionByIdWithReserved(JSContext *cx, JSNative native, unsigned nargs, unsigned flags,
-                            JSObject *parent, jsid id);
+                            jsid id);
 
 JS_FRIEND_API(const JS::Value &)
 GetFunctionNativeReserved(JSObject *fun, size_t which);
 
 JS_FRIEND_API(void)
 SetFunctionNativeReserved(JSObject *fun, size_t which, const JS::Value &val);
+
+JS_FRIEND_API(bool)
+FunctionHasNativeReserved(JSObject *fun);
 
 JS_FRIEND_API(bool)
 GetObjectProto(JSContext *cx, JS::HandleObject obj, JS::MutableHandleObject proto);
@@ -2382,21 +2387,46 @@ struct JSTypedMethodJitInfo
                                                  have side-effects. */
 };
 
-static MOZ_ALWAYS_INLINE const JSJitInfo *
-FUNCTION_VALUE_TO_JITINFO(const JS::Value& v)
+namespace js {
+
+static MOZ_ALWAYS_INLINE shadow::Function *
+FunctionObjectToShadowFunction(JSObject *fun)
 {
-    MOZ_ASSERT(js::GetObjectClass(&v.toObject()) == js::FunctionClassPtr);
-    return reinterpret_cast<js::shadow::Function *>(&v.toObject())->jitinfo;
+    MOZ_ASSERT(GetObjectClass(fun) == FunctionClassPtr);
+    return reinterpret_cast<shadow::Function *>(fun);
 }
 
 /* Statically asserted in jsfun.h. */
-static const unsigned JS_FUNCTION_INTERPRETED_BIT = 0x1;
+static const unsigned JS_FUNCTION_INTERPRETED_BITS = 0x1001;
+
+// Return whether the given function object is native.
+static MOZ_ALWAYS_INLINE bool
+FunctionObjectIsNative(JSObject *fun)
+{
+    return !(FunctionObjectToShadowFunction(fun)->flags & JS_FUNCTION_INTERPRETED_BITS);
+}
+
+static MOZ_ALWAYS_INLINE JSNative
+GetFunctionObjectNative(JSObject *fun)
+{
+    MOZ_ASSERT(FunctionObjectIsNative(fun));
+    return FunctionObjectToShadowFunction(fun)->native;
+}
+
+} // namespace js
+
+static MOZ_ALWAYS_INLINE const JSJitInfo *
+FUNCTION_VALUE_TO_JITINFO(const JS::Value& v)
+{
+    MOZ_ASSERT(js::FunctionObjectIsNative(&v.toObject()));
+    return js::FunctionObjectToShadowFunction(&v.toObject())->jitinfo;
+}
 
 static MOZ_ALWAYS_INLINE void
 SET_JITINFO(JSFunction * func, const JSJitInfo *info)
 {
     js::shadow::Function *fun = reinterpret_cast<js::shadow::Function *>(func);
-    MOZ_ASSERT(!(fun->flags & JS_FUNCTION_INTERPRETED_BIT));
+    MOZ_ASSERT(!(fun->flags & js::JS_FUNCTION_INTERPRETED_BITS));
     fun->jitinfo = info;
 }
 
@@ -2605,7 +2635,8 @@ JS_FRIEND_API(bool)
 SetPropertyIgnoringNamedGetter(JSContext *cx, const BaseProxyHandler *handler,
                                JS::HandleObject proxy, JS::HandleObject receiver,
                                JS::HandleId id, JS::MutableHandle<JSPropertyDescriptor> desc,
-                               bool descIsOwn, bool strict, JS::MutableHandleValue vp);
+                               bool descIsOwn, JS::MutableHandleValue vp,
+                               JS::ObjectOpResult &result);
 
 JS_FRIEND_API(void)
 ReportErrorWithId(JSContext *cx, const char *msg, JS::HandleId id);
@@ -2676,7 +2707,7 @@ ReportIsNotFunction(JSContext *cx, JS::HandleValue v);
 
 extern JS_FRIEND_API(bool)
 DefineOwnProperty(JSContext *cx, JSObject *objArg, jsid idArg,
-                  JS::Handle<JSPropertyDescriptor> descriptor, bool *bp);
+                  JS::Handle<JSPropertyDescriptor> descriptor, JS::ObjectOpResult &result);
 
 } /* namespace js */
 

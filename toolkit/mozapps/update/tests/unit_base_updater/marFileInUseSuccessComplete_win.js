@@ -5,6 +5,9 @@
 /* File in use complete MAR file patch apply success test */
 
 function run_test() {
+  // Set to true due to bug 1123503
+  DEBUG_AUS_TEST = true;
+
   setupTestCommon();
   gTestFiles = gTestFilesCompleteSuccess;
   gTestDirs = gTestDirsCompleteSuccess;
@@ -15,8 +18,8 @@ function run_test() {
                                      gTestFiles[13].fileName);
   let args = [getApplyDirPath() + DIR_RESOURCES, "input", "output", "-s",
               HELPER_SLEEP_TIMEOUT];
-  let fileInUseProcess = AUS_Cc["@mozilla.org/process/util;1"].
-                         createInstance(AUS_Ci.nsIProcess);
+  let fileInUseProcess = Cc["@mozilla.org/process/util;1"].
+                         createInstance(Ci.nsIProcess);
   fileInUseProcess.init(fileInUseBin);
   fileInUseProcess.run(false, args, args.length);
 

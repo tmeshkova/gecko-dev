@@ -110,12 +110,19 @@ toolbarbutton.social-provider-menuitem > .toolbarbutton-icon {
 
 menu.subviewbutton > .menu-right {
   -moz-appearance: none;
-  list-style-image: url(chrome://browser/skin/places/bookmarks-menu-arrow.png);
-  -moz-image-region: rect(0, 16px, 16px, 0);
+  list-style-image: url(chrome://browser/skin/customizableui/menu-arrow.svg#arrow);
+  /* Reset the rect we inherit from the button: */
+  -moz-image-region: auto;
 }
 
 menu[disabled="true"].subviewbutton > .menu-right {
-  -moz-image-region: rect(0, 32px, 16px, 16px);
+  list-style-image: url(chrome://browser/skin/customizableui/menu-arrow.svg#arrow-disabled);
+}
+
+@media not all and (-moz-windows-default-theme) {
+  menu[_moz-menuactive].subviewbutton > .menu-right {
+    list-style-image: url(chrome://browser/skin/customizableui/menu-arrow.svg#arrow-hover);
+  }
 }
 
 menu.subviewbutton > .menu-right:-moz-locale-dir(rtl) {
@@ -149,12 +156,15 @@ menu.subviewbutton > .menu-right:-moz-locale-dir(rtl) {
   }
 
   panelview .toolbarbutton-1@buttonStateHover@,
-  toolbarbutton.subviewbutton@buttonStateHover@,
-  menu.subviewbutton@menuStateHover@,
-  menuitem.subviewbutton@menuStateHover@,
   .widget-overflow-list .toolbarbutton-1@buttonStateHover@,
   .toolbaritem-combined-buttons@inAnyPanel@ > toolbarbutton@buttonStateHover@ {
     border-color: ThreeDLightShadow !important;
+  }
+
+  toolbarbutton.subviewbutton@buttonStateHover@,
+  menu.subviewbutton@menuStateHover@,
+  menuitem.subviewbutton@menuStateHover@ {
+    border-color: Highlight;
   }
 
   panelview:not(#PanelUI-mainView) .toolbarbutton-1@buttonStateHover@,
@@ -227,6 +237,8 @@ menu.subviewbutton > .menu-right:-moz-locale-dir(rtl) {
   menuitem.panel-subview-footer@menuStateHover@,
   .subviewbutton.panel-subview-footer@buttonStateHover@,
   .subviewbutton.panel-subview-footer@buttonStateActive@,
+  .subviewbutton@menuStateHover@ > .menu-accel-container,
+  .PanelUI-subView .subviewbutton[shortcut]@buttonStateHover@::after,
   #BMB_bookmarksPopup .panel-subview-footer@menuStateHover@ > .menu-text {
     background-color: Highlight;
     color: highlighttext !important;

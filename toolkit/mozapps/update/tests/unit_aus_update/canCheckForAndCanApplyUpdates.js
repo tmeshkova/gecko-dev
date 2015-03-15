@@ -7,10 +7,10 @@ function run_test() {
   setupTestCommon();
 
   // Verify write access to the custom app dir
-  logTestInfo("testing write access to the application directory");
+  debugDump("testing write access to the application directory");
   let testFile = getCurrentProcessDir();
   testFile.append("update_write_access_test");
-  testFile.create(AUS_Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
+  testFile.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
   do_check_true(testFile.exists());
   testFile.remove(false);
   do_check_false(testFile.exists());
@@ -19,42 +19,42 @@ function run_test() {
 
   if (IS_WIN) {
     // Create a mutex to prevent being able to check for or apply updates.
-    logTestInfo("attempting to create mutex");
+    debugDump("attempting to create mutex");
     let handle = createMutex(getPerInstallationMutexName());
 
-    logTestInfo("testing that the mutex was successfully created");
+    debugDump("testing that the mutex was successfully created");
     do_check_neq(handle, null);
 
     // Check if available updates cannot be checked for when there is a mutex
     // for this installation.
-    logTestInfo("testing nsIApplicationUpdateService:canCheckForUpdates is " +
-                "false when there is a mutex");
+    debugDump("testing nsIApplicationUpdateService:canCheckForUpdates is " +
+              "false when there is a mutex");
     do_check_false(gAUS.canCheckForUpdates);
 
     // Check if updates cannot be applied when there is a mutex for this
     // installation.
-    logTestInfo("testing nsIApplicationUpdateService:canApplyUpdates is " +
+    debugDump("testing nsIApplicationUpdateService:canApplyUpdates is " +
                 "false when there is a mutex");
     do_check_false(gAUS.canApplyUpdates);
 
-    logTestInfo("destroying mutex");
+    debugDump("destroying mutex");
     closeHandle(handle)
   }
 
   // Check if available updates can be checked for
-  logTestInfo("testing nsIApplicationUpdateService:canCheckForUpdates is true");
+  debugDump("testing nsIApplicationUpdateService:canCheckForUpdates is true");
   do_check_true(gAUS.canCheckForUpdates);
   // Check if updates can be applied
-  logTestInfo("testing nsIApplicationUpdateService:canApplyUpdates is true");
+  debugDump("testing nsIApplicationUpdateService:canApplyUpdates is true");
   do_check_true(gAUS.canApplyUpdates);
 
   if (IS_WIN) {
     // Attempt to create a mutex when application update has already created one
     // with the same name.
-    logTestInfo("attempting to create mutex");
+    debugDump("attempting to create mutex");
     let handle = createMutex(getPerInstallationMutexName());
 
-    logTestInfo("testing that the mutex was not successfully created");
+    debugDump("testing that the mutex was not successfully created");
     do_check_eq(handle, null);
   }
 
@@ -71,14 +71,14 @@ function getPerInstallationMutexName() {
     do_throw("Windows only function called by a different platform!");
   }
 
-  let hasher = AUS_Cc["@mozilla.org/security/hash;1"].
-               createInstance(AUS_Ci.nsICryptoHash);
+  let hasher = Cc["@mozilla.org/security/hash;1"].
+               createInstance(Ci.nsICryptoHash);
   hasher.init(hasher.SHA1);
 
-  let exeFile = Services.dirsvc.get(XRE_EXECUTABLE_FILE, AUS_Ci.nsILocalFile);
+  let exeFile = Services.dirsvc.get(XRE_EXECUTABLE_FILE, Ci.nsILocalFile);
 
-  let converter = AUS_Cc["@mozilla.org/intl/scriptableunicodeconverter"].
-                  createInstance(AUS_Ci.nsIScriptableUnicodeConverter);
+  let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"].
+                  createInstance(Ci.nsIScriptableUnicodeConverter);
   converter.charset = "UTF-8";
   let data = converter.convertToByteArray(exeFile.path.toLowerCase());
 

@@ -21,6 +21,7 @@
 #include "jit/BaselineInspector.h"
 #include "jit/BaselineJIT.h"
 #include "jit/CodeGenerator.h"
+#include "jit/EagerSimdUnbox.h"
 #include "jit/EdgeCaseAnalysis.h"
 #include "jit/EffectiveAddressAnalysis.h"
 #include "jit/IonAnalysis.h"
@@ -45,7 +46,6 @@
 #include "vm/TraceLogging.h"
 
 #include "jscompartmentinlines.h"
-#include "jsgcinlines.h"
 #include "jsobjinlines.h"
 
 using namespace js;
@@ -488,6 +488,7 @@ jit::LazyLinkTopActivation(JSContext *cx)
 
     return script->baselineOrIonRawPointer();
 }
+
 /* static */ void
 JitRuntime::Mark(JSTracer *trc)
 {
@@ -497,13 +498,23 @@ JitRuntime::Mark(JSTracer *trc)
         JitCode *code = i.get<JitCode>();
         MarkJitCodeRoot(trc, &code, "wrapper");
     }
+}
 
-    // Mark all heap the jitcode global table map.
+/* static */ void
+JitRuntime::MarkJitcodeGlobalTable(JSTracer *trc)
+{
     if (trc->runtime()->hasJitRuntime() &&
         trc->runtime()->jitRuntime()->hasJitcodeGlobalTable())
     {
         trc->runtime()->jitRuntime()->getJitcodeGlobalTable()->mark(trc);
     }
+}
+
+/* static */ void
+JitRuntime::SweepJitcodeGlobalTable(JSRuntime *rt)
+{
+    if (rt->hasJitRuntime() && rt->jitRuntime()->hasJitcodeGlobalTable())
+        rt->jitRuntime()->getJitcodeGlobalTable()->sweep(rt);
 }
 
 void
@@ -589,7 +600,7 @@ JitCode *
 JitCode::New(JSContext *cx, uint8_t *code, uint32_t bufferSize, uint32_t headerSize,
              ExecutablePool *pool, CodeKind kind)
 {
-    JitCode *codeObj = js::NewJitCode<allowGC>(cx);
+    JitCode *codeObj = Allocate<JitCode, allowGC>(cx);
     if (!codeObj) {
         pool->release(headerSize + bufferSize, kind);
         return nullptr;
@@ -664,13 +675,15 @@ JitCode::fixupNurseryObjects(JSContext *cx, const ObjectVector &nurseryObjects)
 void
 JitCode::finalize(FreeOp *fop)
 {
+    // If this jitcode had a bytecode map, it must have already been removed.
+#ifdef DEBUG
     JSRuntime *rt = fop->runtime();
-
-    // If this jitcode has a bytecode map, de-register it.
     if (hasBytecodeMap_) {
+        JitcodeGlobalEntry result;
         MOZ_ASSERT(rt->jitRuntime()->hasJitcodeGlobalTable());
-        rt->jitRuntime()->getJitcodeGlobalTable()->releaseEntry(raw(), rt);
+        MOZ_ASSERT(!rt->jitRuntime()->getJitcodeGlobalTable()->lookup(raw(), &result, rt));
     }
+#endif
 
     // Buffer can be freed at any time hereafter. Catch use-after-free bugs.
     // Don't do this if the Ion code is protected, as the signal handler will
@@ -1250,6 +1263,17 @@ OptimizeMIR(MIRGenerator *mir)
             return false;
     }
 
+    if (mir->optimizationInfo().eagerSimdUnboxEnabled()) {
+        AutoTraceLog log(logger, TraceLogger_EagerSimdUnbox);
+        if (!EagerSimdUnbox(mir, graph))
+            return false;
+        IonSpewPass("Eager Simd Unbox");
+        AssertGraphCoherency(graph);
+
+        if (mir->shouldCancel("Eager Simd Unbox"))
+            return false;
+    }
+
     if (mir->optimizationInfo().amaEnabled()) {
         AutoTraceLog log(logger, TraceLogger_AlignmentMaskAnalysis);
         AlignmentMaskAnalysis ama(graph);
@@ -1708,8 +1732,12 @@ MarkOffThreadNurseryObjects::mark(JSTracer *trc)
 {
     JSRuntime *rt = trc->runtime();
 
-    MOZ_ASSERT(rt->jitRuntime()->hasIonNurseryObjects());
-    rt->jitRuntime()->setHasIonNurseryObjects(false);
+    if (trc->runtime()->isHeapMinorCollecting()) {
+        // Only reset hasIonNurseryObjects if we're doing an actual minor GC,
+        // not if we're, for instance, verifying post barriers.
+        MOZ_ASSERT(rt->jitRuntime()->hasIonNurseryObjects());
+        rt->jitRuntime()->setHasIonNurseryObjects(false);
+    }
 
     AutoLockHelperThreadState lock;
     if (!HelperThreadState().threads)
@@ -1765,7 +1793,7 @@ TrackAllProperties(JSContext *cx, JSObject *obj)
 {
     MOZ_ASSERT(obj->isSingleton());
 
-    for (Shape::Range<NoGC> range(obj->lastProperty()); !range.empty(); range.popFront())
+    for (Shape::Range<NoGC> range(obj->as<NativeObject>().lastProperty()); !range.empty(); range.popFront())
         EnsureTrackPropertyTypes(cx, obj, range.front().propid());
 }
 

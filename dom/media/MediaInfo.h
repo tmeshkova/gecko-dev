@@ -10,6 +10,7 @@
 #include "nsRect.h"
 #include "ImageTypes.h"
 #include "nsString.h"
+#include "StreamBuffer.h" // for TrackID
 
 namespace mozilla {
 
@@ -18,13 +19,15 @@ struct TrackInfo {
             const nsAString& aKind,
             const nsAString& aLabel,
             const nsAString& aLanguage,
-            bool aEnabled)
+            bool aEnabled,
+            TrackID aOutputId = TRACK_INVALID)
   {
     mId = aId;
     mKind = aKind;
     mLabel = aLabel;
     mLanguage = aLanguage;
     mEnabled = aEnabled;
+    mOutputId = aOutputId;
   }
 
   nsString mId;
@@ -32,6 +35,7 @@ struct TrackInfo {
   nsString mLabel;
   nsString mLanguage;
   bool mEnabled;
+  TrackID mOutputId;
 };
 
 // Stores info relevant to presenting media frames.
@@ -42,12 +46,11 @@ private:
     mDisplay = nsIntSize(aWidth, aHeight);
     mStereoMode = StereoMode::MONO;
     mHasVideo = aHasVideo;
-    mIsHardwareAccelerated = false;
 
     // TODO: TrackInfo should be initialized by its specific codec decoder.
     // This following call should be removed once we have that implemented.
     mTrackInfo.Init(NS_LITERAL_STRING("2"), NS_LITERAL_STRING("main"),
-                    EmptyString(), EmptyString(), true);
+                    EmptyString(), EmptyString(), true, 2);
   }
 
 public:
@@ -72,8 +75,6 @@ public:
   bool mHasVideo;
 
   TrackInfo mTrackInfo;
-
-  bool mIsHardwareAccelerated;
 };
 
 class AudioInfo {
@@ -86,7 +87,7 @@ public:
     // TODO: TrackInfo should be initialized by its specific codec decoder.
     // This following call should be removed once we have that implemented.
     mTrackInfo.Init(NS_LITERAL_STRING("1"), NS_LITERAL_STRING("main"),
-    EmptyString(), EmptyString(), true);
+                    EmptyString(), EmptyString(), true, 1);
   }
 
   // Sample rate.

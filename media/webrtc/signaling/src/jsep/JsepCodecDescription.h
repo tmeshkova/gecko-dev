@@ -291,9 +291,13 @@ struct JsepVideoCodecDescription : public JsepCodecDescription {
               mSpropParameterSets.c_str(),
               sizeof(params->sprop_parameter_sets) - 1);
       fmtp.PushEntry(mDefaultPt, "", mozilla::Move(params));
-    } else if (mName == "VP8") {
+    } else if (mName == "VP8" || mName == "VP9") {
+      // VP8 and VP9 share the same SDP parameters thus far
       UniquePtr<SdpFmtpAttributeList::VP8Parameters> params =
-          MakeUnique<SdpFmtpAttributeList::VP8Parameters>();
+          MakeUnique<SdpFmtpAttributeList::VP8Parameters>(
+              mName == "VP8" ?
+              SdpRtpmapAttributeList::kVP8 :
+              SdpRtpmapAttributeList::kVP9);
 
       params->max_fs = mMaxFs;
       params->max_fr = mMaxFr;
@@ -319,10 +323,11 @@ struct JsepVideoCodecDescription : public JsepCodecDescription {
       case SdpRtpmapAttributeList::kH264:
         LoadH264Parameters(params);
         break;
+      case SdpRtpmapAttributeList::kVP9:
+        // VP8 and VP9 share the same SDP parameters thus far
       case SdpRtpmapAttributeList::kVP8:
         LoadVP8Parameters(params);
         break;
-      case SdpRtpmapAttributeList::kVP9:
       case SdpRtpmapAttributeList::kiLBC:
       case SdpRtpmapAttributeList::kiSAC:
       case SdpRtpmapAttributeList::kOpus:

@@ -967,7 +967,7 @@ pref("browser.safebrowsing.enabled", true);
 pref("browser.safebrowsing.malware.enabled", true);
 pref("browser.safebrowsing.downloads.enabled", true);
 // Remote lookups are only enabled for Windows in Nightly and Aurora
-#if defined(XP_WIN) && !defined(RELEASE_BUILD)
+#if defined(XP_WIN)
 pref("browser.safebrowsing.downloads.remote.enabled", true);
 #else
 pref("browser.safebrowsing.downloads.remote.enabled", false);
@@ -1028,7 +1028,7 @@ pref("browser.rights.3.shown", false);
 pref("browser.rights.override", true);
 #endif
 
-pref("browser.selfsupport.url", "http://self-repair.mozilla.org/%LOCALE%/repair");
+pref("browser.selfsupport.url", "https://self-repair.mozilla.org/%LOCALE%/repair");
 
 pref("browser.sessionstore.resume_from_crash", true);
 pref("browser.sessionstore.resume_session_once", false);
@@ -1163,11 +1163,10 @@ pref("toolbar.customization.usesheet", true);
 pref("toolbar.customization.usesheet", false);
 #endif
 
-// Disable Flash protected mode to reduce hang/crash rates.
-pref("dom.ipc.plugins.flash.disable-protected-mode", true);
+pref("dom.ipc.plugins.flash.disable-protected-mode", false);
 
 // Feature-disable the protected-mode auto-flip
-pref("browser.flash-protected-mode-flip.enable", true);
+pref("browser.flash-protected-mode-flip.enable", false);
 
 // Whether we've already flipped protected mode automatically
 pref("browser.flash-protected-mode-flip.done", false);
@@ -1201,12 +1200,16 @@ pref("security.sandbox.windows.log", false);
 // 3 - the strongest settings we seem to be able to use without breaking
 //     everything, but will definitely cause some functionality restrictions
 pref("dom.ipc.plugins.sandbox-level.default", 0);
-pref("dom.ipc.plugins.sandbox-level.flash", 1);
 
 #if defined(MOZ_CONTENT_SANDBOX)
-// This controls whether the Windows content process sandbox is using a more
-// strict sandboxing policy.  This will require a restart.
-pref("security.sandbox.windows.content.moreStrict", false);
+// This controls the strength of the Windows content process sandbox for testing
+// purposes. This will require a restart.
+// On windows these levels are:
+// 0 - sandbox with USER_NON_ADMIN access token level
+// 1 - a more strict sandbox, which causes problems in specific areas
+// 2 - a policy that we can reasonably call an effective sandbox
+// 3 - an equivalent basic policy to the Chromium renderer processes
+pref("security.sandbox.content.level", 0);
 
 #if defined(MOZ_STACKWALKING)
 // This controls the depth of stack trace that is logged when Windows sandbox
@@ -1227,7 +1230,7 @@ pref("security.sandbox.windows.log.stackTraceDepth", 0);
 // This setting is read when the content process is started. On Mac the content
 // process is killed when all windows are closed, so a change will take effect
 // when the 1st window is opened.
-pref("security.sandbox.macos.content.level", 0);
+pref("security.sandbox.content.level", 0);
 #endif
 
 // This pref governs whether we attempt to work around problems caused by
@@ -1774,6 +1777,14 @@ pref("geo.provider.use_corelocation", true);
 #endif
 #endif
 
+#ifdef XP_WIN
+#ifdef RELEASE_BUILD
+pref("geo.provider.ms-windows-location", false);
+#else
+pref("geo.provider.ms-windows-location", true);
+#endif
+#endif
+
 // Necko IPC security checks only needed for app isolation for cookies/cache/etc:
 // currently irrelevant for desktop e10s
 pref("network.disable.ipc.security", true);
@@ -1819,12 +1830,12 @@ pref("ui.key.menuAccessKeyFocuses", true);
 #endif
 
 // Encrypted media extensions.
-#ifdef RELEASE_BUILD
-pref("media.eme.enabled", false);
-pref("media.eme.apiVisible", false);
-#else
 pref("media.eme.enabled", true);
 pref("media.eme.apiVisible", true);
+
+#ifdef XP_WIN
+pref("media.gmp-eme-adobe.enabled", true);
+pref("browser.eme.ui.enabled", true);
 #endif
 
 // Play with different values of the decay time and get telemetry,
@@ -1858,13 +1869,6 @@ pref("privacy.trackingprotection.ui.enabled", false);
 pref("browser.tabs.remote.autostart.1", true);
 #endif
 
-// Temporary pref to allow printing in e10s windows on some platforms.
-#ifdef UNIX_BUT_NOT_MAC
-pref("print.enable_e10s_testing", false);
-#else
-pref("print.enable_e10s_testing", true);
-#endif
-
 #ifdef NIGHTLY_BUILD
 // Enable e10s add-on interposition by default.
 pref("extensions.interposition.enabled", true);
@@ -1889,8 +1893,10 @@ pref("dom.ipc.reportProcessHangs", false);
 pref("dom.ipc.reportProcessHangs", true);
 #endif
 
+#ifndef NIGHTLY_BUILD
 // Disable reader mode by default.
 pref("reader.parse-on-load.enabled", false);
+#endif
 
 // Disable ReadingList by default.
 pref("browser.readinglist.enabled", false);

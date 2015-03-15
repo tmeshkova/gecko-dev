@@ -308,27 +308,33 @@ public:
     virtual bool RecvCacheFileDescriptor(const nsString& aPath,
                                          const FileDescriptor& aFileDescriptor)
                                          MOZ_OVERRIDE;
-    virtual bool RecvShow(const nsIntSize& aSize,
+    virtual bool RecvShow(const ScreenIntSize& aSize,
                           const ShowInfo& aInfo,
                           const TextureFactoryIdentifier& aTextureFactoryIdentifier,
                           const uint64_t& aLayersId,
                           PRenderFrameChild* aRenderFrame,
                           const bool& aParentIsActive) MOZ_OVERRIDE;
     virtual bool RecvUpdateDimensions(const nsIntRect& rect,
-                                      const nsIntSize& size,
+                                      const ScreenIntSize& size,
                                       const ScreenOrientation& orientation,
                                       const nsIntPoint& chromeDisp) MOZ_OVERRIDE;
-    virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
+    virtual bool RecvUpdateFrame(const layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
+    virtual bool RecvRequestFlingSnap(const ViewID& aScrollId,
+                                      const CSSPoint& aDestination) MOZ_OVERRIDE;
     virtual bool RecvAcknowledgeScrollUpdate(const ViewID& aScrollId,
                                              const uint32_t& aScrollGeneration) MOZ_OVERRIDE;
     virtual bool RecvHandleDoubleTap(const CSSPoint& aPoint,
+                                     const Modifiers& aModifiers,
                                      const mozilla::layers::ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
     virtual bool RecvHandleSingleTap(const CSSPoint& aPoint,
+                                     const Modifiers& aModifiers,
                                      const mozilla::layers::ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
     virtual bool RecvHandleLongTap(const CSSPoint& aPoint,
+                                   const Modifiers& aModifiers,
                                    const mozilla::layers::ScrollableLayerGuid& aGuid,
                                    const uint64_t& aInputBlockId) MOZ_OVERRIDE;
     virtual bool RecvHandleLongTapUp(const CSSPoint& aPoint,
+                                     const Modifiers& aModifiers,
                                      const mozilla::layers::ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
     virtual bool RecvNotifyAPZStateChange(const ViewID& aViewId,
                                           const APZStateChange& aChange,

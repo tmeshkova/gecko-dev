@@ -1392,10 +1392,6 @@ void nsXULWindow::SyncAttributesToWidget()
     mWindow->SetNonClientMargins(margins);
   }
 
-  // "accelerated" attribute
-  bool isAccelerated = windowElement->HasAttribute(NS_LITERAL_STRING("accelerated"));
-  mWindow->SetLayersAcceleration(isAccelerated);
-
   // "windowtype" attribute
   windowElement->GetAttribute(WINDOWTYPE_ATTRIBUTE, attr);
   if (!attr.IsEmpty()) {
@@ -1469,7 +1465,7 @@ NS_IMETHODIMP nsXULWindow::SavePersistentAttributes()
 
   // fetch docShellElement's ID and XUL owner document
   ownerXULDoc = do_QueryInterface(docShellElement->OwnerDoc());
-  if (docShellElement->IsXUL()) {
+  if (docShellElement->IsXULElement()) {
     docShellElement->GetId(windowElementId);
   }
 

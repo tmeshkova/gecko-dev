@@ -2168,7 +2168,7 @@ class MOZ_STACK_CLASS StringRegExpGuard
 
         // Handle everything else generically (including throwing if .lastIndex is non-writable).
         RootedValue zero(cx, Int32Value(0));
-        return SetProperty(cx, obj_, obj_, cx->names().lastIndex, &zero, true);
+        return SetProperty(cx, obj_, obj_, cx->names().lastIndex, &zero);
     }
 
     RegExpShared &regExp() { return *re_; }
@@ -3066,7 +3066,7 @@ static inline JSFatInlineString *
 FlattenSubstrings(JSContext *cx, HandleLinearString str, const StringRange *ranges,
                   size_t rangesLen, size_t outputLen)
 {
-    JSFatInlineString *result = NewGCFatInlineString<CanGC>(cx);
+    JSFatInlineString *result = Allocate<JSFatInlineString>(cx);
     if (!result)
         return nullptr;
 
@@ -3655,7 +3655,7 @@ SplitHelper(JSContext *cx, HandleLinearString str, uint32_t limit, const Matcher
                         return nullptr;
                 } else {
                     /* Only string entries have been accounted for so far. */
-                    AddTypePropertyId(cx, group, JSID_VOID, UndefinedValue());
+                    AddTypePropertyId(cx, group, nullptr, JSID_VOID, UndefinedValue());
                     if (!splits.append(UndefinedValue()))
                         return nullptr;
                 }
@@ -3786,7 +3786,7 @@ js::str_split(JSContext *cx, unsigned argc, Value *vp)
     RootedObjectGroup group(cx, ObjectGroup::callingAllocationSiteGroup(cx, JSProto_Array));
     if (!group)
         return false;
-    AddTypePropertyId(cx, group, JSID_VOID, TypeSet::StringType());
+    AddTypePropertyId(cx, group, nullptr, JSID_VOID, TypeSet::StringType());
 
     /* Step 5: Use the second argument as the split limit, if given. */
     uint32_t limit;

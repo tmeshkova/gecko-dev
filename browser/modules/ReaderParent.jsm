@@ -15,7 +15,7 @@ Cu.import("resource://gre/modules/Task.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
 
-const gStringBundle = Services.strings.createBundle("chrome://browser/locale/readerMode.properties");
+const gStringBundle = Services.strings.createBundle("chrome://global/locale/aboutReader.properties");
 
 let ReaderParent = {
 
@@ -107,7 +107,7 @@ let ReaderParent = {
     if (browser.currentURI.spec.startsWith("about:reader")) {
       button.setAttribute("readeractive", true);
       button.hidden = false;
-      button.setAttribute("tooltiptext", gStringBundle.GetStringFromName("readerView.exit"));
+      button.setAttribute("tooltiptext", gStringBundle.GetStringFromName("readerView.close"));
     } else {
       button.removeAttribute("readeractive");
       button.setAttribute("tooltiptext", gStringBundle.GetStringFromName("readerView.enter"));
@@ -163,7 +163,7 @@ let ReaderParent = {
 
   /**
    * Gets an article for a given URL. This method will download and parse a document
-   * if it does not find the article in the tab data or the cache.
+   * if it does not find the article in the browser data.
    *
    * @param url The article URL.
    * @param browser The browser where the article is currently loaded.
@@ -174,13 +174,6 @@ let ReaderParent = {
     // First, look for a saved article.
     let article = yield this._getSavedArticle(browser);
     if (article && article.url == url) {
-      return article;
-    }
-
-    // Next, try to find a parsed article in the cache.
-    let uri = Services.io.newURI(url, null, null);
-    article = yield ReaderMode.getArticleFromCache(uri);
-    if (article) {
       return article;
     }
 

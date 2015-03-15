@@ -2888,7 +2888,8 @@ LIRGenerator::visitLoadTypedArrayElement(MLoadTypedArrayElement *ins)
     const LUse elements = useRegister(ins->elements());
     const LAllocation index = useRegisterOrConstant(ins->index());
 
-    MOZ_ASSERT(IsNumberType(ins->type()) || ins->type() == MIRType_Boolean);
+    MOZ_ASSERT(IsNumberType(ins->type()) || IsSimdType(ins->type()) ||
+               ins->type() == MIRType_Boolean);
 
     // We need a temp register for Uint32Array with known double result.
     LDefinition tempDef = LDefinition::BogusTemp();
@@ -2980,9 +2981,12 @@ LIRGenerator::visitStoreTypedArrayElement(MStoreTypedArrayElement *ins)
     MOZ_ASSERT(IsValidElementsType(ins->elements(), ins->offsetAdjustment()));
     MOZ_ASSERT(ins->index()->type() == MIRType_Int32);
 
-    if (ins->isFloatArray()) {
-        MOZ_ASSERT_IF(ins->arrayType() == Scalar::Float32, ins->value()->type() == MIRType_Float32);
-        MOZ_ASSERT_IF(ins->arrayType() == Scalar::Float64, ins->value()->type() == MIRType_Double);
+    if (ins->isSimdWrite()) {
+        MOZ_ASSERT_IF(ins->writeType() == Scalar::Float32x4, ins->value()->type() == MIRType_Float32x4);
+        MOZ_ASSERT_IF(ins->writeType() == Scalar::Int32x4, ins->value()->type() == MIRType_Int32x4);
+    } else if (ins->isFloatWrite()) {
+        MOZ_ASSERT_IF(ins->writeType() == Scalar::Float32, ins->value()->type() == MIRType_Float32);
+        MOZ_ASSERT_IF(ins->writeType() == Scalar::Float64, ins->value()->type() == MIRType_Double);
     } else {
         MOZ_ASSERT(ins->value()->type() == MIRType_Int32);
     }
@@ -2992,7 +2996,7 @@ LIRGenerator::visitStoreTypedArrayElement(MStoreTypedArrayElement *ins)
     LAllocation value;
 
     // For byte arrays, the value has to be in a byte register on x86.
-    if (ins->isByteArray())
+    if (ins->isByteWrite())
         value = useByteOpRegisterOrNonDoubleConstant(ins->value());
     else
         value = useRegisterOrNonDoubleConstant(ins->value());
@@ -3019,7 +3023,7 @@ LIRGenerator::visitStoreTypedArrayElementHole(MStoreTypedArrayElementHole *ins)
     MOZ_ASSERT(ins->index()->type() == MIRType_Int32);
     MOZ_ASSERT(ins->length()->type() == MIRType_Int32);
 
-    if (ins->isFloatArray()) {
+    if (ins->isFloatWrite()) {
         MOZ_ASSERT_IF(ins->arrayType() == Scalar::Float32, ins->value()->type() == MIRType_Float32);
         MOZ_ASSERT_IF(ins->arrayType() == Scalar::Float64, ins->value()->type() == MIRType_Double);
     } else {
@@ -3032,7 +3036,7 @@ LIRGenerator::visitStoreTypedArrayElementHole(MStoreTypedArrayElementHole *ins)
     LAllocation value;
 
     // For byte arrays, the value has to be in a byte register on x86.
-    if (ins->isByteArray())
+    if (ins->isByteWrite())
         value = useByteOpRegisterOrNonDoubleConstant(ins->value());
     else
         value = useRegisterOrNonDoubleConstant(ins->value());
@@ -3234,13 +3238,13 @@ LIRGenerator::visitPolyInlineGuard(MPolyInlineGuard *ins)
 }
 
 void
-LIRGenerator::visitGuardShapePolymorphic(MGuardShapePolymorphic *ins)
+LIRGenerator::visitGuardReceiverPolymorphic(MGuardReceiverPolymorphic *ins)
 {
     MOZ_ASSERT(ins->obj()->type() == MIRType_Object);
     MOZ_ASSERT(ins->type() == MIRType_Object);
 
-    LGuardShapePolymorphic *guard =
-        new(alloc()) LGuardShapePolymorphic(useRegister(ins->obj()), temp());
+    LGuardReceiverPolymorphic *guard =
+        new(alloc()) LGuardReceiverPolymorphic(useRegister(ins->obj()), temp());
     assignSnapshot(guard, Bailout_ShapeGuard);
     add(guard, ins);
     redefine(ins, ins->obj());
@@ -3947,6 +3951,29 @@ LIRGenerator::visitSimdSwizzle(MSimdSwizzle *ins)
 }
 
 void
+LIRGenerator::visitSimdGeneralSwizzle(MSimdGeneralSwizzle *ins)
+{
+    MOZ_ASSERT(IsSimdType(ins->input()->type()));
+    MOZ_ASSERT(IsSimdType(ins->type()));
+
+    LAllocation lanesUses[4];
+    for (size_t i = 0; i < 4; i++)
+        lanesUses[i] = use(ins->lane(i));
+
+    if (ins->input()->type() == MIRType_Int32x4) {
+        LSimdGeneralSwizzleI *lir = new (alloc()) LSimdGeneralSwizzleI(useRegister(ins->input()),
+                                                                       lanesUses, temp());
+        define(lir, ins);
+    } else if (ins->input()->type() == MIRType_Float32x4) {
+        LSimdGeneralSwizzleF *lir = new (alloc()) LSimdGeneralSwizzleF(useRegister(ins->input()),
+                                                                       lanesUses, temp());
+        define(lir, ins);
+    } else {
+        MOZ_CRASH("Unknown SIMD kind when getting lane");
+    }
+}
+
+void
 LIRGenerator::visitSimdShuffle(MSimdShuffle *ins)
 {
     MOZ_ASSERT(IsSimdType(ins->lhs()->type()));
@@ -3969,6 +3996,7 @@ LIRGenerator::visitSimdShuffle(MSimdShuffle *ins)
 void
 LIRGenerator::visitSimdUnaryArith(MSimdUnaryArith *ins)
 {
+    MOZ_ASSERT(IsSimdType(ins->input()->type()));
     MOZ_ASSERT(IsSimdType(ins->type()));
 
     // Cannot be at start, as the ouput is used as a temporary to store values.
@@ -3988,15 +4016,17 @@ LIRGenerator::visitSimdUnaryArith(MSimdUnaryArith *ins)
 void
 LIRGenerator::visitSimdBinaryComp(MSimdBinaryComp *ins)
 {
+    MOZ_ASSERT(IsSimdType(ins->lhs()->type()));
+    MOZ_ASSERT(IsSimdType(ins->rhs()->type()));
     MOZ_ASSERT(ins->type() == MIRType_Int32x4);
 
     if (ShouldReorderCommutative(ins->lhs(), ins->rhs(), ins))
         ins->reverse();
 
-    if (ins->compareType() == MSimdBinaryComp::CompareInt32x4) {
+    if (ins->specialization() == MIRType_Int32x4) {
         LSimdBinaryCompIx4 *add = new(alloc()) LSimdBinaryCompIx4();
         lowerForCompIx4(add, ins, ins->lhs(), ins->rhs());
-    } else if (ins->compareType() == MSimdBinaryComp::CompareFloat32x4) {
+    } else if (ins->specialization() == MIRType_Float32x4) {
         LSimdBinaryCompFx4 *add = new(alloc()) LSimdBinaryCompFx4();
         lowerForCompFx4(add, ins, ins->lhs(), ins->rhs());
     } else {
@@ -4007,6 +4037,8 @@ LIRGenerator::visitSimdBinaryComp(MSimdBinaryComp *ins)
 void
 LIRGenerator::visitSimdBinaryBitwise(MSimdBinaryBitwise *ins)
 {
+    MOZ_ASSERT(IsSimdType(ins->lhs()->type()));
+    MOZ_ASSERT(IsSimdType(ins->rhs()->type()));
     MOZ_ASSERT(IsSimdType(ins->type()));
 
     MDefinition *lhs = ins->lhs();

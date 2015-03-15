@@ -2048,7 +2048,7 @@ Debugger::updateObservesAllExecutionOnDebuggees(JSContext *cx, IsObserving obser
     if (!obs.init())
         return false;
 
-    for (GlobalObjectSet::Range r = debuggees.all(); !r.empty(); r.popFront()) {
+    for (WeakGlobalObjectSet::Range r = debuggees.all(); !r.empty(); r.popFront()) {
         GlobalObject *global = r.front();
         JSCompartment *comp = global->compartment();
 
@@ -2069,7 +2069,7 @@ Debugger::updateObservesAllExecutionOnDebuggees(JSContext *cx, IsObserving obser
 void
 Debugger::updateObservesAsmJSOnDebuggees(IsObserving observing)
 {
-    for (GlobalObjectSet::Range r = debuggees.all(); !r.empty(); r.popFront()) {
+    for (WeakGlobalObjectSet::Range r = debuggees.all(); !r.empty(); r.popFront()) {
         GlobalObject *global = r.front();
         JSCompartment *comp = global->compartment();
 
@@ -2113,15 +2113,24 @@ Debugger::markCrossCompartmentEdges(JSTracer *trc)
  *
  * This happens during the initial mark phase, not iterative marking, because
  * all the edges being reported here are strong references.
+ *
+ * This method is also used during compacting GC to update cross compartment
+ * pointers in zones that are not currently being compacted.
  */
 /* static */ void
-Debugger::markAllCrossCompartmentEdges(JSTracer *trc)
+Debugger::markIncomingCrossCompartmentEdges(JSTracer *trc)
 {
     JSRuntime *rt = trc->runtime();
+    gc::State state = rt->gc.state();
+    MOZ_ASSERT(state == gc::MARK_ROOTS || state == gc::COMPACT);
 
     for (Debugger *dbg = rt->debuggerList.getFirst(); dbg; dbg = dbg->getNext()) {
-        if (!dbg->object->zone()->isCollecting())
+        Zone *zone = dbg->object->zone();
+        if ((state == gc::MARK_ROOTS && !zone->isCollecting()) ||
+            (state == gc::COMPACT && !zone->isGCCompacting()))
+        {
             dbg->markCrossCompartmentEdges(trc);
+        }
     }
 }
 
@@ -2212,12 +2221,12 @@ Debugger::markAll(JSTracer *trc)
 {
     JSRuntime *rt = trc->runtime();
     for (Debugger *dbg = rt->debuggerList.getFirst(); dbg; dbg = dbg->getNext()) {
-        GlobalObjectSet &debuggees = dbg->debuggees;
-        for (GlobalObjectSet::Enum e(debuggees); !e.empty(); e.popFront()) {
+        WeakGlobalObjectSet &debuggees = dbg->debuggees;
+        for (WeakGlobalObjectSet::Enum e(debuggees); !e.empty(); e.popFront()) {
             GlobalObject *global = e.front();
             MarkObjectUnbarriered(trc, &global, "Global Object");
             if (global != e.front())
-                e.rekeyFront(global);
+                e.rekeyFront(ReadBarrieredGlobalObject(global));
         }
 
         HeapPtrNativeObject &dbgobj = dbg->toJSObjectRef();
@@ -2295,7 +2304,7 @@ Debugger::sweepAll(FreeOp *fop)
              * might be GC'd too. Since detaching requires access to both
              * objects, this must be done before finalize time.
              */
-            for (GlobalObjectSet::Enum e(dbg->debuggees); !e.empty(); e.popFront())
+            for (WeakGlobalObjectSet::Enum e(dbg->debuggees); !e.empty(); e.popFront())
                 dbg->removeDebuggeeGlobal(fop, e.front(), &e);
         }
     }
@@ -2625,7 +2634,7 @@ Debugger::setAllowUnobservedAsmJS(JSContext *cx, unsigned argc, Value *vp)
         return false;
     dbg->allowUnobservedAsmJS = ToBoolean(args[0]);
 
-    for (GlobalObjectSet::Range r = dbg->debuggees.all(); !r.empty(); r.popFront()) {
+    for (WeakGlobalObjectSet::Range r = dbg->debuggees.all(); !r.empty(); r.popFront()) {
         GlobalObject *global = r.front();
         JSCompartment *comp = global->compartment();
         comp->updateDebuggerObservesAsmJS();
@@ -2783,7 +2792,7 @@ Debugger::removeAllDebuggees(JSContext *cx, unsigned argc, Value *vp)
     if (!obs.init())
         return false;
 
-    for (GlobalObjectSet::Enum e(dbg->debuggees); !e.empty(); e.popFront()) {
+    for (WeakGlobalObjectSet::Enum e(dbg->debuggees); !e.empty(); e.popFront()) {
         Rooted<GlobalObject *> global(cx, e.front());
         dbg->removeDebuggeeGlobal(cx->runtime()->defaultFreeOp(), global, &e);
 
@@ -2826,8 +2835,8 @@ Debugger::getDebuggees(JSContext *cx, unsigned argc, Value *vp)
     unsigned i = 0;
     {
         JS::AutoCheckCannotGC nogc;
-        for (GlobalObjectSet::Enum e(dbg->debuggees); !e.empty(); e.popFront())
-            debuggees[i++].setObject(*e.front());
+        for (WeakGlobalObjectSet::Enum e(dbg->debuggees); !e.empty(); e.popFront())
+            debuggees[i++].setObject(*e.front().get());
     }
 
     RootedArrayObject arrobj(cx, NewDenseFullyAllocatedArray(cx, count));
@@ -2872,7 +2881,7 @@ Debugger::getNewestFrame(JSContext *cx, unsigned argc, Value *vp)
 Debugger::clearAllBreakpoints(JSContext *cx, unsigned argc, Value *vp)
 {
     THIS_DEBUGGER(cx, argc, vp, "clearAllBreakpoints", args, dbg);
-    for (GlobalObjectSet::Range r = dbg->debuggees.all(); !r.empty(); r.popFront())
+    for (WeakGlobalObjectSet::Range r = dbg->debuggees.all(); !r.empty(); r.popFront())
         r.front()->compartment()->clearBreakpointsIn(cx->runtime()->defaultFreeOp(),
                                                      dbg, NullPtr());
     return true;
@@ -3040,7 +3049,8 @@ Debugger::addDebuggeeGlobal(JSContext *cx, Handle<GlobalObject*> global)
 }
 
 void
-Debugger::removeDebuggeeGlobal(FreeOp *fop, GlobalObject *global, GlobalObjectSet::Enum *debugEnum)
+Debugger::removeDebuggeeGlobal(FreeOp *fop, GlobalObject *global,
+                               WeakGlobalObjectSet::Enum *debugEnum)
 {
     /*
      * The caller might have found global by enumerating this->debuggees; if
@@ -3394,7 +3404,7 @@ class MOZ_STACK_CLASS Debugger::ScriptQuery
     bool matchAllDebuggeeGlobals() {
         MOZ_ASSERT(compartments.count() == 0);
         /* Build our compartment set from the debugger's set of debuggee globals. */
-        for (GlobalObjectSet::Range r = debugger->debuggees.all(); !r.empty(); r.popFront()) {
+        for (WeakGlobalObjectSet::Range r = debugger->debuggees.all(); !r.empty(); r.popFront()) {
             if (!addCompartment(r.front()->compartment())) {
                 ReportOutOfMemory(cx);
                 return false;
@@ -3970,7 +3980,8 @@ Debugger::startTraceLogger(JSContext *cx, unsigned argc, Value *vp)
         return false;
 
     TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    TraceLoggerEnable(logger, cx);
+    if (!TraceLoggerEnable(logger, cx))
+        return false;
 
     args.rval().setUndefined();
 
@@ -4449,11 +4460,11 @@ class BytecodeRangeWithPosition : private BytecodeRange
         while (!SN_IS_TERMINATOR(sn) && snpc <= frontPC()) {
             SrcNoteType type = (SrcNoteType) SN_TYPE(sn);
             if (type == SRC_COLSPAN) {
-                ptrdiff_t colspan = SN_OFFSET_TO_COLSPAN(js_GetSrcNoteOffset(sn, 0));
+                ptrdiff_t colspan = SN_OFFSET_TO_COLSPAN(GetSrcNoteOffset(sn, 0));
                 MOZ_ASSERT(ptrdiff_t(column) + colspan >= 0);
                 column += colspan;
             } if (type == SRC_SETLINE) {
-                lineno = size_t(js_GetSrcNoteOffset(sn, 0));
+                lineno = size_t(GetSrcNoteOffset(sn, 0));
                 column = 0;
             } else if (type == SRC_NEWLINE) {
                 lineno++;
@@ -5837,7 +5848,7 @@ DebuggerFrame_getArguments(JSContext *cx, unsigned argc, Value *vp)
             id = INT_TO_JSID(i);
             if (!getobj ||
                 !NativeDefineProperty(cx, argsobj, id, UndefinedHandleValue,
-                                      JS_DATA_TO_FUNC_PTR(PropertyOp, getobj.get()), nullptr,
+                                      JS_DATA_TO_FUNC_PTR(GetterOp, getobj.get()), nullptr,
                                       JSPROP_ENUMERATE | JSPROP_SHARED | JSPROP_GETTER))
             {
                 return false;
@@ -6724,8 +6735,7 @@ DebuggerObject_defineProperty(JSContext *cx, unsigned argc, Value *vp)
             return false;
 
         ErrorCopier ec(ac);
-        bool dummy;
-        if (!StandardDefineProperty(cx, obj, id, desc, true, &dummy))
+        if (!StandardDefineProperty(cx, obj, id, desc))
             return false;
     }
 
@@ -6768,8 +6778,7 @@ DebuggerObject_defineProperties(JSContext *cx, unsigned argc, Value *vp)
 
         ErrorCopier ec(ac);
         for (size_t i = 0; i < n; i++) {
-            bool dummy;
-            if (!StandardDefineProperty(cx, obj, ids[i], descs[i], true, &dummy))
+            if (!StandardDefineProperty(cx, obj, ids[i], descs[i]))
                 return false;
         }
     }
@@ -6794,10 +6803,10 @@ DebuggerObject_deleteProperty(JSContext *cx, unsigned argc, Value *vp)
     ac.emplace(cx, obj);
     ErrorCopier ec(ac);
 
-    bool succeeded;
-    if (!DeleteProperty(cx, obj, id, &succeeded))
+    ObjectOpResult result;
+    if (!DeleteProperty(cx, obj, id, result))
         return false;
-    args.rval().setBoolean(succeeded);
+    args.rval().setBoolean(result.ok());
     return true;
 }
 
@@ -6811,24 +6820,17 @@ DebuggerObject_sealHelper(JSContext *cx, unsigned argc, Value *vp, SealHelperOp 
     Maybe<AutoCompartment> ac;
     ac.emplace(cx, obj);
     ErrorCopier ec(ac);
-    bool ok;
     if (op == OpSeal) {
-        ok = SetIntegrityLevel(cx, obj, IntegrityLevel::Sealed);
+        if (!SetIntegrityLevel(cx, obj, IntegrityLevel::Sealed))
+            return false;
     } else if (op == OpFreeze) {
-        ok = SetIntegrityLevel(cx, obj, IntegrityLevel::Frozen);
+        if (!SetIntegrityLevel(cx, obj, IntegrityLevel::Frozen))
+            return false;
     } else {
         MOZ_ASSERT(op == OpPreventExtensions);
-        bool succeeded;
-        ok = PreventExtensions(cx, obj, &succeeded);
-        if (!ok)
+        if (!PreventExtensions(cx, obj))
             return false;
-        if (!succeeded) {
-            JS_ReportErrorNumber(cx, GetErrorMessage, nullptr, JSMSG_CANT_CHANGE_EXTENSIBILITY);
-            return false;
-        }
     }
-    if (!ok)
-        return false;
     args.rval().setUndefined();
     return true;
 }
@@ -7508,7 +7510,7 @@ DebuggerEnv_setVariable(JSContext *cx, unsigned argc, Value *vp)
         }
 
         /* Just set the property. */
-        if (!SetProperty(cx, env, env, id, &v, true))
+        if (!SetProperty(cx, env, env, id, &v))
             return false;
     }
 

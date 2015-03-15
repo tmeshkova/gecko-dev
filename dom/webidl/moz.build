@@ -57,6 +57,8 @@ WEBIDL_FILES = [
     'BroadcastChannel.webidl',
     'BrowserElement.webidl',
     'BrowserElementDictionaries.webidl',
+    'Cache.webidl',
+    'CacheStorage.webidl',
     'CallsList.webidl',
     'CameraCapabilities.webidl',
     'CameraControl.webidl',
@@ -241,7 +243,6 @@ WEBIDL_FILES = [
     'IDBRequest.webidl',
     'IDBTransaction.webidl',
     'IDBVersionChangeEvent.webidl',
-    'Identity.webidl',
     'ImageCapture.webidl',
     'ImageData.webidl',
     'ImageDocument.webidl',
@@ -547,6 +548,7 @@ WEBIDL_FILES = [
     'WifiOptions.webidl',
     'WindowRoot.webidl',
     'Worker.webidl',
+    'WorkerDebuggerGlobalScope.webidl',
     'WorkerGlobalScope.webidl',
     'WorkerLocation.webidl',
     'WorkerNavigator.webidl',
@@ -823,4 +825,9 @@ if CONFIG['MOZ_EME']:
 if CONFIG['MOZ_PAY']:
     WEBIDL_FILES += [
         'MozPaymentProvider.webidl'
+    ]
+
+if CONFIG['MOZ_B2G']:
+    WEBIDL_FILES += [
+        'Identity.webidl'
     ]

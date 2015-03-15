@@ -1310,9 +1310,16 @@ MarkJitExitFrame(JSTracer *trc, const JitFrameIterator &frame)
         return;
     }
 
-    if (frame.isExitFrameLayout<IonOOLPropertyOpExitFrameLayout>()) {
+    if (frame.isExitFrameLayout<IonOOLPropertyOpExitFrameLayout>() ||
+        frame.isExitFrameLayout<IonOOLSetterOpExitFrameLayout>())
+    {
+        // A SetterOp frame is a different size, but that's the only relevant
+        // difference between the two. The fields that need marking are all in
+        // the common base class.
         IonOOLPropertyOpExitFrameLayout *oolgetter =
-            frame.exitFrame()->as<IonOOLPropertyOpExitFrameLayout>();
+            frame.isExitFrameLayout<IonOOLPropertyOpExitFrameLayout>()
+            ? frame.exitFrame()->as<IonOOLPropertyOpExitFrameLayout>()
+            : frame.exitFrame()->as<IonOOLSetterOpExitFrameLayout>();
         gc::MarkJitCodeRoot(trc, oolgetter->stubCode(), "ion-ool-property-op-code");
         gc::MarkValueRoot(trc, oolgetter->vp(), "ion-ool-property-op-vp");
         gc::MarkIdRoot(trc, oolgetter->id(), "ion-ool-property-op-id");
@@ -2572,7 +2579,7 @@ struct DumpOp {
     void operator()(const Value& v) {
         fprintf(stderr, "  actual (arg %d): ", i_);
 #ifdef DEBUG
-        js_DumpValue(v);
+        DumpValue(v);
 #else
         fprintf(stderr, "?\n");
 #endif
@@ -2589,7 +2596,7 @@ JitFrameIterator::dumpBaseline() const
     if (isFunctionFrame()) {
         fprintf(stderr, "  callee fun: ");
 #ifdef DEBUG
-        js_DumpObject(callee());
+        DumpObject(callee());
 #else
         fprintf(stderr, "?\n");
 #endif
@@ -2616,7 +2623,7 @@ JitFrameIterator::dumpBaseline() const
         fprintf(stderr, "  slot %u: ", i);
 #ifdef DEBUG
         Value *v = frame->valueSlot(i);
-        js_DumpValue(*v);
+        DumpValue(*v);
 #else
         fprintf(stderr, "?\n");
 #endif
@@ -2638,7 +2645,7 @@ InlineFrameIterator::dump() const
         isFunction = true;
         fprintf(stderr, "  callee fun: ");
 #ifdef DEBUG
-        js_DumpObject(callee(fallback));
+        DumpObject(callee(fallback));
 #else
         fprintf(stderr, "?\n");
 #endif
@@ -2677,7 +2684,7 @@ InlineFrameIterator::dump() const
         } else
             fprintf(stderr, "  slot %u: ", i);
 #ifdef DEBUG
-        js_DumpValue(si.maybeRead(fallback));
+        DumpValue(si.maybeRead(fallback));
 #else
         fprintf(stderr, "?\n");
 #endif
@@ -2891,12 +2898,18 @@ JitProfilingFrameIterator::JitProfilingFrameIterator(void *exitFrame)
     ExitFrameLayout *frame = (ExitFrameLayout *) exitFrame;
     FrameType prevType = frame->prevType();
 
-    if (prevType == JitFrame_IonJS || prevType == JitFrame_BaselineJS ||
-        prevType == JitFrame_Unwound_IonJS)
-    {
+    if (prevType == JitFrame_IonJS || prevType == JitFrame_Unwound_IonJS) {
         returnAddressToFp_ = frame->returnAddress();
         fp_ = GetPreviousRawFrame<ExitFrameLayout, uint8_t *>(frame);
         type_ = JitFrame_IonJS;
+        return;
+    }
+
+    if (prevType == JitFrame_BaselineJS) {
+        returnAddressToFp_ = frame->returnAddress();
+        fp_ = GetPreviousRawFrame<ExitFrameLayout, uint8_t *>(frame);
+        type_ = JitFrame_BaselineJS;
+        fixBaselineDebugModeOSRReturnAddress();
         return;
     }
 
@@ -2991,6 +3004,16 @@ JitProfilingFrameIterator::tryInitWithTable(JitcodeGlobalTable *table, void *pc,
 }
 
 void
+JitProfilingFrameIterator::fixBaselineDebugModeOSRReturnAddress()
+{
+    MOZ_ASSERT(type_ == JitFrame_BaselineJS);
+    BaselineFrame *bl = (BaselineFrame *)(fp_ - BaselineFrame::FramePointerOffset -
+                                          BaselineFrame::Size());
+    if (BaselineDebugModeOSRInfo *info = bl->getDebugModeOSRInfo())
+        returnAddressToFp_ = info->resumeAddr;
+}
+
+void
 JitProfilingFrameIterator::operator++()
 {
     /*
@@ -3036,6 +3059,7 @@ JitProfilingFrameIterator::operator++()
         returnAddressToFp_ = frame->returnAddress();
         fp_ = GetPreviousRawFrame<JitFrameLayout, uint8_t *>(frame);
         type_ = JitFrame_BaselineJS;
+        fixBaselineDebugModeOSRReturnAddress();
         return;
     }
 

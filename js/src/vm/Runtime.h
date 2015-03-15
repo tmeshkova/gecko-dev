@@ -297,7 +297,7 @@ class NewObjectCache
      * nullptr if returning the object could possibly trigger GC (does not
      * indicate failure).
      */
-    inline JSObject *newObjectFromHit(JSContext *cx, EntryIndex entry, js::gc::InitialHeap heap);
+    inline NativeObject *newObjectFromHit(JSContext *cx, EntryIndex entry, js::gc::InitialHeap heap);
 
     /* Fill an entry after a cache miss. */
     void fillProto(EntryIndex entry, const Class *clasp, js::TaggedProto proto,
@@ -344,7 +344,7 @@ class NewObjectCache
         js_memcpy(&entry->templateObject, obj, entry->nbytes);
     }
 
-    static void copyCachedToObject(JSObject *dst, JSObject *src, gc::AllocKind kind) {
+    static void copyCachedToObject(NativeObject *dst, NativeObject *src, gc::AllocKind kind) {
         js_memcpy(dst, src, gc::Arena::thingSize(kind));
         Shape::writeBarrierPost(dst->shape_, &dst->shape_);
         ObjectGroup::writeBarrierPost(dst->group_, &dst->group_);
@@ -660,6 +660,22 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::AsmJSActivation * volatile asmJSActivationStack_;
 
   public:
+    /*
+     * Youngest frame of a saved stack that will be picked up as an async stack
+     * by any new Activation, and is nullptr when no async stack should be used.
+     *
+     * The JS::AutoSetAsyncStackForNewCalls class can be used to set this.
+     *
+     * New activations will reset this to nullptr on construction after getting
+     * the current value, and will restore the previous value on destruction.
+     */
+    js::SavedFrame *asyncStackForNewActivations;
+
+    /*
+     * Value of asyncCause to be attached to asyncStackForNewActivations.
+     */
+    JSString *asyncCauseForNewActivations;
+
     js::Activation *const *addressOfActivation() const {
         return &activation_;
     }

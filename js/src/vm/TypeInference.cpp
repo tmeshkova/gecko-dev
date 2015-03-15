@@ -27,6 +27,7 @@
 #include "jit/Ion.h"
 #include "jit/IonAnalysis.h"
 #include "jit/JitCompartment.h"
+#include "jit/OptimizationTracking.h"
 #include "js/MemoryMetrics.h"
 #include "vm/HelperThreads.h"
 #include "vm/Opcodes.h"
@@ -34,7 +35,6 @@
 #include "vm/UnboxedObject.h"
 
 #include "jsatominlines.h"
-#include "jsgcinlines.h"
 #include "jsscriptinlines.h"
 
 #include "vm/NativeObject-inl.h"
@@ -419,8 +419,9 @@ TypeSet::isSubset(const TypeSet *other) const
     return true;
 }
 
+template <class TypeListT>
 bool
-TypeSet::enumerateTypes(TypeList *list) const
+TypeSet::enumerateTypes(TypeListT *list) const
 {
     /* If any type is possible, there's no need to worry about specifics. */
     if (flags & TYPE_FLAG_UNKNOWN)
@@ -451,6 +452,9 @@ TypeSet::enumerateTypes(TypeList *list) const
 
     return true;
 }
+
+template bool TypeSet::enumerateTypes<TypeSet::TypeList>(TypeList *list) const;
+template bool TypeSet::enumerateTypes<jit::TempTypeList>(jit::TempTypeList *list) const;
 
 inline bool
 TypeSet::addTypesToConstraint(JSContext *cx, TypeConstraint *constraint)
@@ -685,6 +689,59 @@ TypeSet::readBarrier(const TypeSet *types)
                 (void) key->group();
         }
     }
+}
+
+bool
+TypeSet::IsTypeMarkedFromAnyThread(TypeSet::Type *v)
+{
+    bool rv;
+    if (v->isSingletonUnchecked()) {
+        JSObject *obj = v->singletonNoBarrier();
+        rv = IsObjectMarkedFromAnyThread(&obj);
+        *v = TypeSet::ObjectType(obj);
+    } else if (v->isGroupUnchecked()) {
+        ObjectGroup *group = v->groupNoBarrier();
+        rv = IsObjectGroupMarkedFromAnyThread(&group);
+        *v = TypeSet::ObjectType(group);
+    } else {
+        rv = true;
+    }
+    return rv;
+}
+
+static inline bool
+IsObjectKeyAboutToBeFinalized(TypeSet::ObjectKey **keyp)
+{
+    TypeSet::ObjectKey *key = *keyp;
+    bool isAboutToBeFinalized;
+    if (key->isGroup()) {
+        ObjectGroup *group = key->groupNoBarrier();
+        isAboutToBeFinalized = IsObjectGroupAboutToBeFinalized(&group);
+        if (!isAboutToBeFinalized)
+            *keyp = TypeSet::ObjectKey::get(group);
+    } else {
+        MOZ_ASSERT(key->isSingleton());
+        JSObject *singleton = key->singletonNoBarrier();
+        isAboutToBeFinalized = IsObjectAboutToBeFinalized(&singleton);
+        if (!isAboutToBeFinalized)
+            *keyp = TypeSet::ObjectKey::get(singleton);
+    }
+    return isAboutToBeFinalized;
+}
+
+bool
+TypeSet::IsTypeAboutToBeFinalized(TypeSet::Type *v)
+{
+    bool isAboutToBeFinalized;
+    if (v->isObjectUnchecked()) {
+        TypeSet::ObjectKey *key = v->objectKey();
+        isAboutToBeFinalized = IsObjectKeyAboutToBeFinalized(&key);
+        if (!isAboutToBeFinalized)
+            *v = TypeSet::ObjectType(key);
+    } else {
+        isAboutToBeFinalized = false;
+    }
+    return isAboutToBeFinalized;
 }
 
 bool
@@ -1149,7 +1206,8 @@ HeapTypeSetKey::instantiate(JSContext *cx)
         cx->clearPendingException();
         return false;
     }
-    maybeTypes_ = object()->maybeGroup()->getProperty(cx, id());
+    JSObject *obj = object()->isSingleton() ? object()->singleton() : nullptr;
+    maybeTypes_ = object()->maybeGroup()->getProperty(cx, obj, id());
     return maybeTypes_ != nullptr;
 }
 
@@ -1692,22 +1750,28 @@ class ConstraintDataFreezeObjectForInlinedCall
 // invalid.
 class ConstraintDataFreezeObjectForTypedArrayData
 {
+    NativeObject *obj;
+
     void *viewData;
     uint32_t length;
 
   public:
     explicit ConstraintDataFreezeObjectForTypedArrayData(TypedArrayObject &tarray)
-      : viewData(tarray.viewData()),
+      : obj(&tarray),
+        viewData(tarray.viewData()),
         length(tarray.length())
-    {}
+    {
+        MOZ_ASSERT(tarray.isSingleton());
+    }
 
     const char *kind() { return "freezeObjectForTypedArrayData"; }
 
     bool invalidateOnNewType(TypeSet::Type type) { return false; }
     bool invalidateOnNewPropertyState(TypeSet *property) { return false; }
     bool invalidateOnNewObjectState(ObjectGroup *group) {
-        TypedArrayObject &tarray = group->singleton()->as<TypedArrayObject>();
-        return tarray.viewData() != viewData || tarray.length() != length;
+        MOZ_ASSERT(obj->group() == group);
+        TypedArrayObject &tarr = obj->as<TypedArrayObject>();
+        return tarr.viewData() != viewData || tarr.length() != length;
     }
 
     bool constraintHolds(JSContext *cx,
@@ -1718,7 +1782,7 @@ class ConstraintDataFreezeObjectForTypedArrayData
 
     bool shouldSweep() {
         // Note: |viewData| is only used for equality testing.
-        return false;
+        return IsObjectAboutToBeFinalized(&obj);
     }
 };
 
@@ -2474,18 +2538,21 @@ UpdatePropertyType(ExclusiveContext *cx, HeapTypeSet *types, NativeObject *obj, 
 }
 
 void
-ObjectGroup::updateNewPropertyTypes(ExclusiveContext *cx, jsid id, HeapTypeSet *types)
+ObjectGroup::updateNewPropertyTypes(ExclusiveContext *cx, JSObject *objArg, jsid id, HeapTypeSet *types)
 {
     InferSpew(ISpewOps, "typeSet: %sT%p%s property %s %s",
               InferSpewColor(types), types, InferSpewColorReset(),
               TypeSet::ObjectGroupString(this), TypeIdString(id));
 
-    if (!singleton() || !singleton()->isNative()) {
+    MOZ_ASSERT_IF(objArg, objArg->group() == this);
+    MOZ_ASSERT_IF(singleton(), objArg);
+
+    if (!singleton() || !objArg->isNative()) {
         types->setNonConstantProperty(cx);
         return;
     }
 
-    NativeObject *obj = &singleton()->as<NativeObject>();
+    NativeObject *obj = &objArg->as<NativeObject>();
 
     /*
      * Fill the property in with any type the object already has in an own
@@ -2541,7 +2608,7 @@ ObjectGroup::addDefiniteProperties(ExclusiveContext *cx, Shape *shape)
         if (!JSID_IS_VOID(id)) {
             MOZ_ASSERT_IF(shape->slot() >= shape->numFixedSlots(),
                           shape->numFixedSlots() == NativeObject::MAX_FIXED_SLOTS);
-            TypeSet *types = getProperty(cx, id);
+            TypeSet *types = getProperty(cx, nullptr, id);
             if (!types)
                 return false;
             if (types->canSetDefinite(shape->slot()))
@@ -2566,7 +2633,7 @@ ObjectGroup::matchDefiniteProperties(HandleObject obj)
             unsigned slot = prop->types.definiteSlot();
 
             bool found = false;
-            Shape *shape = obj->lastProperty();
+            Shape *shape = obj->as<NativeObject>().lastProperty();
             while (!shape->isEmptyShape()) {
                 if (shape->slot() == slot && shape->propid() == prop->id) {
                     found = true;
@@ -2583,7 +2650,7 @@ ObjectGroup::matchDefiniteProperties(HandleObject obj)
 }
 
 void
-js::AddTypePropertyId(ExclusiveContext *cx, ObjectGroup *group, jsid id, TypeSet::Type type)
+js::AddTypePropertyId(ExclusiveContext *cx, ObjectGroup *group, JSObject *obj, jsid id, TypeSet::Type type)
 {
     MOZ_ASSERT(id == IdToTypeId(id));
 
@@ -2592,7 +2659,7 @@ js::AddTypePropertyId(ExclusiveContext *cx, ObjectGroup *group, jsid id, TypeSet
 
     AutoEnterAnalysis enter(cx);
 
-    HeapTypeSet *types = group->getProperty(cx, id);
+    HeapTypeSet *types = group->getProperty(cx, obj, id);
     if (!types)
         return;
 
@@ -2622,44 +2689,44 @@ js::AddTypePropertyId(ExclusiveContext *cx, ObjectGroup *group, jsid id, TypeSet
     // reflected via shape changes on the object that will prevent the object
     // from acquiring the fully initialized group.
     if (group->newScript() && group->newScript()->initializedGroup())
-        AddTypePropertyId(cx, group->newScript()->initializedGroup(), id, type);
+        AddTypePropertyId(cx, group->newScript()->initializedGroup(), nullptr, id, type);
 
     // Maintain equivalent type information for unboxed object groups and their
     // corresponding native group. Since type sets might contain the unboxed
     // group but not the native group, this ensures optimizations based on the
     // unboxed group are valid for the native group.
     if (group->maybeUnboxedLayout() && group->maybeUnboxedLayout()->nativeGroup())
-        AddTypePropertyId(cx, group->maybeUnboxedLayout()->nativeGroup(), id, type);
+        AddTypePropertyId(cx, group->maybeUnboxedLayout()->nativeGroup(), nullptr, id, type);
     if (ObjectGroup *unboxedGroup = group->maybeOriginalUnboxedGroup())
-        AddTypePropertyId(cx, unboxedGroup, id, type);
+        AddTypePropertyId(cx, unboxedGroup, nullptr, id, type);
 }
 
 void
-js::AddTypePropertyId(ExclusiveContext *cx, ObjectGroup *group, jsid id, const Value &value)
+js::AddTypePropertyId(ExclusiveContext *cx, ObjectGroup *group, JSObject *obj, jsid id, const Value &value)
 {
-    AddTypePropertyId(cx, group, id, TypeSet::GetValueType(value));
+    AddTypePropertyId(cx, group, obj, id, TypeSet::GetValueType(value));
 }
 
 void
-ObjectGroup::markPropertyNonData(ExclusiveContext *cx, jsid id)
+ObjectGroup::markPropertyNonData(ExclusiveContext *cx, JSObject *obj, jsid id)
 {
     AutoEnterAnalysis enter(cx);
 
     id = IdToTypeId(id);
 
-    HeapTypeSet *types = getProperty(cx, id);
+    HeapTypeSet *types = getProperty(cx, obj, id);
     if (types)
         types->setNonDataProperty(cx);
 }
 
 void
-ObjectGroup::markPropertyNonWritable(ExclusiveContext *cx, jsid id)
+ObjectGroup::markPropertyNonWritable(ExclusiveContext *cx, JSObject *obj, jsid id)
 {
     AutoEnterAnalysis enter(cx);
 
     id = IdToTypeId(id);
 
-    HeapTypeSet *types = getProperty(cx, id);
+    HeapTypeSet *types = getProperty(cx, obj, id);
     if (types)
         types->setNonWritableProperty(cx);
 }
@@ -2710,12 +2777,6 @@ ObjectGroup::setFlags(ExclusiveContext *cx, ObjectGroupFlags flags)
         return;
 
     AutoEnterAnalysis enter(cx);
-
-    if (singleton()) {
-        /* Make sure flags are consistent with persistent object state. */
-        MOZ_ASSERT_IF(flags & OBJECT_FLAG_ITERATED,
-                      singleton()->lastProperty()->hasObjectFlag(BaseShape::ITERATED_SINGLETON));
-    }
 
     addFlags(flags);
 
@@ -2984,7 +3045,7 @@ js::AddClearDefiniteGetterSetterForPrototypeChain(JSContext *cx, ObjectGroup *gr
         ObjectGroup *protoGroup = proto->getGroup(cx);
         if (!protoGroup || protoGroup->unknownProperties())
             return false;
-        HeapTypeSet *protoTypes = protoGroup->getProperty(cx, id);
+        HeapTypeSet *protoTypes = protoGroup->getProperty(cx, proto, id);
         if (!protoTypes || protoTypes->nonDataProperty() || protoTypes->nonWritableProperty())
             return false;
         if (!protoTypes->addConstraint(cx, cx->typeLifoAlloc().new_<TypeConstraintClearDefiniteGetterSetter>(group)))
@@ -3091,26 +3152,6 @@ js::TypeMonitorCallSlow(JSContext *cx, JSObject *callee, const CallArgs &args, b
     /* Watch for fewer actuals than formals to the call. */
     for (; arg < nargs; arg++)
         TypeScript::SetArgument(cx, script, arg, UndefinedValue());
-}
-
-static inline bool
-IsAboutToBeFinalized(TypeSet::ObjectKey **keyp)
-{
-    TypeSet::ObjectKey *key = *keyp;
-    bool isAboutToBeFinalized;
-    if (key->isGroup()) {
-        ObjectGroup *group = key->groupNoBarrier();
-        isAboutToBeFinalized = IsObjectGroupAboutToBeFinalized(&group);
-        if (!isAboutToBeFinalized)
-            *keyp = TypeSet::ObjectKey::get(group);
-    } else {
-        MOZ_ASSERT(key->isSingleton());
-        JSObject *singleton = key->singletonNoBarrier();
-        isAboutToBeFinalized = IsObjectAboutToBeFinalized(&singleton);
-        if (!isAboutToBeFinalized)
-            *keyp = TypeSet::ObjectKey::get(singleton);
-    }
-    return isAboutToBeFinalized;
 }
 
 void
@@ -3446,8 +3487,10 @@ ChangeObjectFixedSlotCount(JSContext *cx, PlainObject *obj, gc::AllocKind allocK
 {
     MOZ_ASSERT(OnlyHasDataProperties(obj->lastProperty()));
 
+    obj->assertParentIs(cx->global());
     Shape *newShape = ReshapeForParentAndAllocKind(cx, obj->lastProperty(),
-                                                   obj->getTaggedProto(), obj->getParent(),
+                                                   obj->getTaggedProto(),
+                                                   cx->global(),
                                                    allocKind);
     if (!newShape)
         return false;
@@ -3867,7 +3910,7 @@ ConstraintTypeSet::sweep(Zone *zone, AutoClearTypeInferenceStateOnOOM &oom)
             ObjectKey *key = oldArray[i];
             if (!key)
                 continue;
-            if (!IsAboutToBeFinalized(&key)) {
+            if (!IsObjectKeyAboutToBeFinalized(&key)) {
                 ObjectKey **pentry =
                     TypeHashSet::Insert<ObjectKey *, ObjectKey, ObjectKey>
                         (zone->types.typeLifoAlloc, objectSet, objectCount, key);
@@ -3899,7 +3942,7 @@ ConstraintTypeSet::sweep(Zone *zone, AutoClearTypeInferenceStateOnOOM &oom)
         setBaseObjectCount(objectCount);
     } else if (objectCount == 1) {
         ObjectKey *key = (ObjectKey *) objectSet;
-        if (!IsAboutToBeFinalized(&key)) {
+        if (!IsObjectKeyAboutToBeFinalized(&key)) {
             objectSet = reinterpret_cast<ObjectKey **>(key);
         } else {
             // As above, mark type sets containing objects with unknown

@@ -48,11 +48,14 @@ public:
   virtual SourceBufferResource* GetResource() const MOZ_FINAL MOZ_OVERRIDE;
   virtual ReentrantMonitor& GetReentrantMonitor() MOZ_FINAL MOZ_OVERRIDE;
   virtual VideoFrameContainer* GetVideoFrameContainer() MOZ_FINAL MOZ_OVERRIDE;
-  virtual void MetadataLoaded(nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags, bool aRestoredFromDormant) MOZ_FINAL MOZ_OVERRIDE;
-  virtual void FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo, bool aRestoredFromDormant) MOZ_FINAL MOZ_OVERRIDE;
+  virtual void MetadataLoaded(nsAutoPtr<MediaInfo> aInfo,
+                              nsAutoPtr<MetadataTags> aTags,
+                              MediaDecoderEventVisibility aEventVisibility) MOZ_FINAL MOZ_OVERRIDE;
+  virtual void FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo,
+                                MediaDecoderEventVisibility aEventVisibility) MOZ_FINAL MOZ_OVERRIDE;
   virtual void NotifyBytesConsumed(int64_t aBytes, int64_t aOffset) MOZ_FINAL MOZ_OVERRIDE;
   virtual void NotifyDataArrived(const char* aBuffer, uint32_t aLength, int64_t aOffset) MOZ_FINAL MOZ_OVERRIDE;
-  virtual void NotifyDecodedFrames(uint32_t aParsed, uint32_t aDecoded) MOZ_FINAL MOZ_OVERRIDE;
+  virtual void NotifyDecodedFrames(uint32_t aParsed, uint32_t aDecoded, uint32_t aDropped) MOZ_FINAL MOZ_OVERRIDE;
   virtual void NotifyWaitingForResourcesStatusChanged() MOZ_FINAL MOZ_OVERRIDE;
   virtual void OnReadMetadataCompleted() MOZ_FINAL MOZ_OVERRIDE;
   virtual void QueueMetadata(int64_t aTime, nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags) MOZ_FINAL MOZ_OVERRIDE;
@@ -61,7 +64,6 @@ public:
   virtual void SetMediaEndTime(int64_t aTime) MOZ_FINAL MOZ_OVERRIDE;
   virtual void SetMediaSeekable(bool aMediaSeekable) MOZ_FINAL MOZ_OVERRIDE;
   virtual void UpdateEstimatedMediaDuration(int64_t aDuration) MOZ_FINAL MOZ_OVERRIDE;
-  virtual void UpdatePlaybackPosition(int64_t aTime) MOZ_FINAL MOZ_OVERRIDE;
   virtual bool HasInitializationData() MOZ_FINAL MOZ_OVERRIDE;
 
   // SourceBufferResource specific interface below.

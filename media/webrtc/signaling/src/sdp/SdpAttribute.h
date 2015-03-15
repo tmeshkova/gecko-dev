@@ -1014,11 +1014,12 @@ public:
     unsigned int max_br;
   };
 
+  // Also used for VP9 since they share parameters
   class VP8Parameters : public Parameters
   {
   public:
-    VP8Parameters()
-        : Parameters(SdpRtpmapAttributeList::kVP8), max_fs(0), max_fr(0)
+    explicit VP8Parameters(SdpRtpmapAttributeList::CodecType type)
+        : Parameters(type), max_fs(0), max_fr(0)
     {
     }
 

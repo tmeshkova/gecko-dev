@@ -711,7 +711,7 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
     lineTextNode.setAttribute("crop", "end");
     lineTextNode.setAttribute("flex", "1");
 
-    let tooltip = text.substr(0, BREAKPOINT_LINE_TOOLTIP_MAX_LENGTH);
+    let tooltip = text ? text.substr(0, BREAKPOINT_LINE_TOOLTIP_MAX_LENGTH) : "";
     lineTextNode.setAttribute("tooltiptext", tooltip);
 
     let container = document.createElement("hbox");
@@ -992,7 +992,7 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
     let attachment = breakpointItem.attachment;
 
     // Check if this is an enabled conditional breakpoint, and if so,
-    // save the current conditional epression.
+    // save the current conditional expression.
     let breakpointPromise = DebuggerController.Breakpoints._getAdded(attachment);
     if (breakpointPromise) {
       let { location } = yield breakpointPromise;
@@ -2517,7 +2517,7 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
       "overflow", "resize", "scroll", "underflow", "zoom")) {
       group = L10N.getStr("displayEvents");
     } else if (starts("drag") || starts("drop")) {
-      group = L10N.getStr("Drag and dropEvents");
+      group = L10N.getStr("dragAndDropEvents");
     } else if (starts("gamepad")) {
       group = L10N.getStr("gamepadEvents");
     } else if (is("canplay", "canplaythrough", "durationchange", "emptied",
@@ -2541,7 +2541,7 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
       "visibilitychange")) {
       group = L10N.getStr("navigationEvents");
     } else if (is("pointerlockchange", "pointerlockerror")) {
-      group = L10N.getStr("Pointer lockEvents");
+      group = L10N.getStr("pointerLockEvents");
     } else if (is("compassneedscalibration", "userproximity")) {
       group = L10N.getStr("sensorEvents");
     } else if (starts("storage")) {

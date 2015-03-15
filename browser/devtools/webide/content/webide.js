@@ -107,6 +107,8 @@ let UI = {
                                .QueryInterface(Ci.nsIDocShell)
                                .contentViewer;
     this.contentViewer.fullZoom = Services.prefs.getCharPref("devtools.webide.zoom");
+
+    gDevToolsBrowser.isWebIDEInitialized.resolve();
   },
 
   uninit: function() {
@@ -925,8 +927,10 @@ let UI = {
           // We can't know for sure which one was used here, so reset the
           // |toolboxPromise| since someone must be destroying it to reach here,
           // and call our own close method.
-          this.toolboxPromise = null;
-          this._closeToolboxUI();
+          if (this.toolboxIframe && this.toolboxIframe.uid == json.uid) {
+            this.toolboxPromise = null;
+            this._closeToolboxUI();
+          }
           break;
       }
     } catch(e) { console.error(e); }
@@ -939,9 +943,9 @@ let UI = {
       this.toolboxPromise = null;
       return toolboxPromise.then(toolbox => {
         return toolbox.destroy();
-      }).catch(console.error)
+      }).then(null, console.error)
         .then(() => this._closeToolboxUI())
-        .catch(console.error);
+        .then(null, console.error);
     }
     return promise.resolve();
   },
@@ -964,9 +968,13 @@ let UI = {
     let iframe = document.createElement("iframe");
     iframe.id = "toolbox";
 
+    // Compute a uid on the iframe in order to identify toolbox iframe
+    // when receiving toolbox-close event
+    iframe.uid = new Date().getTime();
+
     document.querySelector("notificationbox").insertBefore(iframe, splitter.nextSibling);
     let host = devtools.Toolbox.HostType.CUSTOM;
-    let options = { customIframe: iframe, zoom: false };
+    let options = { customIframe: iframe, zoom: false, uid: iframe.uid };
     this.toolboxIframe = iframe;
 
     let height = Services.prefs.getIntPref("devtools.toolbox.footer.height");
@@ -1210,7 +1218,13 @@ let Cmds = {
 
     for (let i = 0; i < tabs.length; i++) {
       let tab = tabs[i];
-      let url = new URL(tab.url);
+      let url;
+      try {
+        url = new URL(tab.url);
+      } catch (e) {
+        // Don't try to handle invalid URLs, especially from Valence.
+        continue;
+      }
       // Wanted to use nsIFaviconService here, but it only works for visited
       // tabs, so that's no help for any remote tabs.  Maybe some favicon wizard
       // knows how to get high-res favicons easily, or we could offer actor

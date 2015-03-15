@@ -184,10 +184,10 @@ public:
       if (pseudoType == nsCSSPseudoElements::ePseudo_NotPseudoElement) {
         mElementContexts.Put(aContent, aStyleContext);
       } else if (pseudoType == nsCSSPseudoElements::ePseudo_before) {
-        MOZ_ASSERT(aContent->Tag() == nsGkAtoms::mozgeneratedcontentbefore);
+        MOZ_ASSERT(aContent->NodeInfo()->NameAtom() == nsGkAtoms::mozgeneratedcontentbefore);
         mBeforePseudoContexts.Put(aContent->GetParent(), aStyleContext);
       } else if (pseudoType == nsCSSPseudoElements::ePseudo_after) {
-        MOZ_ASSERT(aContent->Tag() == nsGkAtoms::mozgeneratedcontentafter);
+        MOZ_ASSERT(aContent->NodeInfo()->NameAtom() == nsGkAtoms::mozgeneratedcontentafter);
         mAfterPseudoContexts.Put(aContent->GetParent(), aStyleContext);
       }
     }
@@ -199,11 +199,11 @@ public:
         return mElementContexts.GetWeak(aContent);
       }
       if (aPseudoType == nsCSSPseudoElements::ePseudo_before) {
-        MOZ_ASSERT(aContent->Tag() == nsGkAtoms::mozgeneratedcontentbefore);
+        MOZ_ASSERT(aContent->NodeInfo()->NameAtom() == nsGkAtoms::mozgeneratedcontentbefore);
         return mBeforePseudoContexts.GetWeak(aContent->GetParent());
       }
       if (aPseudoType == nsCSSPseudoElements::ePseudo_after) {
-        MOZ_ASSERT(aContent->Tag() == nsGkAtoms::mozgeneratedcontentafter);
+        MOZ_ASSERT(aContent->NodeInfo()->NameAtom() == nsGkAtoms::mozgeneratedcontentafter);
         return mAfterPseudoContexts.GetWeak(aContent->GetParent());
       }
       MOZ_ASSERT(false, "unexpected aPseudoType");
@@ -228,12 +228,13 @@ public:
   /**
    * Try starting a transition for an element or a ::before or ::after
    * pseudo-element, given an old and new style context.  This may
-   * change the new style context if a transition is started.
+   * change the new style context if a transition is started.  Returns
+   * true iff it does change aNewStyleContext.
    *
    * For the pseudo-elements, aContent must be the anonymous content
    * that we're creating for that pseudo-element, not the real element.
    */
-  static void
+  static bool
   TryStartingTransition(nsPresContext* aPresContext, nsIContent* aContent,
                         nsStyleContext* aOldStyleContext,
                         nsRefPtr<nsStyleContext>* aNewStyleContext /* inout */);

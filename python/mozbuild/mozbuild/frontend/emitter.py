@@ -74,7 +74,10 @@ from .data import (
 
 from .reader import SandboxValidationError
 
-from .context import Context
+from .context import (
+    Context,
+    SubContext,
+)
 
 
 class TreeMetadataEmitter(LoggingMixin):
@@ -135,6 +138,11 @@ class TreeMetadataEmitter(LoggingMixin):
                     raise Exception('Unhandled object of type %s' % type(o))
 
         for out in output:
+            # Nothing in sub-contexts is currently of interest to us. Filter
+            # them all out.
+            if isinstance(out, SubContext):
+                continue
+
             if isinstance(out, Context):
                 # Keep all contexts around, we will need them later.
                 contexts[out.objdir] = out
@@ -900,7 +908,8 @@ class TreeMetadataEmitter(LoggingMixin):
         install_prefix = mozpath.join(install_root, install_subdir)
 
         try:
-            m = manifestparser.TestManifest(manifests=[path], strict=True)
+            m = manifestparser.TestManifest(manifests=[path], strict=True,
+                                            rootdir=context.config.topsrcdir)
             defaults = m.manifest_defaults[os.path.normpath(path)]
             if not m.tests and not 'support-files' in defaults:
                 raise SandboxValidationError('Empty test manifest: %s'
@@ -994,8 +1003,10 @@ class TreeMetadataEmitter(LoggingMixin):
                 # Some test files are compiled and should not be copied into the
                 # test package. They function as identifiers rather than files.
                 if package_tests:
+                    manifest_relpath = mozpath.relpath(test['path'],
+                        mozpath.dirname(test['manifest']))
                     obj.installs[mozpath.normpath(test['path'])] = \
-                        (mozpath.join(out_dir, test['relpath']), True)
+                        ((mozpath.join(out_dir, manifest_relpath)), True)
 
                 process_support_files(test)
 

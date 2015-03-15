@@ -1970,17 +1970,9 @@ ArenaList::removeRemainingArenas(ArenaHeader **arenap)
 }
 
 static bool
-ShouldRelocateAllArenas(JSRuntime *runtime)
+ShouldRelocateAllArenas(JS::gcreason::Reason reason)
 {
-    // In compacting zeal mode and in debug builds on 64 bit architectures, we
-    // relocate all arenas. The purpose of this is to balance test coverage of
-    // object moving with test coverage of the arena selection routine in
-    // pickArenasToRelocate().
-#if defined(DEBUG) && defined(JS_PUNBOX64)
-    return true;
-#else
-    return runtime->gc.zeal() == ZealCompactValue;
-#endif
+    return reason == JS::gcreason::DEBUG_GC;
 }
 
 /*
@@ -2187,7 +2179,7 @@ ArenaLists::relocateArenas(ArenaHeader *&relocatedListOut, JS::gcreason::Reason 
     purge();
     checkEmptyFreeLists();
 
-    if (ShouldRelocateAllArenas(runtime_)) {
+    if (ShouldRelocateAllArenas(reason)) {
         for (size_t i = 0; i < FINALIZE_LIMIT; i++) {
             if (CanRelocateAllocKind(AllocKind(i))) {
                 ArenaList &al = arenaLists[i];
@@ -2632,7 +2624,7 @@ GCRuntime::updatePointersToRelocatedCells()
 
         gcstats::AutoPhase ap(stats, gcstats::PHASE_MARK_ROOTS);
         Debugger::markAll(&trc);
-        Debugger::markAllCrossCompartmentEdges(&trc);
+        Debugger::markIncomingCrossCompartmentEdges(&trc);
 
         for (GCCompartmentsIter c(rt); !c.done(); c.next()) {
             WeakMapBase::markAll(c, &trc);
@@ -2649,6 +2641,7 @@ GCRuntime::updatePointersToRelocatedCells()
     // Sweep everything to fix up weak pointers
     WatchpointMap::sweepAll(rt);
     Debugger::sweepAll(rt->defaultFreeOp());
+    jit::JitRuntime::SweepJitcodeGlobalTable(rt);
     for (GCZonesIter zone(rt); !zone.done(); zone.next()) {
         if (zone->isGCCompacting())
             rt->gc.sweepZoneAfterCompacting(zone);
@@ -4160,6 +4153,15 @@ GCRuntime::markAllGrayReferences(gcstats::Phase phase)
     markGrayReferences<GCZonesIter, GCCompartmentsIter>(phase);
 }
 
+void
+GCRuntime::markJitcodeGlobalTable()
+{
+    gcstats::AutoPhase ap(stats, gcstats::PHASE_SWEEP_MARK_JITCODE_GLOBAL_TABLE);
+    jit::JitRuntime::MarkJitcodeGlobalTable(&marker);
+    SliceBudget budget;
+    marker.drainMarkStack(budget);
+}
+
 #ifdef DEBUG
 
 class js::gc::MarkingValidator
@@ -4277,6 +4279,8 @@ js::gc::MarkingValidator::nonIncrementalMark()
     {
         gcstats::AutoPhase ap1(gc->stats, gcstats::PHASE_SWEEP);
         gcstats::AutoPhase ap2(gc->stats, gcstats::PHASE_SWEEP_MARK);
+        gc->markJitcodeGlobalTable();
+
         gc->markAllWeakReferences(gcstats::PHASE_SWEEP_MARK_WEAK);
 
         /* Update zone state for gray marking. */
@@ -4819,6 +4823,8 @@ GCRuntime::endMarkingZoneGroup()
 {
     gcstats::AutoPhase ap(stats, gcstats::PHASE_SWEEP_MARK);
 
+    markJitcodeGlobalTable();
+
     /*
      * Mark any incoming black pointers from previously swept compartments
      * whose referents are not marked. This can occur when gray cells become
@@ -5030,6 +5036,10 @@ GCRuntime::beginSweepingZoneGroup()
 
             // Detach unreachable debuggers and global objects from each other.
             Debugger::sweepAll(&fop);
+
+            // Sweep entries containing about-to-be-finalized JitCode and
+            // update relocated TypeSet::Types inside the JitcodeGlobalTable.
+            jit::JitRuntime::SweepJitcodeGlobalTable(rt);
         }
 
         {
@@ -5513,7 +5523,7 @@ GCRuntime::compactPhase(JS::gcreason::Reason reason)
 #ifndef DEBUG
     releaseRelocatedArenas(relocatedList);
 #else
-    if (reason == JS::gcreason::DESTROY_RUNTIME || reason == JS::gcreason::LAST_DITCH) {
+    if (reason != JS::gcreason::DEBUG_GC) {
         releaseRelocatedArenas(relocatedList);
     } else {
         MOZ_ASSERT(!relocatedArenasToRelease);
@@ -6404,6 +6414,9 @@ GCRuntime::onOutOfMallocMemory()
     // Stop allocating new chunks.
     allocTask.cancel(GCParallelTask::CancelAndWait);
 
+    // Wait for background free of nursery huge slots to finish.
+    nursery.waitBackgroundFreeEnd();
+
     AutoLockGC lock(rt);
     onOutOfMallocMemory(lock);
 }
@@ -6506,6 +6519,7 @@ AutoFinishGC::AutoFinishGC(JSRuntime *rt)
     }
 
     rt->gc.waitBackgroundSweepEnd();
+    rt->gc.nursery.waitBackgroundFreeEnd();
 }
 
 AutoPrepareForTracing::AutoPrepareForTracing(JSRuntime *rt, ZoneSelector selector)
@@ -6607,6 +6621,7 @@ gc::MergeCompartments(JSCompartment *source, JSCompartment *target)
     for (ZoneCellIter iter(source->zone(), FINALIZE_OBJECT_GROUP); !iter.done(); iter.next()) {
         ObjectGroup *group = iter.get<ObjectGroup>();
         group->setGeneration(target->zone()->types.generation);
+        group->compartment_ = target;
     }
 
     // Fixup zone pointers in source's zone to refer to target's zone.
