@@ -40,7 +40,7 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
     NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
 }
 
-void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -55,7 +55,7 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint, int32_t aMo
   }
 }
 
-void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -70,7 +70,7 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aMo
   }
 }
 
-void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId)
+void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -85,7 +85,11 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModi
   }
 }
 
-void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid)
+{
+}
+
+void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID& aScrollId, const mozilla::CSSPoint& aDestination)
 {
 }
 

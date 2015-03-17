@@ -110,7 +110,7 @@ class BackgroundHangManager;
 class BackgroundHangMonitor
 {
 private:
-  friend BackgroundHangManager;
+  friend class BackgroundHangManager;
 
   RefPtr<BackgroundHangThread> mThread;
 

@@ -973,7 +973,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid
     }
     if (status != nsEventStatus_eConsumeNoDefault && mDispatchSynthMouseEvents && sDispatchMouseEvents) {
       // Touch event not handled
-      status = APZCCallbackHelper::DispatchSynthesizedMouseEvent(localEvent.message, localEvent.time, localEvent.refPoint, localEvent.widget);
+      status = APZCCallbackHelper::DispatchSynthesizedMouseEvent(localEvent.message, localEvent.time, localEvent.refPoint, 0, localEvent.widget);
       if (status != nsEventStatus_eConsumeNoDefault && status != nsEventStatus_eConsumeDoDefault) {
         mDispatchSynthMouseEvents = false;
       }
