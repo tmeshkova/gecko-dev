@@ -304,6 +304,12 @@ void EmbedLiteCompositorParent::DrawWindowOverlay(LayerManagerComposite *aManage
   }
 }
 
+bool EmbedLiteCompositorParent::RequestGLContext()
+{
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  return view ? view->GetListener()->RequestCurrentGLContext() : false;
+}
+
 } // namespace embedlite
 } // namespace mozilla
 
