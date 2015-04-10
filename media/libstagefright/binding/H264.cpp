@@ -113,17 +113,16 @@ H264::DecodeNALUnit(const ByteBuffer* aNAL)
   if (!reader.Read(nalUnitHeaderBytes - 1)) {
     return nullptr;
   }
-  uint32_t zeros = 0;
+  uint32_t lastbytes = 0xffff;
   while (reader.Remaining()) {
     uint8_t byte = reader.ReadU8();
-    if (zeros < 2 || byte == 0x03) {
+    if ((lastbytes & 0xffff) == 0 && byte == 0x03) {
+      // reset last two bytes, to detect the 0x000003 sequence again.
+      lastbytes = 0xffff;
+    } else {
       rbsp->AppendElement(byte);
     }
-    if (byte == 0) {
-      zeros++;
-    } else {
-      zeros = 0;
-    }
+    lastbytes = (lastbytes << 8) | byte;
   }
   return rbsp.forget();
 }
@@ -478,6 +477,29 @@ H264::DecodeSPSFromExtraData(const ByteBuffer* aExtraData, SPSData& aDest)
   reader.DiscardRemaining();
 
   return DecodeSPS(sps, aDest);
+}
+
+/* static */ bool
+H264::EnsureSPSIsSane(SPSData& aSPS)
+{
+  bool valid = true;
+  static const float default_aspect = 4.0f / 3.0f;
+  if (aSPS.sample_ratio <= 0.0f || aSPS.sample_ratio > 6.0f) {
+    if (aSPS.pic_width && aSPS.pic_height) {
+      aSPS.sample_ratio =
+        (float) aSPS.pic_width / (float) aSPS.pic_height;
+    } else {
+      aSPS.sample_ratio = default_aspect;
+    }
+    aSPS.display_width = aSPS.pic_width;
+    aSPS.display_height = aSPS.pic_height;
+    valid = false;
+  }
+  if (aSPS.max_num_ref_frames > 16) {
+    aSPS.max_num_ref_frames = 16;
+    valid = false;
+  }
+  return valid;
 }
 
 } // namespace mp4_demuxer

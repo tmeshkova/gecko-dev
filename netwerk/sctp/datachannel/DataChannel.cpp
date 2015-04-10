@@ -122,7 +122,7 @@ private:
 
 public:
   NS_IMETHODIMP Observe(nsISupports* aSubject, const char* aTopic,
-                        const char16_t* aData) MOZ_OVERRIDE {
+                        const char16_t* aData) override {
     if (strcmp(aTopic, "profile-change-net-teardown") == 0) {
       LOG(("Shutting down SCTP"));
       if (sctp_initialized) {
@@ -1008,7 +1008,7 @@ DataChannelConnection::SendOpenRequestMessage(const nsACString& label,
     break;
   default:
     // FIX! need to set errno!  Or make all these SendXxxx() funcs return 0 or errno!
-    moz_free(req);
+    free(req);
     return (0);
   }
   if (unordered) {
@@ -1025,7 +1025,7 @@ DataChannelConnection::SendOpenRequestMessage(const nsACString& label,
 
   int32_t result = SendControlMessage(req, req_size, stream);
 
-  moz_free(req);
+  free(req);
   return result;
 }
 
@@ -1125,7 +1125,7 @@ DataChannelConnection::SendDeferredMessages()
                                     nullptr, 0,
                                     (void *)spa, (socklen_t)sizeof(struct sctp_sendv_spa),
                                     SCTP_SENDV_SPA,
-                                    0) < 0)) {
+                                    0)) < 0) {
           if (errno == EAGAIN || errno == EWOULDBLOCK) {
             // leave queued for resend
             failed_send = true;
@@ -1731,7 +1731,7 @@ DataChannelConnection::SendOutgoingStreamReset()
   } else {
     mStreamsResetting.Clear();
   }
-  moz_free(srs);
+  free(srs);
 }
 
 void

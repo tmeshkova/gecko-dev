@@ -25,7 +25,7 @@ enum OptimizationLevel
 };
 
 #ifdef DEBUG
-inline const char *
+inline const char*
 OptimizationLevelString(OptimizationLevel level)
 {
     switch (level) {
@@ -88,7 +88,17 @@ class OptimizationInfo
     // Describes which register allocator to use.
     IonRegisterAllocator registerAllocator_;
 
-    // The maximum total bytecode size of an inline call site.
+    // The maximum total bytecode size of an inline call site. We use a lower
+    // value if off-thread compilation is not available, to avoid stalling the
+    // main thread.
+    uint32_t inlineMaxBytecodePerCallSiteOffThread_;
+    uint32_t inlineMaxBytecodePerCallSiteMainThread_;
+
+    // The maximum value we allow for baselineScript->inlinedBytecodeLength_
+    // when inlining.
+    uint16_t inlineMaxCalleeInlinedBytecodeLength_;
+
+    // The maximum bytecode length we'll inline in a single compilation.
     uint32_t inlineMaxTotalBytecodeLength_;
 
     // The maximum bytecode length the caller may have,
@@ -143,7 +153,7 @@ class OptimizationInfo
         return inlineNative_ && !js_JitOptions.disableInlining;
     }
 
-    uint32_t compilerWarmUpThreshold(JSScript *script, jsbytecode *pc = nullptr) const;
+    uint32_t compilerWarmUpThreshold(JSScript* script, jsbytecode* pc = nullptr) const;
 
     bool eagerSimdUnboxEnabled() const {
         return eagerSimdUnbox_ && !js_JitOptions.disableEagerSimdUnbox;
@@ -203,10 +213,20 @@ class OptimizationInfo
         return smallFunctionMaxInlineDepth_;
     }
 
-    bool isSmallFunction(JSScript *script) const;
+    bool isSmallFunction(JSScript* script) const;
 
     uint32_t maxInlineDepth() const {
         return maxInlineDepth_;
+    }
+
+    uint32_t inlineMaxBytecodePerCallSite(bool offThread) const {
+        return (offThread || !js_JitOptions.limitScriptSize)
+               ? inlineMaxBytecodePerCallSiteOffThread_
+               : inlineMaxBytecodePerCallSiteMainThread_;
+    }
+
+    uint16_t inlineMaxCalleeInlinedBytecodeLength() const {
+        return inlineMaxCalleeInlinedBytecodeLength_;
     }
 
     uint32_t inlineMaxTotalBytecodeLength() const {
@@ -214,7 +234,7 @@ class OptimizationInfo
     }
 
     uint32_t inliningMaxCallerBytecodeLength() const {
-        return inlineMaxTotalBytecodeLength_;
+        return inliningMaxCallerBytecodeLength_;
     }
 
     uint32_t inliningWarmUpThreshold() const {
@@ -237,7 +257,7 @@ class OptimizationInfos
   public:
     OptimizationInfos();
 
-    const OptimizationInfo *get(OptimizationLevel level) const {
+    const OptimizationInfo* get(OptimizationLevel level) const {
         MOZ_ASSERT(level < Optimization_Count);
         MOZ_ASSERT(level != Optimization_DontCompile);
 
@@ -247,7 +267,7 @@ class OptimizationInfos
     OptimizationLevel nextLevel(OptimizationLevel level) const;
     OptimizationLevel firstLevel() const;
     bool isLastLevel(OptimizationLevel level) const;
-    OptimizationLevel levelForScript(JSScript *script, jsbytecode *pc = nullptr) const;
+    OptimizationLevel levelForScript(JSScript* script, jsbytecode* pc = nullptr) const;
 };
 
 extern OptimizationInfos js_IonOptimizations;

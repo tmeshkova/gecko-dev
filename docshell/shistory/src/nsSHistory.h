@@ -27,10 +27,10 @@ class nsSHistoryObserver;
 class nsISHEntry;
 class nsISHTransaction;
 
-class nsSHistory MOZ_FINAL : public PRCList,
-                             public nsISHistory,
-                             public nsISHistoryInternal,
-                             public nsIWebNavigation
+class nsSHistory final : public PRCList,
+                         public nsISHistory,
+                         public nsISHistoryInternal,
+                         public nsIWebNavigation
 {
 public:
   nsSHistory();

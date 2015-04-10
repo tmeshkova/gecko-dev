@@ -132,9 +132,19 @@ protected:
     };
     eCompositionState mCompositionState;
 
-    bool IsComposing()
+    bool IsComposing() const
     {
         return (mCompositionState != eCompositionState_NotComposing);
+    }
+
+    bool IsComposingOn(GtkIMContext* aContext) const
+    {
+        return IsComposing() && mComposingContext == aContext;
+    }
+
+    bool IsComposingOnCurrentContext() const
+    {
+        return IsComposingOn(GetCurrentContext());
     }
 
     bool EditorHasCompositionString()
@@ -183,6 +193,9 @@ protected:
     // keypress event.  If this is true, the keydown event has been dispatched.
     // Then, DispatchCompositionStart() doesn't dispatch keydown event.
     bool mKeyDownEventWasSent;
+    // mIsDeletingSurrounding is true while OnDeleteSurroundingNative() is
+    // trying to delete the surrounding text.
+    bool mIsDeletingSurrounding;
 
     // sLastFocusedModule is a pointer to the last focused instance of this
     // class.  When a instance is destroyed and sLastFocusedModule refers it,

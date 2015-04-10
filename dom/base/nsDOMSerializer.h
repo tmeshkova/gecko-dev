@@ -14,8 +14,8 @@
 
 class nsINode;
 
-class nsDOMSerializer MOZ_FINAL : public nsIDOMSerializer,
-                                  public nsWrapperCache
+class nsDOMSerializer final : public nsIDOMSerializer,
+                              public nsWrapperCache
 {
 public:
   nsDOMSerializer();
@@ -48,9 +48,9 @@ public:
     return mOwner;
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
   {
-    return mozilla::dom::XMLSerializerBinding::Wrap(aCx, this);
+    return mozilla::dom::XMLSerializerBinding::Wrap(aCx, this, aGivenProto);
   }
 
 private:

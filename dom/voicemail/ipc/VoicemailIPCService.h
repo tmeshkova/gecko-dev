@@ -16,8 +16,8 @@ namespace mozilla {
 namespace dom {
 namespace voicemail {
 
-class VoicemailIPCService MOZ_FINAL : public PVoicemailChild
-                                    , public nsIVoicemailService
+class VoicemailIPCService final : public PVoicemailChild
+                                , public nsIVoicemailService
 {
 public:
   NS_DECL_ISUPPORTS
@@ -28,20 +28,20 @@ public:
   bool
   RecvNotifyInfoChanged(const uint32_t& aServiceId,
                         const nsString& aNumber,
-                        const nsString& aDisplayName) MOZ_OVERRIDE;
+                        const nsString& aDisplayName) override;
 
   bool
   RecvNotifyStatusChanged(const uint32_t& aServiceId,
                           const bool& aHasMessages,
                           const int32_t& aMessageCount,
                           const nsString& aNumber,
-                          const nsString& aDisplayName) MOZ_OVERRIDE;
+                          const nsString& aDisplayName) override;
 
   void
-  ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  ActorDestroy(ActorDestroyReason aWhy) override;
 
 private:
-  // MOZ_FINAL suppresses -Werror,-Wdelete-non-virtual-dtor
+  // final suppresses -Werror,-Wdelete-non-virtual-dtor
   ~VoicemailIPCService();
 
 private:

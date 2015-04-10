@@ -161,7 +161,7 @@ imgFrame::~imgFrame()
   MOZ_ASSERT(mAborted || IsImageCompleteInternal());
 #endif
 
-  moz_free(mPalettedImageData);
+  free(mPalettedImageData);
   mPalettedImageData = nullptr;
 }
 
@@ -213,7 +213,7 @@ imgFrame::ReinitForDecoder(const nsIntSize& aImageSize,
   mOptSurface = nullptr;
   mVBuf = nullptr;
   mVBufPtr = nullptr;
-  moz_free(mPalettedImageData);
+  free(mPalettedImageData);
   mPalettedImageData = nullptr;
 
   // Reinitialize.
@@ -254,7 +254,7 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
     return NS_ERROR_FAILURE;
   }
 
-  mImageSize = aImageSize.ToIntSize();
+  mImageSize = aImageSize;
   mOffset.MoveTo(aRect.x, aRect.y);
   mSize.SizeTo(aRect.width, aRect.height);
 
@@ -274,10 +274,10 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
     // Use the fallible allocator here. Paletted images always use 1 byte per
     // pixel, so calculating the amount of memory we need is straightforward.
     mPalettedImageData =
-      static_cast<uint8_t*>(moz_malloc(PaletteDataLength() +
-                                       (mSize.width * mSize.height)));
+      static_cast<uint8_t*>(malloc(PaletteDataLength() +
+                                   (mSize.width * mSize.height)));
     if (!mPalettedImageData)
-      NS_WARNING("moz_malloc for paletted image data should succeed");
+      NS_WARNING("malloc for paletted image data should succeed");
     NS_ENSURE_TRUE(mPalettedImageData, NS_ERROR_OUT_OF_MEMORY);
   } else {
     MOZ_ASSERT(!mImageSurface, "Called imgFrame::InitForDecoder() twice?");
@@ -319,7 +319,7 @@ imgFrame::InitWithDrawable(gfxDrawable* aDrawable,
     return NS_ERROR_FAILURE;
   }
 
-  mImageSize = aSize.ToIntSize();
+  mImageSize = aSize;
   mOffset.MoveTo(0, 0);
   mSize.SizeTo(aSize.width, aSize.height);
 
@@ -374,7 +374,7 @@ imgFrame::InitWithDrawable(gfxDrawable* aDrawable,
   // Draw using the drawable the caller provided.
   nsIntRect imageRect(0, 0, mSize.width, mSize.height);
   nsRefPtr<gfxContext> ctx = new gfxContext(target);
-  gfxUtils::DrawPixelSnapped(ctx, aDrawable, ThebesIntSize(mSize),
+  gfxUtils::DrawPixelSnapped(ctx, aDrawable, mSize,
                              ImageRegion::Create(imageRect),
                              mFormat, aFilter, aImageFlags);
 
@@ -557,7 +557,7 @@ imgFrame::SurfaceForDrawing(bool               aDoPadding,
   IntSize size(int32_t(aImageRect.Width()), int32_t(aImageRect.Height()));
   if (!aDoPadding && !aDoPartialDecode) {
     NS_ASSERTION(!mSinglePixel, "This should already have been handled");
-    return SurfaceWithFormat(new gfxSurfaceDrawable(aSurface, ThebesIntSize(size)), mFormat);
+    return SurfaceWithFormat(new gfxSurfaceDrawable(aSurface, size), mFormat);
   }
 
   gfxRect available = gfxRect(mDecoded.x, mDecoded.y, mDecoded.width, mDecoded.height);
@@ -585,7 +585,7 @@ imgFrame::SurfaceForDrawing(bool               aDoPadding,
     }
 
     RefPtr<SourceSurface> newsurf = target->Snapshot();
-    return SurfaceWithFormat(new gfxSurfaceDrawable(newsurf, ThebesIntSize(size)), target->GetFormat());
+    return SurfaceWithFormat(new gfxSurfaceDrawable(newsurf, size), target->GetFormat());
   }
 
   // Not tiling, and we have a surface, so we can account for

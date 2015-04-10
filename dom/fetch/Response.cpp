@@ -99,7 +99,7 @@ Response::Redirect(const GlobalObject& aGlobal, const nsAString& aUrl,
     return nullptr;
   }
 
-  Optional<ArrayBufferOrArrayBufferViewOrBlobOrUSVStringOrURLSearchParams> body;
+  Optional<ArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams> body;
   ResponseInit init;
   init.mStatus = aStatus;
   nsRefPtr<Response> r = Response::Constructor(aGlobal, body, init, aRv);
@@ -120,7 +120,7 @@ Response::Redirect(const GlobalObject& aGlobal, const nsAString& aUrl,
 
 /*static*/ already_AddRefed<Response>
 Response::Constructor(const GlobalObject& aGlobal,
-                      const Optional<ArrayBufferOrArrayBufferViewOrBlobOrUSVStringOrURLSearchParams>& aBody,
+                      const Optional<ArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams>& aBody,
                       const ResponseInit& aInit, ErrorResult& aRv)
 {
   if (aInit.mStatus < 200 || aInit.mStatus > 599) {
@@ -227,19 +227,6 @@ Response::Headers_()
   }
 
   return mHeaders;
-}
-
-void
-Response::SetFinalURL(bool aFinalURL, ErrorResult& aRv)
-{
-  nsCString url;
-  mInternalResponse->GetUrl(url);
-  if (url.IsEmpty()) {
-    aRv.ThrowTypeError(MSG_RESPONSE_URL_IS_NULL);
-    return;
-  }
-
-  mInternalResponse->SetFinalURL(aFinalURL);
 }
 } // namespace dom
 } // namespace mozilla

@@ -62,6 +62,55 @@ this.ReaderMode = {
   },
 
   /**
+   * Decides whether or not a document is reader-able without parsing the whole thing.
+   *
+   * @param doc A document to parse.
+   * @return boolean Whether or not we should show the reader mode button.
+   */
+  isProbablyReaderable: function(doc) {
+    // Only care about 'real' HTML documents:
+    if (doc.mozSyntheticDocument || !(doc instanceof doc.defaultView.HTMLDocument)) {
+      return false;
+    }
+
+    let uri = Services.io.newURI(doc.location.href, null, null);
+    if (!this._shouldCheckUri(uri)) {
+      return false;
+    }
+
+    let REGEXPS = {
+      unlikelyCandidates: /combx|comment|community|disqus|extra|foot|header|menu|remark|rss|shoutbox|sidebar|sponsor|ad-break|agegate|pagination|pager|popup|tweet|twitter/i,
+      okMaybeItsACandidate: /and|article|body|column|main|shadow/i,
+    };
+
+    let nodes = doc.getElementsByTagName("p");
+    if (nodes.length < 5) {
+      return false;
+    }
+
+    let possibleParagraphs = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      let node = nodes[i];
+      let matchString = node.className + " " + node.id;
+
+      if (REGEXPS.unlikelyCandidates.test(matchString) &&
+          !REGEXPS.okMaybeItsACandidate.test(matchString)) {
+        continue;
+      }
+
+      if (node.textContent.trim().length < 100) {
+        continue;
+      }
+
+      possibleParagraphs++;
+      if (possibleParagraphs >= 5) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  /**
    * Gets an article from a loaded browser's document. This method will not attempt
    * to parse certain URIs (e.g. about: URIs).
    *
@@ -219,7 +268,12 @@ this.ReaderMode = {
                      createInstance(Ci.nsIDOMSerializer);
     let serializedDoc = yield Promise.resolve(serializer.serializeToString(doc));
 
-    let article = yield ReaderWorker.post("parseDocument", [uriParam, serializedDoc]);
+    let article = null;
+    try {
+      article = yield ReaderWorker.post("parseDocument", [uriParam, serializedDoc]);
+    } catch (e) {
+      Cu.reportError("Error in ReaderWorker: " + e);
+    }
 
     if (!article) {
       this.log("Worker did not return an article");

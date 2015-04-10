@@ -20,21 +20,22 @@
    we're midway through this process, so you will see inlined functions and member
    variables in this file.  -dwh */
 
+#include <algorithm>
 #include <stdio.h>
+
+#include "CaretAssociationHint.h"
+#include "FramePropertyTable.h"
+#include "mozilla/layout/FrameChildList.h"
+#include "mozilla/WritingModes.h"
+#include "nsDirection.h"
+#include "nsFrameList.h"
+#include "nsFrameState.h"
+#include "nsHTMLReflowMetrics.h"
+#include "nsITheme.h"
+#include "nsLayoutUtils.h"
 #include "nsQueryFrame.h"
 #include "nsStyleContext.h"
 #include "nsStyleStruct.h"
-#include "nsHTMLReflowMetrics.h"
-#include "nsFrameList.h"
-#include "mozilla/layout/FrameChildList.h"
-#include "FramePropertyTable.h"
-#include "nsDirection.h"
-#include "WritingModes.h"
-#include <algorithm>
-#include "nsITheme.h"
-#include "nsLayoutUtils.h"
-#include "nsFrameState.h"
-#include "CaretAssociationHint.h"
 
 #ifdef ACCESSIBILITY
 #include "mozilla/a11y/AccTypes.h"
@@ -1766,17 +1767,6 @@ public:
                                            nscoord* aXMost);
 
   /**
-   * Pre-reflow hook. Before a frame is reflowed this method will be called.
-   * This call will always be invoked at least once before a subsequent Reflow
-   * and DidReflow call. It may be called more than once, In general you will
-   * receive on WillReflow notification before each Reflow request.
-   *
-   * XXX Is this really the semantics we want? Because we have the NS_FRAME_IN_REFLOW
-   * bit we can ensure we don't call it more than once...
-   */
-  virtual void WillReflow(nsPresContext* aPresContext) = 0;
-
-  /**
    * The frame is given an available size and asked for its desired
    * size.  This is the frame's opportunity to reflow its children.
    *
@@ -2631,7 +2621,8 @@ NS_PTR_TO_INT32(frame->Properties().Get(nsIFrame::ParagraphDepthProperty()))
    * rect, with coordinates relative to this frame's origin. aRect must not be
    * null!
    */
-  bool GetClipPropClipRect(nsRect* aRect, const nsSize& aSize) const;
+  bool GetClipPropClipRect(const nsStyleDisplay* aDisp, nsRect* aRect,
+                           const nsSize& aSize) const;
 
   /**
    * Check if this frame is focusable and in the current tab order.
@@ -2902,7 +2893,7 @@ NS_PTR_TO_INT32(frame->Properties().Get(nsIFrame::ParagraphDepthProperty()))
   inline bool IsInlineOutside() const;
   inline uint8_t GetDisplay() const;
   inline bool IsFloating() const;
-  inline bool IsPositioned() const;
+  inline bool IsAbsPosContaininingBlock() const;
   inline bool IsRelativelyPositioned() const;
   inline bool IsAbsolutelyPositioned() const;
 
@@ -3019,6 +3010,14 @@ private:
   }
 
 protected:
+  void MarkInReflow() {
+#ifdef DEBUG_dbaron_off
+    // bug 81268
+    NS_ASSERTION(!(mState & NS_FRAME_IN_REFLOW), "frame is already in reflow");
+#endif
+    mState |= NS_FRAME_IN_REFLOW;
+  }
+
   nsFrameState     mState;
 
   // When there is an overflow area only slightly larger than mRect,
@@ -3347,6 +3346,27 @@ nsFrameList::FrameLinkEnumerator::Next()
 {
   mPrev = mFrame;
   Enumerator::Next();
+}
+
+// Operators of nsFrameList::Iterator
+// ---------------------------------------------------
+
+inline nsFrameList::Iterator&
+nsFrameList::Iterator::operator++()
+{
+  mCurrent = mCurrent->GetNextSibling();
+  return *this;
+}
+
+inline nsFrameList::Iterator&
+nsFrameList::Iterator::operator--()
+{
+  if (!mCurrent) {
+    mCurrent = mList.LastChild();
+  } else {
+    mCurrent = mCurrent->GetPrevSibling();
+  }
+  return *this;
 }
 
 // Helper-functions for nsIFrame::SortFrameList()

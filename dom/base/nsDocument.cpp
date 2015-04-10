@@ -1429,7 +1429,7 @@ nsExternalResourceMap::ExternalResource::~ExternalResource()
 // If we ever have an nsIDocumentObserver notification for stylesheet title
 // changes we should update the list from that instead of overriding
 // EnsureFresh.
-class nsDOMStyleSheetSetList MOZ_FINAL : public DOMStringList
+class nsDOMStyleSheetSetList final : public DOMStringList
 {
 public:
   explicit nsDOMStyleSheetSetList(nsIDocument* aDocument);
@@ -1439,7 +1439,7 @@ public:
     mDocument = nullptr;
   }
 
-  virtual void EnsureFresh() MOZ_OVERRIDE;
+  virtual void EnsureFresh() override;
 
 protected:
   nsIDocument* mDocument;  // Our document; weak ref.  It'll let us know if it
@@ -1489,7 +1489,7 @@ void nsIDocument::SelectorCache::CacheList(const nsAString& aSelector,
   AddObject(key);
 }
 
-class nsIDocument::SelectorCacheKeyDeleter MOZ_FINAL : public nsRunnable
+class nsIDocument::SelectorCacheKeyDeleter final : public nsRunnable
 {
 public:
   explicit SelectorCacheKeyDeleter(SelectorCacheKey* aToDelete)
@@ -4412,7 +4412,7 @@ nsDocument::SetStyleSheetApplicableState(nsIStyleSheet* aSheet,
   }
 
   if (!mSSApplicableStateNotificationPending) {
-    nsRefPtr<nsIRunnable> notification = NS_NewRunnableMethod(this,
+    nsCOMPtr<nsIRunnable> notification = NS_NewRunnableMethod(this,
       &nsDocument::NotifyStyleSheetApplicableStateChanged);
     mSSApplicableStateNotificationPending =
       NS_SUCCEEDED(NS_DispatchToCurrentThread(notification));
@@ -5232,7 +5232,7 @@ nsDocument::UnblockDOMContentLoaded()
 
   MOZ_ASSERT(mReadyState == READYSTATE_INTERACTIVE);
   if (!mSynchronousDOMContentLoaded) {
-    nsRefPtr<nsIRunnable> ev =
+    nsCOMPtr<nsIRunnable> ev =
       NS_NewRunnableMethod(this, &nsDocument::DispatchContentLoadedEvents);
     NS_DispatchToCurrentThread(ev);
   } else {
@@ -5922,7 +5922,7 @@ nsDocument::RegisterUnresolvedElement(Element* aElement, nsIAtom* aTypeName)
 
 namespace {
 
-class ProcessStackRunner MOZ_FINAL : public nsIRunnable
+class ProcessStackRunner final : public nsIRunnable
 {
   ~ProcessStackRunner() {}
 public:
@@ -5931,7 +5931,7 @@ public:
   {
   }
   NS_DECL_ISUPPORTS
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     nsDocument::ProcessTopElementQueue(mIsBaseQueue);
     return NS_OK;
@@ -6192,16 +6192,30 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
   int32_t namespaceID = kNameSpaceID_XHTML;
   JS::Rooted<JSObject*> protoObject(aCx);
   {
-    JSAutoCompartment ac(aCx, global);
+    JS::Rooted<JSObject*> htmlProto(aCx);
+    JS::Rooted<JSObject*> svgProto(aCx);
+    {
+      JSAutoCompartment ac(aCx, global);
 
-    JS::Handle<JSObject*> htmlProto(
-      HTMLElementBinding::GetProtoObjectHandle(aCx, global));
-    if (!htmlProto) {
-      rv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return;
+      htmlProto = HTMLElementBinding::GetProtoObjectHandle(aCx, global);
+      if (!htmlProto) {
+        rv.Throw(NS_ERROR_OUT_OF_MEMORY);
+        return;
+      }
+
+      svgProto = SVGElementBinding::GetProtoObjectHandle(aCx, global);
+      if (!svgProto) {
+        rv.Throw(NS_ERROR_OUT_OF_MEMORY);
+        return;
+      }
     }
 
     if (!aOptions.mPrototype) {
+      if (!JS_WrapObject(aCx, &htmlProto)) {
+        rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+        return;
+      }
+
       protoObject = JS_NewObjectWithGivenProto(aCx, nullptr, htmlProto);
       if (!protoObject) {
         rv.Throw(NS_ERROR_UNEXPECTED);
@@ -6210,19 +6224,11 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
     } else {
       protoObject = aOptions.mPrototype;
 
-      // We are already operating on the document's (/global's) compartment. Let's
-      // get a view of the passed in proto from this compartment.
-      if (!JS_WrapObject(aCx, &protoObject)) {
-        rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-        return;
-      }
-
-      // We also need an unwrapped version of it for various checks.
-      JS::Rooted<JSObject*> protoObjectUnwrapped(aCx,
-        js::CheckedUnwrap(protoObject));
+      // Get the unwrapped prototype to do some checks.
+      JS::Rooted<JSObject*> protoObjectUnwrapped(aCx, js::CheckedUnwrap(protoObject));
       if (!protoObjectUnwrapped) {
-        // If the documents compartment does not have same origin access
-        // to the compartment of the proto we should just throw.
+        // If the caller's compartment does not have permission to access the
+        // unwrapped prototype then throw.
         rv.Throw(NS_ERROR_DOM_SECURITY_ERR);
         return;
       }
@@ -6238,7 +6244,7 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
 
       JS::Rooted<JSPropertyDescriptor> descRoot(aCx);
       JS::MutableHandle<JSPropertyDescriptor> desc(&descRoot);
-      // This check will go through a wrapper, but as we checked above
+      // This check may go through a wrapper, but as we checked above
       // it should be transparent or an xray. This should be fine for now,
       // until the spec is sorted out.
       if (!JS_GetPropertyDescriptor(aCx, protoObject, "constructor", desc)) {
@@ -6246,20 +6252,17 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
         return;
       }
 
-      // Check if non-configurable
-      if (desc.isPermanent()) {
+      if (!desc.configurable()) {
         rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
         return;
       }
 
-      JS::Handle<JSObject*> svgProto(
-        SVGElementBinding::GetProtoObjectHandle(aCx, global));
-      if (!svgProto) {
-        rv.Throw(NS_ERROR_OUT_OF_MEMORY);
+      JS::Rooted<JSObject*> protoProto(aCx, protoObject);
+
+      if (!JS_WrapObject(aCx, &htmlProto) || !JS_WrapObject(aCx, &svgProto)) {
+        rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
         return;
       }
-
-      JS::Rooted<JSObject*> protoProto(aCx, protoObject);
 
       // If PROTOTYPE's interface inherits from SVGElement, set NAMESPACE to SVG
       // Namespace.
@@ -6278,7 +6281,7 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
           return;
         }
       }
-    }
+    } // Done with the checks, leave prototype's compartment.
 
     // If name was provided and not null...
     if (!lcName.IsEmpty()) {
@@ -6316,22 +6319,25 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
     }
   } // Leaving the document's compartment for the LifecycleCallbacks init
 
+  JS::Rooted<JSObject*> wrappedProto(aCx, protoObject);
+  if (!JS_WrapObject(aCx, &wrappedProto)) {
+    rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+    return;
+  }
+
   // Note: We call the init from the caller compartment here
   nsAutoPtr<LifecycleCallbacks> callbacksHolder(new LifecycleCallbacks());
-  JS::RootedValue rootedv(aCx, JS::ObjectValue(*protoObject));
+  JS::RootedValue rootedv(aCx, JS::ObjectValue(*wrappedProto));
   if (!JS_WrapValue(aCx, &rootedv) || !callbacksHolder->Init(aCx, rootedv)) {
     rv.Throw(NS_ERROR_FAILURE);
     return;
   }
 
-  // Entering the global's compartment again
-  JSAutoCompartment ac(aCx, global);
-
   // Associate the definition with the custom element.
   CustomElementHashKey key(namespaceID, typeAtom);
   LifecycleCallbacks* callbacks = callbacksHolder.forget();
   CustomElementDefinition* definition =
-    new CustomElementDefinition(protoObject,
+    new CustomElementDefinition(wrappedProto,
                                 typeAtom,
                                 nameAtom,
                                 callbacks,
@@ -6361,9 +6367,13 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
       CallQueryInterface(elem, &cache);
       MOZ_ASSERT(cache, "Element doesn't support wrapper cache?");
 
+      // We want to set the custom prototype in the caller's comparment.
+      // In the case that element is in a different compartment,
+      // this will set the prototype on the element's wrapper and
+      // thus only visible in the wrapper's compartment.
       JS::RootedObject wrapper(aCx);
-      if ((wrapper = cache->GetWrapper())) {
-        if (!JS_SetPrototype(aCx, wrapper, protoObject)) {
+      if ((wrapper = cache->GetWrapper()) && JS_WrapObject(aCx, &wrapper)) {
+        if (!JS_SetPrototype(aCx, wrapper, wrappedProto)) {
           continue;
         }
       }
@@ -6372,23 +6382,38 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
     }
   }
 
-  // Create constructor to return. Store the name of the custom element as the
-  // name of the function.
-  JSFunction* constructor = JS_NewFunction(aCx, nsDocument::CustomElementConstructor, 0,
-                                           JSFUN_CONSTRUCTOR,
-                                           NS_ConvertUTF16toUTF8(lcType).get());
-  if (!constructor) {
-    rv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return;
+  JS::Rooted<JSFunction*> constructor(aCx);
+
+  {
+    // Go into the document's global compartment when creating the constructor
+    // function because we want to get the correct document (where the
+    // definition is registered) when it is called.
+    JSAutoCompartment ac(aCx, global);
+
+    // Create constructor to return. Store the name of the custom element as the
+    // name of the function.
+    constructor = JS_NewFunction(aCx, nsDocument::CustomElementConstructor, 0,
+                                 JSFUN_CONSTRUCTOR,
+                                 NS_ConvertUTF16toUTF8(lcType).get());
+    if (!constructor) {
+      rv.Throw(NS_ERROR_OUT_OF_MEMORY);
+      return;
+    }
   }
 
-  JS::Rooted<JSObject*> constructorObj(aCx, JS_GetFunctionObject(constructor));
-  if (!JS_LinkConstructorAndPrototype(aCx, constructorObj, protoObject)) {
+  JS::Rooted<JSObject*> wrappedConstructor(aCx);
+  wrappedConstructor = JS_GetFunctionObject(constructor);
+  if (!JS_WrapObject(aCx, &wrappedConstructor)) {
     rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return;
   }
 
-  aRetval.set(constructorObj);
+  if (!JS_LinkConstructorAndPrototype(aCx, wrappedConstructor, protoObject)) {
+    rv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+    return;
+  }
+
+  aRetval.set(wrappedConstructor);
 }
 
 void
@@ -7335,14 +7360,14 @@ nsDocument::InitializeFrameLoader(nsFrameLoader* aLoader)
 }
 
 nsresult
-nsDocument::FinalizeFrameLoader(nsFrameLoader* aLoader)
+nsDocument::FinalizeFrameLoader(nsFrameLoader* aLoader, nsIRunnable* aFinalizer)
 {
   mInitializableFrameLoaders.RemoveElement(aLoader);
   if (mInDestructor) {
     return NS_ERROR_FAILURE;
   }
 
-  mFinalizableFrameLoaders.AppendElement(aLoader);
+  mFrameLoaderFinalizers.AppendElement(aFinalizer);
   if (!mFrameLoaderRunner) {
     mFrameLoaderRunner =
       NS_NewRunnableMethod(this, &nsDocument::MaybeInitializeFinalizeFrameLoaders);
@@ -7367,7 +7392,7 @@ nsDocument::MaybeInitializeFinalizeFrameLoaders()
   if (!nsContentUtils::IsSafeToRunScript()) {
     if (!mInDestructor && !mFrameLoaderRunner &&
         (mInitializableFrameLoaders.Length() ||
-         mFinalizableFrameLoaders.Length())) {
+         mFrameLoaderFinalizers.Length())) {
       mFrameLoaderRunner =
         NS_NewRunnableMethod(this, &nsDocument::MaybeInitializeFinalizeFrameLoaders);
       nsContentUtils::AddScriptRunner(mFrameLoaderRunner);
@@ -7386,12 +7411,12 @@ nsDocument::MaybeInitializeFinalizeFrameLoaders()
     loader->ReallyStartLoading();
   }
 
-  uint32_t length = mFinalizableFrameLoaders.Length();
+  uint32_t length = mFrameLoaderFinalizers.Length();
   if (length > 0) {
-    nsTArray<nsRefPtr<nsFrameLoader> > loaders;
-    mFinalizableFrameLoaders.SwapElements(loaders);
+    nsTArray<nsCOMPtr<nsIRunnable> > finalizers;
+    mFrameLoaderFinalizers.SwapElements(finalizers);
     for (uint32_t i = 0; i < length; ++i) {
-      loaders[i]->Finalize();
+      finalizers[i]->Run();
     }
   }
 }
@@ -7406,20 +7431,6 @@ nsDocument::TryCancelFrameLoaderInitialization(nsIDocShell* aShell)
       return;
     }
   }
-}
-
-bool
-nsDocument::FrameLoaderScheduledToBeFinalized(nsIDocShell* aShell)
-{
-  if (aShell) {
-    uint32_t length = mFinalizableFrameLoaders.Length();
-    for (uint32_t i = 0; i < length; ++i) {
-      if (mFinalizableFrameLoaders[i]->GetExistingDocShell() == aShell) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 nsIDocument*
@@ -7895,6 +7906,15 @@ nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
 
   CSSToScreenScale defaultScale = layoutDeviceScale
                                 * LayoutDeviceToScreenScale(1.0);
+  // Get requested Desktopmode
+  nsPIDOMWindow* win = GetWindow();
+  if (win && win->IsDesktopModeViewport())
+  {
+    return nsViewportInfo(aDisplaySize,
+                          defaultScale,
+                          /*allowZoom*/false,
+                          /*allowDoubleTapZoom*/ true);
+  }
 
   if (!Preferences::GetBool("dom.meta-viewport.enabled", false)) {
     return nsViewportInfo(aDisplaySize,
@@ -9845,11 +9865,11 @@ namespace {
  * Stub for LoadSheet(), since all we want is to get the sheet into
  * the CSSLoader's style cache
  */
-class StubCSSLoaderObserver MOZ_FINAL : public nsICSSLoaderObserver {
+class StubCSSLoaderObserver final : public nsICSSLoaderObserver {
   ~StubCSSLoaderObserver() {}
 public:
   NS_IMETHOD
-  StyleSheetLoaded(CSSStyleSheet*, bool, nsresult) MOZ_OVERRIDE
+  StyleSheetLoaded(CSSStyleSheet*, bool, nsresult) override
   {
     return NS_OK;
   }
@@ -10067,7 +10087,7 @@ nsDocument::ScrollToRef()
   nsUnescape(tmpstr);
   nsAutoCString unescapedRef;
   unescapedRef.Assign(tmpstr);
-  nsMemory::Free(tmpstr);
+  free(tmpstr);
 
   nsresult rv = NS_ERROR_FAILURE;
   // We assume that the bytes are in UTF-8, as it says in the spec:
@@ -11989,7 +12009,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSICONTENTPERMISSIONREQUEST
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     nsCOMPtr<Element> e = do_QueryReferent(mElement);
     nsCOMPtr<nsIDocument> d = do_QueryReferent(mDocument);
@@ -12834,6 +12854,35 @@ nsIDocument::CreateHTMLElement(nsIAtom* aTag)
 
   MOZ_ASSERT(NS_SUCCEEDED(rv), "NS_NewHTMLElement should never fail");
   return element.forget();
+}
+
+nsresult
+nsIDocument::GetId(nsAString& aId)
+{
+  if (mId.IsEmpty()) {
+    nsresult rv;
+    nsCOMPtr<nsIUUIDGenerator> uuidgen = do_GetService("@mozilla.org/uuid-generator;1", &rv);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    nsID id;
+    rv = uuidgen->GenerateUUIDInPlace(&id);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    // Build a string in {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} format
+    char buffer[NSID_LENGTH];
+    id.ToProvidedString(buffer);
+    NS_ConvertASCIItoUTF16 uuid(buffer);
+
+    // Remove {} and the null terminator
+    mId.Assign(Substring(uuid, 1, NSID_LENGTH - 3));
+  }
+
+  aId = mId;
+  return NS_OK;
 }
 
 bool

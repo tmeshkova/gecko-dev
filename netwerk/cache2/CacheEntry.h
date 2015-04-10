@@ -47,9 +47,9 @@ class CacheFileOutputStream;
 class CacheOutputCloseListener;
 class CacheEntryHandle;
 
-class CacheEntry MOZ_FINAL : public nsICacheEntry
-                           , public nsIRunnable
-                           , public CacheFileListener
+class CacheEntry final : public nsICacheEntry
+                       , public nsIRunnable
+                       , public CacheFileListener
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -123,8 +123,8 @@ private:
   virtual ~CacheEntry();
 
   // CacheFileListener
-  NS_IMETHOD OnFileReady(nsresult aResult, bool aIsNew) MOZ_OVERRIDE;
-  NS_IMETHOD OnFileDoomed(nsresult aResult) MOZ_OVERRIDE;
+  NS_IMETHOD OnFileReady(nsresult aResult, bool aIsNew) override;
+  NS_IMETHOD OnFileDoomed(nsresult aResult) override;
 
   // Keep the service alive during life-time of an entry
   nsRefPtr<CacheStorageService> mService;
@@ -248,7 +248,7 @@ private:
   // When executed on the management thread directly, the operation(s)
   // is (are) executed immediately.
   void BackgroundOp(uint32_t aOperation, bool aForceAsync = false);
-  void StoreFrecency();
+  void StoreFrecency(double aFrecency);
 
   // Called only from DoomAlreadyRemoved()
   void DoomFile();
@@ -371,7 +371,7 @@ private:
 };
 
 
-class CacheOutputCloseListener MOZ_FINAL : public nsRunnable
+class CacheOutputCloseListener final : public nsRunnable
 {
 public:
   void OnOutputClosed();

@@ -1155,6 +1155,9 @@ void close_wasapi_stream(cubeb_stream * stm)
   SafeRelease(stm->render_client);
   stm->render_client = NULL;
 
+  SafeRelease(stm->audio_stream_volume);
+  stm->audio_stream_volume = NULL;
+
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
     stm->resampler = NULL;
@@ -1241,10 +1244,7 @@ int wasapi_stream_stop(cubeb_stream * stm)
   {
     auto_lock lock(stm->stream_reset_lock);
 
-    if (!stm->client) {
-      XASSERT(!stm->thread);
-      LOG("stream already stopped\n");
-    } else {
+    if (stm->client) {
       HRESULT hr = stm->client->Stop();
       if (FAILED(hr)) {
         LOG("could not stop AudioClient\n");

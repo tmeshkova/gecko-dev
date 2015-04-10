@@ -31,8 +31,8 @@ struct HttpRetParams;
 
 //-----------------------------------------------------------------------------
 
-class nsHttpConnectionMgr : public nsIObserver
-                          , public AltSvcCache
+class nsHttpConnectionMgr final : public nsIObserver
+                                , public AltSvcCache
 {
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -430,10 +430,10 @@ private:
     // nsHalfOpenSocket is used to hold the state of an opening TCP socket
     // while we wait for it to establish and bind it to a connection
 
-    class nsHalfOpenSocket MOZ_FINAL : public nsIOutputStreamCallback,
-                                       public nsITransportEventSink,
-                                       public nsIInterfaceRequestor,
-                                       public nsITimerCallback
+    class nsHalfOpenSocket final : public nsIOutputStreamCallback,
+                                   public nsITransportEventSink,
+                                   public nsIInterfaceRequestor,
+                                   public nsITimerCallback
     {
         ~nsHalfOpenSocket();
 
@@ -478,6 +478,7 @@ private:
     private:
         nsConnectionEntry              *mEnt;
         nsRefPtr<nsAHttpTransaction>   mTransaction;
+        bool                           mDispatchedMTransaction;
         nsCOMPtr<nsISocketTransport>   mSocketTransport;
         nsCOMPtr<nsIAsyncOutputStream> mStreamOut;
         nsCOMPtr<nsIAsyncInputStream>  mStreamIn;

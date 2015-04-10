@@ -11,7 +11,6 @@ using struct gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";
 using CSSRect from "Units.h";
 using CSSSize from "Units.h";
-using struct nsIntSize from "nsSize.h";
 using struct gfxPoint from "gfxPoint.h";
 using struct nsIntPoint from "nsPoint.h";
 using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";

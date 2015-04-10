@@ -22,8 +22,8 @@ namespace dom {
 
 class VoicemailStatus;
 
-class Voicemail MOZ_FINAL : public DOMEventTargetHelper,
-                            private nsIVoicemailListener
+class Voicemail final : public DOMEventTargetHelper,
+                        private nsIVoicemailListener
 {
   /**
    * Class Voicemail doesn't actually expose nsIVoicemailListener. Instead, it
@@ -55,7 +55,7 @@ public:
   }
 
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   already_AddRefed<VoicemailStatus>
   GetStatus(const Optional<uint32_t>& aServiceId,
@@ -77,7 +77,7 @@ private:
   Voicemail(nsPIDOMWindow* aWindow,
             nsIVoicemailService* aService);
 
-  // MOZ_FINAL suppresses -Werror,-Wdelete-non-virtual-dtor
+  // final suppresses -Werror,-Wdelete-non-virtual-dtor
   ~Voicemail();
 
 private:

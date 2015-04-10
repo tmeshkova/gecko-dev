@@ -15,8 +15,8 @@
 namespace mozilla {
 namespace dom {
 
-class WifiCertService MOZ_FINAL : public nsIWifiCertService,
-                                  public nsNSSShutDownObject
+class WifiCertService final : public nsIWifiCertService,
+                              public nsNSSShutDownObject
 {
 public:
   NS_DECL_ISUPPORTS

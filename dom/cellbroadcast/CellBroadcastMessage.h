@@ -19,8 +19,8 @@ namespace dom {
 
 class CellBroadcastEtwsInfo;
 
-class CellBroadcastMessage MOZ_FINAL : public nsISupports
-                                     , public nsWrapperCache
+class CellBroadcastMessage final : public nsISupports
+                                 , public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -44,7 +44,7 @@ public:
   nsPIDOMWindow*
   GetParentObject() const { return mWindow; }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL interface
 
@@ -72,7 +72,7 @@ public:
   const Nullable<uint16_t>& GetCdmaServiceCategory() { return mCdmaServiceCategory; };
 
 private:
-  // MOZ_FINAL suppresses -Werror,-Wdelete-non-virtual-dtor
+  // final suppresses -Werror,-Wdelete-non-virtual-dtor
   ~CellBroadcastMessage() {};
 
   // Don't try to use the default constructor.
@@ -91,8 +91,8 @@ private:
   nsRefPtr<CellBroadcastEtwsInfo> mEtwsInfo;
 };
 
-class CellBroadcastEtwsInfo MOZ_FINAL : public nsISupports
-                                      , public nsWrapperCache
+class CellBroadcastEtwsInfo final : public nsISupports
+                                  , public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -106,7 +106,7 @@ public:
   nsPIDOMWindow*
   GetParentObject() const { return mWindow; }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL interface
 
@@ -118,7 +118,7 @@ public:
   bool Popup() const { return mPopup; }
 
 private:
-  // MOZ_FINAL suppresses -Werror,-Wdelete-non-virtual-dtor
+  // final suppresses -Werror,-Wdelete-non-virtual-dtor
   ~CellBroadcastEtwsInfo() {};
 
   // Don't try to use the default constructor.

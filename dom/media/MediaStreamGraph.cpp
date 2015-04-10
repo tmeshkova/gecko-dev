@@ -278,7 +278,7 @@ MediaStreamGraphImpl::UpdateBufferSufficiencyState(SourceMediaStream* aStream)
   }
 
   for (uint32_t i = 0; i < runnables.Length(); ++i) {
-    runnables[i].mTarget->Dispatch(runnables[i].mRunnable, 0);
+    runnables[i].mTarget->Dispatch(runnables[i].mRunnable);
   }
 }
 
@@ -1084,6 +1084,23 @@ SetImageToBlackPixel(PlanarYCbCrImage* aImage)
   aImage->SetData(data);
 }
 
+class VideoFrameContainerInvalidateRunnable : public nsRunnable {
+public:
+  explicit VideoFrameContainerInvalidateRunnable(VideoFrameContainer* aVideoFrameContainer)
+    : mVideoFrameContainer(aVideoFrameContainer)
+  {}
+  NS_IMETHOD Run()
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    mVideoFrameContainer->Invalidate();
+
+    return NS_OK;
+  }
+private:
+  nsRefPtr<VideoFrameContainer> mVideoFrameContainer;
+};
+
 void
 MediaStreamGraphImpl::PlayVideo(MediaStream* aStream)
 {
@@ -1147,7 +1164,7 @@ MediaStreamGraphImpl::PlayVideo(MediaStream* aStream)
     }
 
     nsCOMPtr<nsIRunnable> event =
-      NS_NewRunnableMethod(output, &VideoFrameContainer::Invalidate);
+      new VideoFrameContainerInvalidateRunnable(output);
     DispatchToMainThreadAfterStreamStateUpdate(event.forget());
   }
   if (!aStream->mNotifiedFinished) {
@@ -1556,12 +1573,12 @@ private:
 class CreateMessage : public ControlMessage {
 public:
   explicit CreateMessage(MediaStream* aStream) : ControlMessage(aStream) {}
-  virtual void Run() MOZ_OVERRIDE
+  virtual void Run() override
   {
     mStream->GraphImpl()->AddStream(mStream);
     mStream->Init();
   }
-  virtual void RunDuringShutdown() MOZ_OVERRIDE
+  virtual void RunDuringShutdown() override
   {
     // Make sure to run this message during shutdown too, to make sure
     // that we balance the number of streams registered with the graph
@@ -1570,7 +1587,7 @@ public:
   }
 };
 
-class MediaStreamGraphShutdownObserver MOZ_FINAL : public nsIObserver
+class MediaStreamGraphShutdownObserver final : public nsIObserver
 {
   ~MediaStreamGraphShutdownObserver() {}
 public:
@@ -1893,6 +1910,7 @@ MediaStream::SetGraphImpl(MediaStreamGraphImpl* aGraph)
 {
   MOZ_ASSERT(!mGraph, "Should only be called once");
   mGraph = aGraph;
+  mAudioChannelType = static_cast<AudioChannel>(aGraph->AudioChannel());
   mBuffer.InitGraphRate(aGraph->GraphRate());
 }
 
@@ -2186,15 +2204,17 @@ MediaStream::RemoveListener(MediaStreamListener* aListener)
 }
 
 void
-MediaStream::RunAfterPendingUpdates(nsRefPtr<nsIRunnable> aRunnable)
+MediaStream::RunAfterPendingUpdates(already_AddRefed<nsIRunnable> aRunnable)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MediaStreamGraphImpl* graph = GraphImpl();
+  nsCOMPtr<nsIRunnable> runnable(aRunnable);
 
   // Special case when a non-realtime graph has not started, to ensure the
   // runnable will run in finite time.
   if (!(graph->mRealtime || graph->mNonRealtimeProcessing)) {
-    aRunnable->Run();
+    runnable->Run();
+    return;
   }
 
   class Message : public ControlMessage {
@@ -2203,12 +2223,12 @@ MediaStream::RunAfterPendingUpdates(nsRefPtr<nsIRunnable> aRunnable)
                      already_AddRefed<nsIRunnable> aRunnable)
       : ControlMessage(aStream)
       , mRunnable(aRunnable) {}
-    virtual void Run() MOZ_OVERRIDE
+    virtual void Run() override
     {
       mStream->Graph()->
         DispatchToMainThreadAfterStreamStateUpdate(mRunnable.forget());
     }
-    virtual void RunDuringShutdown() MOZ_OVERRIDE
+    virtual void RunDuringShutdown() override
     {
       // Don't run mRunnable now as it may call AppendMessage() which would
       // assume that there are no remaining controlMessagesToRunDuringShutdown.
@@ -2216,10 +2236,10 @@ MediaStream::RunAfterPendingUpdates(nsRefPtr<nsIRunnable> aRunnable)
       NS_DispatchToCurrentThread(mRunnable);
     }
   private:
-    nsRefPtr<nsIRunnable> mRunnable;
+    nsCOMPtr<nsIRunnable> mRunnable;
   };
 
-  graph->AppendMessage(new Message(this, aRunnable.forget()));
+  graph->AppendMessage(new Message(this, runnable.forget()));
 }
 
 void
@@ -2476,21 +2496,21 @@ SourceMediaStream::GetEndOfAppendedData(TrackID aID)
 
 void
 SourceMediaStream::DispatchWhenNotEnoughBuffered(TrackID aID,
-    nsIEventTarget* aSignalThread, nsIRunnable* aSignalRunnable)
+    MediaTaskQueue* aSignalQueue, nsIRunnable* aSignalRunnable)
 {
   MutexAutoLock lock(mMutex);
   TrackData* data = FindDataForTrack(aID);
   if (!data) {
-    aSignalThread->Dispatch(aSignalRunnable, 0);
+    aSignalQueue->Dispatch(aSignalRunnable);
     return;
   }
 
   if (data->mHaveEnough) {
     if (data->mDispatchWhenNotEnough.IsEmpty()) {
-      data->mDispatchWhenNotEnough.AppendElement()->Init(aSignalThread, aSignalRunnable);
+      data->mDispatchWhenNotEnough.AppendElement()->Init(aSignalQueue, aSignalRunnable);
     }
   } else {
-    aSignalThread->Dispatch(aSignalRunnable, 0);
+    aSignalQueue->Dispatch(aSignalRunnable);
   }
 }
 

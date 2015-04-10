@@ -4,7 +4,8 @@
 
 <!-- Sync panel -->
 
-<preferences hidden="true" data-category="paneSync">
+<preferences id="syncEnginePrefs" hidden="true" data-category="paneSync"
+             onchange="gSyncPane.onPreferenceChanged();">
   <preference id="engine.addons"
               name="services.sync.engine.addons"
               type="bool"/>
@@ -22,6 +23,10 @@
               type="bool"/>
   <preference id="engine.passwords"
               name="services.sync.engine.passwords"
+              type="bool"/>
+  <!-- non Sync-Engine engines -->
+  <preference id="engine.readinglist"
+              name="readinglist.scheduler.enabled"
               type="bool"/>
 </preferences>
 
@@ -228,7 +233,11 @@
         <!-- logged in and verified and all is good -->
         <hbox id="fxaLoginVerified"
               align="center">
-          <label id="fxaEmailAddress1"/>
+          <hbox align="center">
+            <image id="fxaProfileImage"
+              onclick="gSyncPane.openChangeProfileImage();" hidden="true"/>
+            <label id="fxaEmailAddress1"/>
+          </hbox>
           <spacer flex="1"/>
           <button id="verifiedManage"
                   label="&manage.label;"/>
@@ -290,6 +299,11 @@
           <checkbox label="&engine.history.label;"
                     accesskey="&engine.history.accesskey;"
                     preference="engine.history"/>
+          <checkbox id="readinglist-engine"
+                    label="&engine.readinglist.label;"
+                    accesskey="&engine.readinglist.accesskey;"
+                    preference="engine.readinglist"
+                    hidden="true"/>
           <checkbox label="&engine.addons.label;"
                     accesskey="&engine.addons.accesskey;"
                     preference="engine.addons"/>

@@ -227,6 +227,7 @@ class MessageChannel : HasResultCodes
     bool InterruptEventOccurred();
     bool HasPendingEvents();
 
+    void ProcessPendingRequests();
     bool ProcessPendingRequest(const Message &aUrgent);
 
     void MaybeUndeferIncall();
@@ -459,7 +460,7 @@ class MessageChannel : HasResultCodes
         explicit DequeueTask(RefCountedTask* aTask)
           : mTask(aTask)
         { }
-        void Run() MOZ_OVERRIDE { mTask->Run(); }
+        void Run() override { mTask->Run(); }
 
       private:
         nsRefPtr<RefCountedTask> mTask;

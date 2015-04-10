@@ -201,10 +201,10 @@ private:
  * stored the data into.  We create a handler every time we have to process
  * data using a helper app.
  */
-class nsExternalAppHandler MOZ_FINAL : public nsIStreamListener,
-                                       public nsIHelperAppLauncher,
-                                       public nsITimerCallback,
-                                       public nsIBackgroundFileSaverObserver
+class nsExternalAppHandler final : public nsIStreamListener,
+                                   public nsIHelperAppLauncher,
+                                   public nsITimerCallback,
+                                   public nsIBackgroundFileSaverObserver
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS

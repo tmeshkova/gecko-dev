@@ -41,8 +41,8 @@ static mozilla::DebugOnly<MessagePump::Delegate*> gFirstDelegate;
 namespace mozilla {
 namespace ipc {
 
-class DoWorkRunnable MOZ_FINAL : public nsICancelableRunnable,
-                                 public nsITimerCallback
+class DoWorkRunnable final : public nsICancelableRunnable,
+                             public nsITimerCallback
 {
 public:
   explicit DoWorkRunnable(MessagePump* aPump)

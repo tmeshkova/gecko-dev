@@ -16,7 +16,6 @@
 #include "nsTArray.h"
 
 class nsIInputStream;
-class nsIOutputStream;
 class nsIThread;
 
 namespace mozilla {
@@ -29,7 +28,6 @@ class ManagerId;
 class PCacheQueryParams;
 class PCacheRequest;
 class PCacheRequestOrVoid;
-class PCacheResponse;
 struct SavedRequest;
 struct SavedResponse;
 class StreamList;
@@ -61,7 +59,7 @@ class StreamList;
 // As an invariant, all Manager objects must cease all IO before shutdown.  This
 // is enforced by the ShutdownObserver.  If content still holds references to
 // Cache DOM objects during shutdown, then all operations will begin rejecting.
-class Manager MOZ_FINAL
+class Manager final
 {
 public:
   // Callback interface implemented by clients of Manager, such as CacheParent
@@ -126,6 +124,11 @@ public:
 
   // Must be called by Context objects before they are destroyed.
   void RemoveContext(Context* aContext);
+
+  // Marks the Manager "invalid".  Once the Context completes no new operations
+  // will be permitted with this Manager.  New actors will get a new Manager.
+  void Invalidate();
+  bool IsValid() const;
 
   // If an actor represents a long term reference to a cache or body stream,
   // then they must call AddRefCacheId() or AddRefBodyId().  This will
@@ -216,8 +219,8 @@ private:
   struct ListenerEntry
   {
     ListenerEntry()
-      : mId(UINT64_MAX),
-      mListener(nullptr)
+      : mId(UINT64_MAX)
+      , mListener(nullptr)
     {
     }
 
@@ -257,6 +260,7 @@ private:
   nsTArray<StreamList*> mStreamLists;
 
   bool mShuttingDown;
+  bool mValid;
 
   struct CacheIdRefCounter
   {

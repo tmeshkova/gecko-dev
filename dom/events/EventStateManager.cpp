@@ -192,7 +192,7 @@ GetDocumentFromWindow(nsIDOMWindow *aWindow)
 /* mozilla::UITimerCallback                                       */
 /******************************************************************/
 
-class UITimerCallback MOZ_FINAL : public nsITimerCallback
+class UITimerCallback final : public nsITimerCallback
 {
 public:
   UITimerCallback() : mPreviousCount(0) {}
@@ -2002,6 +2002,7 @@ EventStateManager::DoScrollZoom(nsIFrame* aTargetFrame,
       } else {
         ChangeTextSize(change);
       }
+      EnsureDocument(mPresContext);
       nsContentUtils::DispatchChromeEvent(mDocument, static_cast<nsIDocument*>(mDocument),
                                           NS_LITERAL_STRING("ZoomChangeUsingMouseWheel"),
                                           true, true);
@@ -2430,7 +2431,7 @@ EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
     actualDevPixelScrollAmount.y = 0;
   }
 
-  nsIScrollableFrame::ScrollSnapMode snapMode = nsIScrollableFrame::DISABLE_SNAP;
+  nsIScrollbarMediator::ScrollSnapMode snapMode = nsIScrollbarMediator::DISABLE_SNAP;
   nsIAtom* origin = nullptr;
   switch (aEvent->deltaMode) {
     case nsIDOMWheelEvent::DOM_DELTA_LINE:
@@ -4645,7 +4646,7 @@ EventStateManager::UpdateAncestorState(nsIContent* aStartNode,
                                        bool aAddState)
 {
   for (; aStartNode && aStartNode != aStopBefore;
-       aStartNode = aStartNode->GetParent()) {
+       aStartNode = aStartNode->GetParentElementCrossingShadowRoot()) {
     // We might be starting with a non-element (e.g. a text node) and
     // if someone is doing something weird might be ending with a
     // non-element too (e.g. a document fragment)
@@ -4673,7 +4674,7 @@ EventStateManager::UpdateAncestorState(nsIContent* aStartNode,
     // still be in hover state.  To handle this situation we need to
     // keep walking up the tree and any time we find a label mark its
     // corresponding node as still in our state.
-    for ( ; aStartNode; aStartNode = aStartNode->GetParent()) {
+    for ( ; aStartNode; aStartNode = aStartNode->GetParentElementCrossingShadowRoot()) {
       if (!aStartNode->IsElement()) {
         continue;
       }
@@ -5514,9 +5515,25 @@ EventStateManager::WheelPrefs::NeedToComputeLineOrPageDelta(
 }
 
 bool
+EventStateManager::WheelPrefs::HasUserPrefsForDelta(WidgetWheelEvent* aEvent)
+{
+  Index index = GetIndexFor(aEvent);
+  Init(index);
+
+  return mMultiplierX[index] != 1.0 ||
+         mMultiplierY[index] != 1.0;
+}
+
+bool
 EventStateManager::WheelEventIsScrollAction(WidgetWheelEvent* aEvent)
 {
   return WheelPrefs::GetInstance()->ComputeActionFor(aEvent) == WheelPrefs::ACTION_SCROLL;
+}
+
+bool
+EventStateManager::WheelEventNeedsDeltaMultipliers(WidgetWheelEvent* aEvent)
+{
+  return WheelPrefs::GetInstance()->HasUserPrefsForDelta(aEvent);
 }
 
 bool

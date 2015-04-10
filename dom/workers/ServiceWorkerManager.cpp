@@ -60,6 +60,15 @@ using namespace mozilla::ipc;
 
 BEGIN_WORKERS_NAMESPACE
 
+static_assert(nsIHttpChannelInternal::CORS_MODE_SAME_ORIGIN == static_cast<uint32_t>(RequestMode::Same_origin),
+              "RequestMode enumeration value should match Necko CORS mode value.");
+static_assert(nsIHttpChannelInternal::CORS_MODE_NO_CORS == static_cast<uint32_t>(RequestMode::No_cors),
+              "RequestMode enumeration value should match Necko CORS mode value.");
+static_assert(nsIHttpChannelInternal::CORS_MODE_CORS == static_cast<uint32_t>(RequestMode::Cors),
+              "RequestMode enumeration value should match Necko CORS mode value.");
+static_assert(nsIHttpChannelInternal::CORS_MODE_CORS_WITH_FORCED_PREFLIGHT == static_cast<uint32_t>(RequestMode::Cors_with_forced_preflight),
+              "RequestMode enumeration value should match Necko CORS mode value.");
+
 struct ServiceWorkerManager::PendingOperation
 {
   nsCOMPtr<nsIRunnable> mRunnable;
@@ -222,7 +231,7 @@ NS_IMPL_ISUPPORTS0(ContinueLifecycleTask);
 
 class ServiceWorkerRegisterJob;
 
-class ContinueInstallTask MOZ_FINAL : public ContinueLifecycleTask
+class ContinueInstallTask final : public ContinueLifecycleTask
 {
   nsRefPtr<ServiceWorkerRegisterJob> mJob;
 
@@ -231,10 +240,10 @@ public:
     : mJob(aJob)
   { }
 
-  void ContinueAfterWorkerEvent(bool aSuccess, bool aActivateImmediately) MOZ_OVERRIDE;
+  void ContinueAfterWorkerEvent(bool aSuccess, bool aActivateImmediately) override;
 };
 
-class ContinueActivateTask MOZ_FINAL : public ContinueLifecycleTask
+class ContinueActivateTask final : public ContinueLifecycleTask
 {
   nsRefPtr<ServiceWorkerRegistrationInfo> mRegistration;
 
@@ -244,10 +253,10 @@ public:
   { }
 
   void
-  ContinueAfterWorkerEvent(bool aSuccess, bool aActivateImmediately /* unused */) MOZ_OVERRIDE;
+  ContinueAfterWorkerEvent(bool aSuccess, bool aActivateImmediately /* unused */) override;
 };
 
-class ContinueLifecycleRunnable MOZ_FINAL : public nsRunnable
+class ContinueLifecycleRunnable final : public nsRunnable
 {
   nsMainThreadPtrHandle<ContinueLifecycleTask> mTask;
   bool mSuccess;
@@ -265,7 +274,7 @@ public:
   }
 
   NS_IMETHOD
-  Run() MOZ_OVERRIDE
+  Run() override
   {
     AssertIsOnMainThread();
     mTask->ContinueAfterWorkerEvent(mSuccess, mActivateImmediately);
@@ -279,7 +288,7 @@ public:
  * ServiceWorkers, so the parent thread -> worker thread requirement for
  * runnables is satisfied.
  */
-class LifecycleEventWorkerRunnable MOZ_FINAL : public WorkerRunnable
+class LifecycleEventWorkerRunnable final : public WorkerRunnable
 {
   nsString mEventName;
   nsMainThreadPtrHandle<ContinueLifecycleTask> mTask;
@@ -297,7 +306,7 @@ public:
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     MOZ_ASSERT(aWorkerPrivate);
     return DispatchLifecycleEvent(aCx, aWorkerPrivate);
@@ -331,7 +340,7 @@ public:
   { }
 };
 
-class ServiceWorkerResolveWindowPromiseOnUpdateCallback MOZ_FINAL : public ServiceWorkerUpdateFinishCallback
+class ServiceWorkerResolveWindowPromiseOnUpdateCallback final : public ServiceWorkerUpdateFinishCallback
 {
   nsRefPtr<nsPIDOMWindow> mWindow;
   // The promise "returned" by the call to Update up to
@@ -349,7 +358,7 @@ public:
   }
 
   void
-  UpdateSucceeded(ServiceWorkerRegistrationInfo* aInfo) MOZ_OVERRIDE
+  UpdateSucceeded(ServiceWorkerRegistrationInfo* aInfo) override
   {
     nsRefPtr<ServiceWorkerRegistration> swr =
       new ServiceWorkerRegistration(mWindow,
@@ -358,20 +367,18 @@ public:
   }
 
   void
-  UpdateFailed(nsresult aStatus) MOZ_OVERRIDE
+  UpdateFailed(nsresult aStatus) override
   {
     mPromise->MaybeReject(aStatus);
   }
 
   void
-  UpdateFailed(const ErrorEventInit& aErrorDesc) MOZ_OVERRIDE
+  UpdateFailed(const ErrorEventInit& aErrorDesc) override
   {
     AutoJSAPI jsapi;
     jsapi.Init(mWindow);
 
     JSContext* cx = jsapi.cx();
-
-    JS::Rooted<JSString*> stack(cx, JS_GetEmptyString(JS_GetRuntime(cx)));
 
     JS::Rooted<JS::Value> fnval(cx);
     if (!ToJSValue(cx, aErrorDesc.mFilename, &fnval)) {
@@ -390,7 +397,7 @@ public:
     JS::Rooted<JSString*> msg(cx, msgval.toString());
 
     JS::Rooted<JS::Value> error(cx);
-    if (!JS::CreateError(cx, JSEXN_ERR, stack, fn, aErrorDesc.mLineno,
+    if (!JS::CreateError(cx, JSEXN_ERR, JS::NullPtr(), fn, aErrorDesc.mLineno,
                          aErrorDesc.mColno, nullptr, msg, &error)) {
       JS_ClearPendingException(cx);
       mPromise->MaybeReject(NS_ERROR_DOM_ABORT_ERR);
@@ -401,7 +408,7 @@ public:
   }
 };
 
-class ContinueUpdateRunnable MOZ_FINAL : public nsRunnable
+class ContinueUpdateRunnable final : public nsRunnable
 {
   nsMainThreadPtrHandle<nsISupports> mJob;
 public:
@@ -414,7 +421,7 @@ public:
   NS_IMETHOD Run();
 };
 
-class CheckWorkerEvaluationAndContinueUpdateWorkerRunnable MOZ_FINAL : public WorkerRunnable
+class CheckWorkerEvaluationAndContinueUpdateWorkerRunnable final : public WorkerRunnable
 {
   const nsMainThreadPtrHandle<nsISupports> mJob;
 public:
@@ -427,7 +434,7 @@ public:
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     aWorkerPrivate->AssertIsOnWorkerThread();
     if (aWorkerPrivate->WorkerScriptExecutedSuccessfully()) {
@@ -442,8 +449,40 @@ public:
   }
 };
 
-class ServiceWorkerRegisterJob MOZ_FINAL : public ServiceWorkerJob,
-                                           public nsIStreamLoaderObserver
+namespace {
+nsresult
+GetRequiredScopeStringPrefix(const nsACString& aScriptSpec, nsACString& aPrefix)
+{
+  nsCOMPtr<nsIURI> scriptURI;
+  nsresult rv = NS_NewURI(getter_AddRefs(scriptURI), aScriptSpec,
+                 nullptr, nullptr);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = scriptURI->GetPrePath(aPrefix);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsCOMPtr<nsIURL> scriptURL(do_QueryInterface(scriptURI));
+  if (NS_WARN_IF(!scriptURL)) {
+    return rv;
+  }
+
+  nsAutoCString dir;
+  rv = scriptURL->GetDirectory(dir);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  aPrefix.Append(dir);
+  return NS_OK;
+}
+} // anonymous namespace
+
+class ServiceWorkerRegisterJob final : public ServiceWorkerJob,
+                                       public nsIStreamLoaderObserver
 {
   friend class ContinueInstallTask;
 
@@ -490,7 +529,7 @@ public:
   { }
 
   void
-  Start() MOZ_OVERRIDE
+  Start() override
   {
     MOZ_ASSERT(NS_IsMainThread());
 
@@ -530,30 +569,30 @@ public:
   NS_IMETHOD
   OnStreamComplete(nsIStreamLoader* aLoader, nsISupports* aContext,
                    nsresult aStatus, uint32_t aLen,
-                   const uint8_t* aString) MOZ_OVERRIDE
+                   const uint8_t* aString) override
   {
     if (NS_WARN_IF(NS_FAILED(aStatus))) {
-      Fail(NS_ERROR_DOM_NETWORK_ERR);
+      Fail(NS_ERROR_DOM_TYPE_ERR);
       return aStatus;
     }
 
     nsCOMPtr<nsIRequest> request;
     nsresult rv = aLoader->GetRequest(getter_AddRefs(request));
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      Fail(NS_ERROR_DOM_NETWORK_ERR);
+      Fail(NS_ERROR_DOM_TYPE_ERR);
       return rv;
     }
 
     nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(request);
     if (!httpChannel) {
-      Fail(NS_ERROR_DOM_NETWORK_ERR);
+      Fail(NS_ERROR_DOM_TYPE_ERR);
       return NS_ERROR_FAILURE;
     }
 
     bool requestSucceeded;
     rv = httpChannel->GetRequestSucceeded(&requestSucceeded);
     if (NS_WARN_IF(NS_FAILED(rv) || !requestSucceeded)) {
-      Fail(NS_ERROR_DOM_NETWORK_ERR);
+      Fail(NS_ERROR_DOM_TYPE_ERR);
       return rv;
     }
 
@@ -562,6 +601,20 @@ public:
     // FIXME(nsm): Byte match to aString.
     NS_WARNING("Byte wise check is disabled, just using new one");
     nsRefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
+
+    // FIXME: Bug 1130101 - Read max scope from Service-Worker-Allowed header.
+    nsAutoCString allowedPrefix;
+    rv = GetRequiredScopeStringPrefix(mRegistration->mScriptSpec, allowedPrefix);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      Fail(NS_ERROR_DOM_SECURITY_ERR);
+      return rv;
+    }
+
+    if (!StringBeginsWith(mRegistration->mScope, allowedPrefix)) {
+      NS_WARNING("By default a service worker's scope is restricted to at or below it's script's location.");
+      Fail(NS_ERROR_DOM_SECURITY_ERR);
+      return NS_ERROR_DOM_SECURITY_ERR;
+    }
 
     // We have to create a ServiceWorker here simply to ensure there are no
     // errors. Ideally we should just pass this worker on to ContinueInstall.
@@ -592,7 +645,7 @@ public:
     if (NS_WARN_IF(!ok)) {
       swm->mSetOfScopesBeingUpdated.Remove(mRegistration->mScope);
       Fail(NS_ERROR_DOM_ABORT_ERR);
-      return rv;
+      return NS_ERROR_FAILURE;
     }
 
     return NS_OK;
@@ -700,11 +753,16 @@ private:
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return Fail(rv);
     }
-    // FIXME(nsm): Set redirect limit.
 
-    // Don't let serviceworker intercept.
+    nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(channel);
+    if (httpChannel) {
+      // Spec says no redirects allowed for SW scripts.
+      httpChannel->SetRedirectionLimit(0);
+    }
+
     nsCOMPtr<nsIHttpChannelInternal> internalChannel = do_QueryInterface(channel);
     if (internalChannel) {
+      // Don't let serviceworker intercept.
       internalChannel->ForceNoIntercept();
     }
 
@@ -813,8 +871,8 @@ ContinueInstallTask::ContinueAfterWorkerEvent(bool aSuccess, bool aActivateImmed
 // automatically reject the Promise.
 NS_IMETHODIMP
 ServiceWorkerManager::Register(nsIDOMWindow* aWindow,
-                               const nsAString& aScope,
-                               const nsAString& aScriptURL,
+                               nsIURI* aScopeURI,
+                               nsIURI* aScriptURI,
                                nsISupports** aPromise)
 {
   AssertIsOnMainThread();
@@ -825,6 +883,10 @@ ServiceWorkerManager::Register(nsIDOMWindow* aWindow,
 
   nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(aWindow);
 
+  nsCOMPtr<nsPIDOMWindow> outerWindow = window->GetOuterWindow();
+  bool serviceWorkersTestingEnabled =
+    outerWindow->GetServiceWorkersTestingEnabled();
+
   nsCOMPtr<nsIDocument> doc = window->GetExtantDoc();
   if (!doc) {
     return NS_ERROR_FAILURE;
@@ -833,8 +895,8 @@ ServiceWorkerManager::Register(nsIDOMWindow* aWindow,
   nsCOMPtr<nsIURI> documentURI = doc->GetBaseURI();
 
   bool authenticatedOrigin = false;
-  // FIXME(nsm): Bug 1003991. Disable check when devtools are open.
-  if (Preferences::GetBool("dom.serviceWorkers.testing.enabled")) {
+  if (Preferences::GetBool("dom.serviceWorkers.testing.enabled") ||
+      serviceWorkersTestingEnabled) {
     authenticatedOrigin = true;
   }
 
@@ -884,41 +946,29 @@ ServiceWorkerManager::Register(nsIDOMWindow* aWindow,
     }
   }
 
-  nsCOMPtr<nsIURI> scriptURI;
-  rv = NS_NewURI(getter_AddRefs(scriptURI), aScriptURL, nullptr, documentURI);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
   // Data URLs are not allowed.
   nsCOMPtr<nsIPrincipal> documentPrincipal = doc->NodePrincipal();
 
-  rv = documentPrincipal->CheckMayLoad(scriptURI, true /* report */,
+  rv = documentPrincipal->CheckMayLoad(aScriptURI, true /* report */,
                                        false /* allowIfInheritsPrincipal */);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
-  nsCOMPtr<nsIURI> scopeURI;
-  rv = NS_NewURI(getter_AddRefs(scopeURI), aScope, nullptr, documentURI);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return NS_ERROR_DOM_SECURITY_ERR;
-  }
-
-  rv = documentPrincipal->CheckMayLoad(scopeURI, true /* report */,
+  rv = documentPrincipal->CheckMayLoad(aScopeURI, true /* report */,
                                        false /* allowIfInheritsPrinciple */);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
   nsCString cleanedScope;
-  rv = scopeURI->GetSpecIgnoringRef(cleanedScope);
+  rv = aScopeURI->GetSpecIgnoringRef(cleanedScope);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return NS_ERROR_FAILURE;
   }
 
   nsAutoCString spec;
-  rv = scriptURI->GetSpec(spec);
+  rv = aScriptURI->GetSpec(spec);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -971,7 +1021,7 @@ ServiceWorkerManager::AppendPendingOperation(nsIRunnable* aRunnable)
  * Used to handle ExtendableEvent::waitUntil() and proceed with
  * installation/activation.
  */
-class LifecycleEventPromiseHandler MOZ_FINAL : public PromiseNativeHandler
+class LifecycleEventPromiseHandler final : public PromiseNativeHandler
 {
   nsMainThreadPtrHandle<ContinueLifecycleTask> mTask;
   bool mActivateImmediately;
@@ -990,7 +1040,7 @@ public:
   }
 
   void
-  ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) MOZ_OVERRIDE
+  ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override
   {
     WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
     MOZ_ASSERT(workerPrivate);
@@ -1002,7 +1052,7 @@ public:
   }
 
   void
-  RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) MOZ_OVERRIDE
+  RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override
   {
     WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
     MOZ_ASSERT(workerPrivate);
@@ -1258,7 +1308,7 @@ ServiceWorkerManager::GetRegistrations(nsIDOMWindow* aWindow,
     return result.ErrorCode();
   }
 
-  nsRefPtr<nsIRunnable> runnable =
+  nsCOMPtr<nsIRunnable> runnable =
     new GetRegistrationsRunnable(window, promise);
   promise.forget(aPromise);
   return NS_DispatchToCurrentThread(runnable);
@@ -1359,7 +1409,7 @@ ServiceWorkerManager::GetRegistration(nsIDOMWindow* aWindow,
     return result.ErrorCode();
   }
 
-  nsRefPtr<nsIRunnable> runnable =
+  nsCOMPtr<nsIRunnable> runnable =
     new GetRegistrationRunnable(window, promise, aDocumentURL);
   promise.forget(aPromise);
   return NS_DispatchToCurrentThread(runnable);
@@ -1425,7 +1475,7 @@ ServiceWorkerManager::GetReadyPromise(nsIDOMWindow* aWindow,
     return result.ErrorCode();
   }
 
-  nsRefPtr<nsIRunnable> runnable =
+  nsCOMPtr<nsIRunnable> runnable =
     new GetReadyPromiseRunnable(window, promise);
   promise.forget(aPromise);
   return NS_DispatchToCurrentThread(runnable);
@@ -1501,7 +1551,7 @@ ServiceWorkerManager::CheckReadyPromise(nsPIDOMWindow* aWindow,
   return false;
 }
 
-class ServiceWorkerUnregisterJob MOZ_FINAL : public ServiceWorkerJob
+class ServiceWorkerUnregisterJob final : public ServiceWorkerJob
 {
   nsRefPtr<ServiceWorkerRegistrationInfo> mRegistration;
   const nsCString mScope;
@@ -1525,7 +1575,7 @@ public:
   }
 
   void
-  Start() MOZ_OVERRIDE
+  Start() override
   {
     AssertIsOnMainThread();
     nsCOMPtr<nsIRunnable> r =
@@ -2092,15 +2142,25 @@ class FetchEventRunnable : public WorkerRunnable
   nsCString mSpec;
   nsCString mMethod;
   bool mIsReload;
+  RequestMode mRequestMode;
+  RequestCredentials mRequestCredentials;
+  nsContentPolicyType mContentPolicyType;
 public:
   FetchEventRunnable(WorkerPrivate* aWorkerPrivate,
                      nsMainThreadPtrHandle<nsIInterceptedChannel>& aChannel,
                      nsMainThreadPtrHandle<ServiceWorker>& aServiceWorker,
-                     nsAutoPtr<ServiceWorkerClientInfo>& aClientInfo)
+                     nsAutoPtr<ServiceWorkerClientInfo>& aClientInfo,
+                     bool aIsReload)
     : WorkerRunnable(aWorkerPrivate, WorkerThreadModifyBusyCount)
     , mInterceptedChannel(aChannel)
     , mServiceWorker(aServiceWorker)
     , mClientInfo(aClientInfo)
+    , mIsReload(aIsReload)
+    , mRequestMode(RequestMode::No_cors)
+    // By default we set it to same-origin since normal HTTP fetches always
+    // send credentials to same-origin websites unless explicitly forbidden.
+    , mRequestCredentials(RequestCredentials::Same_origin)
+    , mContentPolicyType(nsIContentPolicy::TYPE_INVALID)
   {
     MOZ_ASSERT(aWorkerPrivate);
   }
@@ -2108,7 +2168,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   NS_IMETHOD
-  VisitHeader(const nsACString& aHeader, const nsACString& aValue) MOZ_OVERRIDE
+  VisitHeader(const nsACString& aHeader, const nsACString& aValue) override
   {
     mHeaderNames.AppendElement(aHeader);
     mHeaderValues.AppendElement(aValue);
@@ -2118,6 +2178,7 @@ public:
   nsresult
   Init()
   {
+    AssertIsOnMainThread();
     nsCOMPtr<nsIChannel> channel;
     nsresult rv = mInterceptedChannel->GetChannel(getter_AddRefs(channel));
     NS_ENSURE_SUCCESS(rv, rv);
@@ -2139,17 +2200,50 @@ public:
     rv = channel->GetLoadFlags(&loadFlags);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    //TODO(jdm): we should probably include reload-ness in the loadinfo or as a separate load flag
-    mIsReload = false;
+    nsCOMPtr<nsIHttpChannelInternal> internalChannel = do_QueryInterface(httpChannel);
+    NS_ENSURE_TRUE(internalChannel, NS_ERROR_NOT_AVAILABLE);
+
+    uint32_t mode;
+    internalChannel->GetCorsMode(&mode);
+    switch (mode) {
+      case nsIHttpChannelInternal::CORS_MODE_SAME_ORIGIN:
+        mRequestMode = RequestMode::Same_origin;
+        break;
+      case nsIHttpChannelInternal::CORS_MODE_NO_CORS:
+        mRequestMode = RequestMode::No_cors;
+        break;
+      case nsIHttpChannelInternal::CORS_MODE_CORS:
+      case nsIHttpChannelInternal::CORS_MODE_CORS_WITH_FORCED_PREFLIGHT:
+        mRequestMode = RequestMode::Cors;
+        break;
+      default:
+        MOZ_CRASH("Unexpected CORS mode");
+    }
+
+    if (loadFlags & nsIRequest::LOAD_ANONYMOUS) {
+      mRequestCredentials = RequestCredentials::Omit;
+    } else {
+      bool includeCrossOrigin;
+      internalChannel->GetCorsIncludeCredentials(&includeCrossOrigin);
+      if (includeCrossOrigin) {
+        mRequestCredentials = RequestCredentials::Include;
+      }
+    }
 
     rv = httpChannel->VisitRequestHeaders(this);
     NS_ENSURE_SUCCESS(rv, rv);
+
+    nsCOMPtr<nsILoadInfo> loadInfo;
+    rv = channel->GetLoadInfo(getter_AddRefs(loadInfo));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    mContentPolicyType = loadInfo->GetContentPolicyType();
 
     return NS_OK;
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     MOZ_ASSERT(aWorkerPrivate);
     return DispatchFetchEvent(aCx, aWorkerPrivate);
@@ -2158,7 +2252,7 @@ public:
 private:
   ~FetchEventRunnable() {}
 
-  class ResumeRequest MOZ_FINAL : public nsRunnable {
+  class ResumeRequest final : public nsRunnable {
     nsMainThreadPtrHandle<nsIInterceptedChannel> mChannel;
   public:
     explicit ResumeRequest(nsMainThreadPtrHandle<nsIInterceptedChannel>& aChannel)
@@ -2205,13 +2299,21 @@ private:
     reqInit.mHeaders.Value().SetAsHeaders() = headers;
 
     //TODO(jdm): set request body
-    //TODO(jdm): set request same-origin mode and credentials
+
+    reqInit.mMode.Construct(mRequestMode);
+    reqInit.mCredentials.Construct(mRequestCredentials);
 
     ErrorResult rv;
     nsRefPtr<Request> request = Request::Constructor(globalObj, requestInfo, reqInit, rv);
     if (NS_WARN_IF(rv.Failed())) {
       return false;
     }
+    // For Telemetry, note that this Request object was created by a Fetch event.
+    nsRefPtr<InternalRequest> internalReq = request->GetInternalRequest();
+    MOZ_ASSERT(internalReq);
+    internalReq->SetCreatedByFetchEvent();
+
+    request->SetContentPolicyType(mContentPolicyType);
 
     RootedDictionary<FetchEventInit> init(aCx);
     init.mRequest.Construct();
@@ -2241,7 +2343,8 @@ private:
 NS_IMPL_ISUPPORTS_INHERITED(FetchEventRunnable, WorkerRunnable, nsIHttpHeaderVisitor)
 
 NS_IMETHODIMP
-ServiceWorkerManager::DispatchFetchEvent(nsIDocument* aDoc, nsIInterceptedChannel* aChannel)
+ServiceWorkerManager::DispatchFetchEvent(nsIDocument* aDoc, nsIInterceptedChannel* aChannel,
+                                         bool aIsReload)
 {
   MOZ_ASSERT(aChannel);
   nsCOMPtr<nsISupports> serviceWorker;
@@ -2291,7 +2394,7 @@ ServiceWorkerManager::DispatchFetchEvent(nsIDocument* aDoc, nsIInterceptedChanne
 
   // clientInfo is null if we don't have a controlled document
   nsRefPtr<FetchEventRunnable> event =
-    new FetchEventRunnable(sw->GetWorkerPrivate(), handle, serviceWorkerHandle, clientInfo);
+    new FetchEventRunnable(sw->GetWorkerPrivate(), handle, serviceWorkerHandle, clientInfo, aIsReload);
   rv = event->Init();
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2322,7 +2425,10 @@ ServiceWorkerManager::IsControlled(nsIDocument* aDoc, bool* aIsControlled)
   MOZ_ASSERT(aIsControlled);
   nsRefPtr<ServiceWorkerRegistrationInfo> registration;
   nsresult rv = GetDocumentRegistration(aDoc, getter_AddRefs(registration));
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_WARN_IF(NS_FAILED(rv) && rv != NS_ERROR_NOT_AVAILABLE)) {
+    // It's OK to ignore the case where we don't have a registration.
+    return rv;
+  }
   *aIsControlled = !!registration;
   return NS_OK;
 }
@@ -2333,7 +2439,7 @@ ServiceWorkerManager::GetDocumentRegistration(nsIDocument* aDoc,
 {
   nsRefPtr<ServiceWorkerRegistrationInfo> registration;
   if (!mControlledDocuments.Get(aDoc, getter_AddRefs(registration))) {
-    return NS_ERROR_FAILURE;
+    return NS_ERROR_NOT_AVAILABLE;
   }
 
   // If the document is controlled, the current worker MUST be non-null.

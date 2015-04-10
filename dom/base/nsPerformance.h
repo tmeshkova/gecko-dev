@@ -13,6 +13,7 @@
 #include "nsContentUtils.h"
 #include "nsPIDOMWindow.h"
 #include "js/TypeDecls.h"
+#include "js/RootingAPI.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/DOMEventTargetHelper.h"
 
@@ -28,7 +29,7 @@ namespace dom {
 }
 
 // Script "performance.timing" object
-class nsPerformanceTiming MOZ_FINAL : public nsWrapperCache
+class nsPerformanceTiming final : public nsWrapperCache
 {
 public:
   typedef mozilla::TimeStamp TimeStamp;
@@ -117,7 +118,7 @@ public:
     return duration.ToMilliseconds() + mZeroTime;
   }
 
-  virtual JSObject* WrapObject(JSContext *cx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
   // PerformanceNavigation WebIDL methods
   DOMTimeMilliSec NavigationStart() const {
@@ -256,7 +257,7 @@ private:
 };
 
 // Script "performance.navigation" object
-class nsPerformanceNavigation MOZ_FINAL : public nsWrapperCache
+class nsPerformanceNavigation final : public nsWrapperCache
 {
 public:
   explicit nsPerformanceNavigation(nsPerformance* aPerformance);
@@ -271,7 +272,7 @@ public:
     return mPerformance;
   }
 
-  virtual JSObject* WrapObject(JSContext *cx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
   // PerformanceNavigation WebIDL methods
   uint16_t Type() const {
@@ -287,7 +288,7 @@ private:
 };
 
 // Script "performance" object
-class nsPerformance MOZ_FINAL : public mozilla::DOMEventTargetHelper
+class nsPerformance final : public mozilla::DOMEventTargetHelper
 {
 public:
   typedef mozilla::dom::PerformanceEntry PerformanceEntry;
@@ -297,7 +298,7 @@ public:
                 nsPerformance* aParentPerformance);
 
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsPerformance, DOMEventTargetHelper)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(nsPerformance, DOMEventTargetHelper)
 
   nsDOMNavigationTiming* GetDOMTiming() const
   {
@@ -319,7 +320,7 @@ public:
     return mWindow.get();
   }
 
-  virtual JSObject* WrapObject(JSContext *cx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
   // Performance WebIDL methods
   DOMHighResTimeStamp Now();
@@ -344,6 +345,8 @@ public:
                mozilla::ErrorResult& aRv);
   void ClearMeasures(const mozilla::dom::Optional<nsAString>& aName);
 
+  void GetMozMemory(JSContext *aCx, JS::MutableHandle<JSObject*> aObj);
+
   IMPL_EVENT_HANDLER(resourcetimingbufferfull)
 
 private:
@@ -364,6 +367,7 @@ private:
   nsTArray<nsRefPtr<PerformanceEntry> > mEntries;
   nsRefPtr<nsPerformance> mParentPerformance;
   uint64_t mPrimaryBufferSize;
+  JS::Heap<JSObject*> mMozMemory;
 
   static const uint64_t kDefaultBufferSize = 150;
 

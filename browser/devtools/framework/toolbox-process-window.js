@@ -41,7 +41,7 @@ let connect = Task.async(function*() {
         openToolbox({ form: addonActor, chrome: true, isTabActor: false });
       });
     } else {
-      gClient.attachProcess().then(aResponse => {
+      gClient.getProcess().then(aResponse => {
         openToolbox({ form: aResponse.form, chrome: true });
       });
     }
@@ -51,8 +51,7 @@ let connect = Task.async(function*() {
 // Certain options should be toggled since we can assume chrome debugging here
 function setPrefDefaults() {
   Services.prefs.setBoolPref("devtools.inspector.showUserAgentStyles", true);
-  Services.prefs.setBoolPref("devtools.profiler.ui.show-platform-data", true);
-  Services.prefs.setBoolPref("browser.devedition.theme.showCustomizeButton", false);
+  Services.prefs.setBoolPref("devtools.performance.ui.show-platform-data", true);
   Services.prefs.setBoolPref("devtools.inspector.showAllAnonymousContent", true);
   Services.prefs.setBoolPref("browser.dom.window.dump.enabled", true);
   Services.prefs.setBoolPref("devtools.command-button-frames.enabled", true);
@@ -62,7 +61,13 @@ window.addEventListener("load", function() {
   let cmdClose = document.getElementById("toolbox-cmd-close");
   cmdClose.addEventListener("command", onCloseCommand);
   setPrefDefaults();
-  connect().catch(Cu.reportError);
+  connect().catch(e => {
+    let errorMessageContainer = document.getElementById("error-message-container");
+    let errorMessage = document.getElementById("error-message");
+    errorMessage.value = e;
+    errorMessageContainer.hidden = false;
+    Cu.reportError(e);
+  });
 });
 
 function onCloseCommand(event) {

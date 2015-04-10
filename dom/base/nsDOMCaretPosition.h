@@ -85,8 +85,8 @@ public:
     return GetOffsetNode();
   }
 
-  virtual JSObject* WrapObject(JSContext *aCx)
-    MOZ_OVERRIDE MOZ_FINAL;
+  virtual JSObject* WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
+    override final;
 
 protected:
   virtual ~nsDOMCaretPosition();

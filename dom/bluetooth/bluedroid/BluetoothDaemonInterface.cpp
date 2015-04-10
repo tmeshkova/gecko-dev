@@ -518,7 +518,7 @@ public:
 
     nsresult rv = PackPDU(
       PackConversion<nsAString, BluetoothAddress>(aBdAddr),
-      PackConversion<nsAString, BluetoothSspPairingVariant>(aVariant),
+      PackConversion<nsAString, BluetoothSspVariant>(aVariant),
       aAccept, aPasskey, *pdu);
     if (NS_FAILED(rv)) {
       return rv;
@@ -913,9 +913,8 @@ private:
 
   typedef BluetoothNotificationRunnable5<NotificationHandlerWrapper, void,
                                          nsString, nsString, uint32_t,
-                                         nsString, uint32_t,
-                                         const nsAString&, const nsAString&,
-                                         uint32_t, const nsAString&>
+                                         BluetoothSspVariant, uint32_t,
+                                         const nsAString&, const nsAString&>
     SspRequestNotification;
 
   typedef BluetoothNotificationRunnable3<NotificationHandlerWrapper, void,
@@ -947,7 +946,7 @@ private:
   }
 
   // Init operator class for AdapterPropertiesNotification
-  class AdapterPropertiesInitOp MOZ_FINAL : private PDUInitOp
+  class AdapterPropertiesInitOp final : private PDUInitOp
   {
   public:
     AdapterPropertiesInitOp(BluetoothDaemonPDU& aPDU)
@@ -994,7 +993,7 @@ private:
   }
 
   // Init operator class for RemoteDevicePropertiesNotification
-  class RemoteDevicePropertiesInitOp MOZ_FINAL : private PDUInitOp
+  class RemoteDevicePropertiesInitOp final : private PDUInitOp
   {
   public:
     RemoteDevicePropertiesInitOp(BluetoothDaemonPDU& aPDU)
@@ -1048,7 +1047,7 @@ private:
   }
 
   // Init operator class for DeviceFoundNotification
-  class DeviceFoundInitOp MOZ_FINAL : private PDUInitOp
+  class DeviceFoundInitOp final : private PDUInitOp
   {
   public:
     DeviceFoundInitOp(BluetoothDaemonPDU& aPDU)
@@ -1096,7 +1095,7 @@ private:
   }
 
   // Init operator class for PinRequestNotification
-  class PinRequestInitOp MOZ_FINAL : private PDUInitOp
+  class PinRequestInitOp final : private PDUInitOp
   {
   public:
     PinRequestInitOp(BluetoothDaemonPDU& aPDU)
@@ -1141,7 +1140,7 @@ private:
   }
 
   // Init operator class for SspRequestNotification
-  class SspRequestInitOp MOZ_FINAL : private PDUInitOp
+  class SspRequestInitOp final : private PDUInitOp
   {
   public:
     SspRequestInitOp(BluetoothDaemonPDU& aPDU)
@@ -1150,7 +1149,7 @@ private:
 
     nsresult
     operator () (nsString& aArg1, nsString& aArg2, uint32_t& aArg3,
-                 nsString& aArg4, uint32_t& aArg5) const
+                 BluetoothSspVariant aArg4, uint32_t& aArg5) const
     {
       BluetoothDaemonPDU& pdu = GetPDU();
 
@@ -1175,8 +1174,7 @@ private:
       }
 
       /* Read pairing variant */
-      rv = UnpackPDU(
-        pdu, UnpackConversion<BluetoothSspPairingVariant, nsAString>(aArg4));
+      rv = UnpackPDU(pdu, aArg4);
       if (NS_FAILED(rv)) {
         return rv;
       }
@@ -1200,7 +1198,7 @@ private:
   }
 
   // Init operator class for BondStateChangedNotification
-  class BondStateChangedInitOp MOZ_FINAL : private PDUInitOp
+  class BondStateChangedInitOp final : private PDUInitOp
   {
   public:
     BondStateChangedInitOp(BluetoothDaemonPDU& aPDU)
@@ -1245,7 +1243,7 @@ private:
   }
 
   // Init operator class for AclStateChangedNotification
-  class AclStateChangedInitOp MOZ_FINAL : private PDUInitOp
+  class AclStateChangedInitOp final : private PDUInitOp
   {
   public:
     AclStateChangedInitOp(BluetoothDaemonPDU& aPDU)
@@ -1290,7 +1288,7 @@ private:
   }
 
   // Init operator class for DutModeRecvNotification
-  class DutModeRecvInitOp MOZ_FINAL : private PDUInitOp
+  class DutModeRecvInitOp final : private PDUInitOp
   {
   public:
     DutModeRecvInitOp(BluetoothDaemonPDU& aPDU)
@@ -1427,7 +1425,7 @@ const int BluetoothDaemonCoreModule::MAX_NUM_CLIENTS = 1;
 // which is called by |BluetoothDaemonProtcol| to hand over received
 // PDUs into a module.
 //
-class BluetoothDaemonProtocol MOZ_FINAL
+class BluetoothDaemonProtocol final
   : public BluetoothDaemonPDUConsumer
   , public BluetoothDaemonSetupModule
   , public BluetoothDaemonCoreModule
@@ -1442,22 +1440,22 @@ public:
   void SetConnection(BluetoothDaemonConnection* aConnection);
 
   nsresult RegisterModule(uint8_t aId, uint8_t aMode, uint32_t aMaxNumClients,
-                          BluetoothSetupResultHandler* aRes) MOZ_OVERRIDE;
+                          BluetoothSetupResultHandler* aRes) override;
 
   nsresult UnregisterModule(uint8_t aId,
-                            BluetoothSetupResultHandler* aRes) MOZ_OVERRIDE;
+                            BluetoothSetupResultHandler* aRes) override;
 
   // Outgoing PDUs
   //
 
-  nsresult Send(BluetoothDaemonPDU* aPDU, void* aUserData) MOZ_OVERRIDE;
+  nsresult Send(BluetoothDaemonPDU* aPDU, void* aUserData) override;
 
-  void StoreUserData(const BluetoothDaemonPDU& aPDU) MOZ_OVERRIDE;
+  void StoreUserData(const BluetoothDaemonPDU& aPDU) override;
 
   // Incoming PUDs
   //
 
-  void Handle(BluetoothDaemonPDU& aPDU) MOZ_OVERRIDE;
+  void Handle(BluetoothDaemonPDU& aPDU) override;
 
   void* FetchUserData(const BluetoothDaemonPDUHeader& aHeader);
 
@@ -1620,7 +1618,7 @@ BluetoothDaemonProtocol::FetchUserData(const BluetoothDaemonPDUHeader& aHeader)
 // Listen socket
 //
 
-class BluetoothDaemonListenSocket MOZ_FINAL : public ipc::ListenSocket
+class BluetoothDaemonListenSocket final : public ipc::ListenSocket
 {
 public:
   BluetoothDaemonListenSocket(BluetoothDaemonInterface* aInterface);
@@ -1628,9 +1626,9 @@ public:
   // Connection state
   //
 
-  void OnConnectSuccess() MOZ_OVERRIDE;
-  void OnConnectError() MOZ_OVERRIDE;
-  void OnDisconnect() MOZ_OVERRIDE;
+  void OnConnectSuccess() override;
+  void OnConnectError() override;
+  void OnDisconnect() override;
 
 private:
   BluetoothDaemonInterface* mInterface;
@@ -1672,7 +1670,7 @@ BluetoothDaemonListenSocket::OnDisconnect()
 // Channels
 //
 
-class BluetoothDaemonChannel MOZ_FINAL : public BluetoothDaemonConnection
+class BluetoothDaemonChannel final : public BluetoothDaemonConnection
 {
 public:
   BluetoothDaemonChannel(BluetoothDaemonInterface* aInterface,
@@ -1682,14 +1680,14 @@ public:
   // SocketBase
   //
 
-  void OnConnectSuccess() MOZ_OVERRIDE;
-  void OnConnectError() MOZ_OVERRIDE;
-  void OnDisconnect() MOZ_OVERRIDE;
+  void OnConnectSuccess() override;
+  void OnConnectError() override;
+  void OnDisconnect() override;
 
   // ConnectionOrientedSocket
   //
 
-  ConnectionOrientedSocketIO* GetIO() MOZ_OVERRIDE;
+  ConnectionOrientedSocketIO* GetIO() override;
 
 private:
   BluetoothDaemonInterface* mInterface;
@@ -1769,7 +1767,7 @@ BluetoothDaemonInterface::BluetoothDaemonInterface()
 BluetoothDaemonInterface::~BluetoothDaemonInterface()
 { }
 
-class BluetoothDaemonInterface::InitResultHandler MOZ_FINAL
+class BluetoothDaemonInterface::InitResultHandler final
   : public BluetoothSetupResultHandler
 {
 public:
@@ -1786,7 +1784,7 @@ public:
   // we're already on the main thread and returned from Init, we don't
   // need to dispatch a new runnable.
 
-  void OnError(BluetoothStatus aStatus) MOZ_OVERRIDE
+  void OnError(BluetoothStatus aStatus) override
   {
     MOZ_ASSERT(NS_IsMainThread());
 
@@ -1795,7 +1793,7 @@ public:
     }
   }
 
-  void RegisterModule() MOZ_OVERRIDE
+  void RegisterModule() override
   {
     MOZ_ASSERT(NS_IsMainThread());
     MOZ_ASSERT(mInterface->mProtocol);
@@ -1925,7 +1923,7 @@ BluetoothDaemonInterface::OnDisconnect(enum Channel aChannel)
   }
 }
 
-class BluetoothDaemonSocketConnector MOZ_FINAL
+class BluetoothDaemonSocketConnector final
   : public mozilla::ipc::UnixSocketConnector
 {
 public:
@@ -1934,7 +1932,7 @@ public:
   { }
 
   int
-  Create() MOZ_OVERRIDE
+  Create() override
   {
     MOZ_ASSERT(!NS_IsMainThread());
 
@@ -1950,7 +1948,7 @@ public:
   CreateAddr(bool aIsServer,
              socklen_t& aAddrSize,
              sockaddr_any& aAddr,
-             const char* aAddress) MOZ_OVERRIDE
+             const char* aAddress) override
   {
     static const size_t sNameOffset = 1;
 
@@ -1971,7 +1969,7 @@ public:
   }
 
   bool
-  SetUp(int aFd) MOZ_OVERRIDE
+  SetUp(int aFd) override
   {
     if (TEMP_FAILURE_RETRY(fcntl(aFd, F_SETFL, O_NONBLOCK)) < 0) {
       BT_WARNING("Failed to set non-blocking I/O.");
@@ -1981,13 +1979,13 @@ public:
   }
 
   bool
-  SetUpListenSocket(int aFd) MOZ_OVERRIDE
+  SetUpListenSocket(int aFd) override
   {
     return true;
   }
 
   void
-  GetSocketAddr(const sockaddr_any& aAddr, nsAString& aAddrStr) MOZ_OVERRIDE
+  GetSocketAddr(const sockaddr_any& aAddr, nsAString& aAddrStr) override
   {
     // Unused.
     MOZ_CRASH("This should never be called!");
@@ -2128,7 +2126,7 @@ BluetoothDaemonInterface::Init(
   mProtocol->SetConnection(mCmdChannel);
 }
 
-class BluetoothDaemonInterface::CleanupResultHandler MOZ_FINAL
+class BluetoothDaemonInterface::CleanupResultHandler final
   : public BluetoothSetupResultHandler
 {
 public:
@@ -2139,12 +2137,12 @@ public:
     MOZ_ASSERT(mInterface);
   }
 
-  void OnError(BluetoothStatus aStatus) MOZ_OVERRIDE
+  void OnError(BluetoothStatus aStatus) override
   {
     Proceed();
   }
 
-  void UnregisterModule() MOZ_OVERRIDE
+  void UnregisterModule() override
   {
     Proceed();
   }

@@ -54,7 +54,7 @@ namespace js {}
 #define JS_STATIC_ASSERT_IF(cond, expr)  MOZ_STATIC_ASSERT_IF(cond, expr, "JS_STATIC_ASSERT_IF")
 
 extern MOZ_NORETURN MOZ_COLD JS_PUBLIC_API(void)
-JS_Assert(const char *s, const char *file, int ln);
+JS_Assert(const char* s, const char* file, int ln);
 
 /*
  * Custom allocator support for SpiderMonkey
@@ -95,9 +95,22 @@ static MOZ_NEVER_INLINE void js_failedAllocBreakpoint() { asm(""); }
         } \
     } while (0)
 
+namespace js {
+namespace oom {
+static inline bool ShouldFailWithOOM()
+{
+    if (++OOM_counter > OOM_maxAllocations) {
+        JS_OOM_CALL_BP_FUNC();
+        return true;
+    }
+    return false;
+}
+}
+}
 # else
 #  define JS_OOM_POSSIBLY_FAIL() do {} while(0)
 #  define JS_OOM_POSSIBLY_FAIL_BOOL() do {} while(0)
+namespace js { namespace oom { static inline bool ShouldFailWithOOM() { return false; } } }
 # endif /* DEBUG || JS_OOM_BREAKPOINT */
 
 static inline void* js_malloc(size_t bytes)
@@ -191,7 +204,7 @@ static inline char* js_strdup(const char* s)
     template <class T, typename... Args> \
     QUALIFIERS T * \
     NEWNAME(Args&&... args) MOZ_HEAP_ALLOCATOR { \
-        void *memory = ALLOCATOR(sizeof(T)); \
+        void* memory = ALLOCATOR(sizeof(T)); \
         return memory \
                ? new(memory) T(mozilla::Forward<Args>(args)...) \
                : nullptr; \
@@ -211,7 +224,7 @@ static inline char* js_strdup(const char* s)
     template <class T, typename... Args> \
     QUALIFIERS mozilla::UniquePtr<T, JS::DeletePolicy<T>> \
     MAKENAME(Args&&... args) MOZ_HEAP_ALLOCATOR { \
-        T *ptr = NEWNAME<T>(mozilla::Forward<Args>(args)...); \
+        T* ptr = NEWNAME<T>(mozilla::Forward<Args>(args)...); \
         return mozilla::UniquePtr<T, JS::DeletePolicy<T>>(ptr); \
     }
 
@@ -219,7 +232,7 @@ JS_DECLARE_NEW_METHODS(js_new, js_malloc, static MOZ_ALWAYS_INLINE)
 
 template <class T>
 static MOZ_ALWAYS_INLINE void
-js_delete(T *p)
+js_delete(T* p)
 {
     if (p) {
         p->~T();
@@ -229,7 +242,7 @@ js_delete(T *p)
 
 template<class T>
 static MOZ_ALWAYS_INLINE void
-js_delete_poison(T *p)
+js_delete_poison(T* p)
 {
     if (p) {
         p->~T();
@@ -239,45 +252,45 @@ js_delete_poison(T *p)
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T *
+static MOZ_ALWAYS_INLINE T*
 js_pod_malloc()
 {
-    return (T *)js_malloc(sizeof(T));
+    return (T*)js_malloc(sizeof(T));
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T *
+static MOZ_ALWAYS_INLINE T*
 js_pod_calloc()
 {
-    return (T *)js_calloc(sizeof(T));
+    return (T*)js_calloc(sizeof(T));
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T *
+static MOZ_ALWAYS_INLINE T*
 js_pod_malloc(size_t numElems)
 {
     if (MOZ_UNLIKELY(numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value))
         return nullptr;
-    return (T *)js_malloc(numElems * sizeof(T));
+    return (T*)js_malloc(numElems * sizeof(T));
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T *
+static MOZ_ALWAYS_INLINE T*
 js_pod_calloc(size_t numElems)
 {
     if (MOZ_UNLIKELY(numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value))
         return nullptr;
-    return (T *)js_calloc(numElems * sizeof(T));
+    return (T*)js_calloc(numElems * sizeof(T));
 }
 
 template <class T>
-static MOZ_ALWAYS_INLINE T *
-js_pod_realloc(T *prior, size_t oldSize, size_t newSize)
+static MOZ_ALWAYS_INLINE T*
+js_pod_realloc(T* prior, size_t oldSize, size_t newSize)
 {
     MOZ_ASSERT(!(oldSize & mozilla::tl::MulOverflowMask<sizeof(T)>::value));
     if (MOZ_UNLIKELY(newSize & mozilla::tl::MulOverflowMask<sizeof(T)>::value))
         return nullptr;
-    return (T *)js_realloc(prior, newSize * sizeof(T));
+    return (T*)js_realloc(prior, newSize * sizeof(T));
 }
 
 namespace js {
@@ -294,14 +307,14 @@ SCOPED_TEMPLATE(ScopedJSFreePtr, ScopedFreePtrTraits)
 template <typename T>
 struct ScopedDeletePtrTraits : public ScopedFreePtrTraits<T>
 {
-    static void release(T *ptr) { js_delete(ptr); }
+    static void release(T* ptr) { js_delete(ptr); }
 };
 SCOPED_TEMPLATE(ScopedJSDeletePtr, ScopedDeletePtrTraits)
 
 template <typename T>
 struct ScopedReleasePtrTraits : public ScopedFreePtrTraits<T>
 {
-    static void release(T *ptr) { if (ptr) ptr->release(); }
+    static void release(T* ptr) { if (ptr) ptr->release(); }
 };
 SCOPED_TEMPLATE(ScopedReleasePtr, ScopedReleasePtrTraits)
 
@@ -381,40 +394,6 @@ ScrambleHashCode(HashNumber h)
 } /* namespace detail */
 
 } /* namespace js */
-
-namespace JS {
-
-/*
- * Methods for poisoning GC heap pointer words and checking for poisoned words.
- * These are in this file for use in Value methods and so forth.
- *
- * If the moving GC hazard analysis is in use and detects a non-rooted stack
- * pointer to a GC thing, one byte of that pointer is poisoned to refer to an
- * invalid location. For both 32 bit and 64 bit systems, the fourth byte of the
- * pointer is overwritten, to reduce the likelihood of accidentally changing
- * a live integer value.
- */
-
-inline void PoisonPtr(void *v)
-{
-#if defined(JSGC_ROOT_ANALYSIS) && defined(JS_DEBUG)
-    uint8_t *ptr = (uint8_t *) v + 3;
-    *ptr = JS_FREE_PATTERN;
-#endif
-}
-
-template <typename T>
-inline bool IsPoisonedPtr(T *v)
-{
-#if defined(JSGC_ROOT_ANALYSIS) && defined(JS_DEBUG)
-    uint32_t mask = uintptr_t(v) & 0xff000000;
-    return mask == uint32_t(JS_FREE_PATTERN << 24);
-#else
-    return false;
-#endif
-}
-
-}
 
 /* sixgill annotation defines */
 #ifndef HAVE_STATIC_ANNOTATIONS

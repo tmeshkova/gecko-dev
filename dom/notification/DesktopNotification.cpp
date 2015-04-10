@@ -37,7 +37,7 @@ public:
   explicit DesktopNotificationRequest(DesktopNotification* aNotification)
     : mDesktopNotification(aNotification) {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     nsCOMPtr<nsPIDOMWindow> window = mDesktopNotification->GetOwner();
     nsContentPermissionUtils::AskPermission(this, window);
@@ -219,9 +219,9 @@ DesktopNotification::Show(ErrorResult& aRv)
 }
 
 JSObject*
-DesktopNotification::WrapObject(JSContext* aCx)
+DesktopNotification::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return DesktopNotificationBinding::Wrap(aCx, this);
+  return DesktopNotificationBinding::Wrap(aCx, this, aGivenProto);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -254,9 +254,9 @@ DesktopNotificationCenter::CreateNotification(const nsAString& aTitle,
 }
 
 JSObject*
-DesktopNotificationCenter::WrapObject(JSContext* aCx)
+DesktopNotificationCenter::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return DesktopNotificationCenterBinding::Wrap(aCx, this);
+  return DesktopNotificationCenterBinding::Wrap(aCx, this, aGivenProto);
 }
 
 /* ------------------------------------------------------------------------ */

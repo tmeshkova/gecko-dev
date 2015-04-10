@@ -61,8 +61,8 @@ class ImportManager;
 
 typedef nsTHashtable<nsPtrHashKey<nsINode>> NodeTable;
 
-class ImportLoader MOZ_FINAL : public nsIStreamListener
-                             , public nsIDOMEventListener
+class ImportLoader final : public nsIStreamListener
+                         , public nsIDOMEventListener
 {
 
   // A helper inner class to decouple the logic of updating the import graph
@@ -134,7 +134,7 @@ public:
 
   // We need to listen to DOMContentLoaded event to know when the document
   // is fully leaded.
-  NS_IMETHOD HandleEvent(nsIDOMEvent *aEvent) MOZ_OVERRIDE;
+  NS_IMETHOD HandleEvent(nsIDOMEvent *aEvent) override;
 
   // Validation then opening and starting up the channel.
   void Open();
@@ -238,7 +238,7 @@ private:
   Updater mUpdater;
 };
 
-class ImportManager MOZ_FINAL : public nsISupports
+class ImportManager final : public nsISupports
 {
   typedef nsRefPtrHashtable<nsURIHashKey, ImportLoader> ImportMap;
 

@@ -85,10 +85,6 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, mozilla::Modi
   }
 }
 
-void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid)
-{
-}
-
 void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID& aScrollId, const mozilla::CSSPoint& aDestination)
 {
 }

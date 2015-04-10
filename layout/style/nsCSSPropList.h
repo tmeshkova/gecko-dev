@@ -1373,7 +1373,7 @@ CSS_PROP_DISPLAY(
     kClearKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     clip,
     clip,
     Clip,
@@ -1382,7 +1382,7 @@ CSS_PROP_POSITION(
     "",
     0,
     nullptr,
-    offsetof(nsStylePosition, mClip),
+    offsetof(nsStyleDisplay, mClip),
     eStyleAnimType_Custom)
 CSS_PROP_COLOR(
     color,
@@ -2650,7 +2650,8 @@ CSS_PROP_DISPLAY(
     opacity,
     Opacity,
     CSS_PROPERTY_PARSE_VALUE |
-        CSS_PROPERTY_APPLIES_TO_PLACEHOLDER,
+        CSS_PROPERTY_APPLIES_TO_PLACEHOLDER |
+        CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR,
     "",
     VARIANT_HN,
     nullptr,
@@ -3061,31 +3062,30 @@ CSS_PROP_DISPLAY(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_DISPLAY(
-    scroll-snap-type-x,
-    scroll_snap_type_x,
-    ScrollSnapTypeX,
-    CSS_PROPERTY_PARSE_VALUE,
+    scroll-snap-coordinate,
+    scroll_snap_coordinate,
+    ScrollSnapCoordinate,
+    CSS_PROPERTY_PARSE_VALUE |
+        CSS_PROPERTY_VALUE_PARSER_FUNCTION |
+        CSS_PROPERTY_VALUE_LIST_USES_COMMAS |
+        CSS_PROPERTY_STORES_CALC,
     "layout.css.scroll-snap.enabled",
-    VARIANT_HK,
-    kScrollSnapTypeKTable,
+    0,
+    kBackgroundPositionKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_DISPLAY(
-    scroll-snap-type-y,
-    scroll_snap_type_y,
-    ScrollSnapTypeY,
-    CSS_PROPERTY_PARSE_VALUE,
+    scroll-snap-destination,
+    scroll_snap_destination,
+    ScrollSnapDestination,
+    CSS_PROPERTY_PARSE_VALUE |
+        CSS_PROPERTY_VALUE_PARSER_FUNCTION |
+        CSS_PROPERTY_STORES_CALC,
     "layout.css.scroll-snap.enabled",
-    VARIANT_HK,
-    kScrollSnapTypeKTable,
+    0,
+    kBackgroundPositionKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
-CSS_PROP_SHORTHAND(
-    scroll-snap-type,
-    scroll_snap_type,
-    ScrollSnapType,
-    CSS_PROPERTY_PARSE_FUNCTION,
-    "layout.css.scroll-snap.enabled")
 CSS_PROP_DISPLAY(
     scroll-snap-points-x,
     scroll_snap_points_x,
@@ -3110,29 +3110,30 @@ CSS_PROP_DISPLAY(
     nullptr,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
+CSS_PROP_SHORTHAND(
+    scroll-snap-type,
+    scroll_snap_type,
+    ScrollSnapType,
+    CSS_PROPERTY_PARSE_FUNCTION,
+    "layout.css.scroll-snap.enabled")
 CSS_PROP_DISPLAY(
-    scroll-snap-destination,
-    scroll_snap_destination,
-    ScrollSnapDestination,
-    CSS_PROPERTY_PARSE_VALUE |
-        CSS_PROPERTY_VALUE_PARSER_FUNCTION |
-        CSS_PROPERTY_STORES_CALC,
+    scroll-snap-type-x,
+    scroll_snap_type_x,
+    ScrollSnapTypeX,
+    CSS_PROPERTY_PARSE_VALUE,
     "layout.css.scroll-snap.enabled",
-    0,
-    kBackgroundPositionKTable,
+    VARIANT_HK,
+    kScrollSnapTypeKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_DISPLAY(
-    scroll-snap-coordinate,
-    scroll_snap_coordinate,
-    ScrollSnapCoordinate,
-    CSS_PROPERTY_PARSE_VALUE |
-        CSS_PROPERTY_VALUE_PARSER_FUNCTION |
-        CSS_PROPERTY_VALUE_LIST_USES_COMMAS |
-        CSS_PROPERTY_STORES_CALC,
+    scroll-snap-type-y,
+    scroll_snap_type_y,
+    ScrollSnapTypeY,
+    CSS_PROPERTY_PARSE_VALUE,
     "layout.css.scroll-snap.enabled",
-    0,
-    kBackgroundPositionKTable,
+    VARIANT_HK,
+    kScrollSnapTypeKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_BACKENDONLY(
@@ -3305,19 +3306,20 @@ CSS_PROP_TEXT(
     kTextTransformKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     transform,
     transform,
     Transform,
     CSS_PROPERTY_PARSE_FUNCTION |
         CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH |
-        CSS_PROPERTY_CREATES_STACKING_CONTEXT,
+        CSS_PROPERTY_CREATES_STACKING_CONTEXT |
+        CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR,
     "",
     0,
     nullptr,
-    offsetof(nsStylePosition, mSpecifiedTransform),
+    offsetof(nsStyleDisplay, mSpecifiedTransform),
     eStyleAnimType_Custom)
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     transform-origin,
     transform_origin,
     TransformOrigin,
@@ -3329,7 +3331,7 @@ CSS_PROP_POSITION(
     kBackgroundPositionKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_Custom)
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     perspective-origin,
     perspective_origin,
     PerspectiveOrigin,
@@ -3341,7 +3343,7 @@ CSS_PROP_POSITION(
     kBackgroundPositionKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_Custom)
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     perspective,
     perspective,
     Perspective,
@@ -3350,9 +3352,9 @@ CSS_PROP_POSITION(
     "",
     VARIANT_NONE | VARIANT_INHERIT | VARIANT_LENGTH | VARIANT_POSITIVE_DIMENSION,
     nullptr,
-    offsetof(nsStylePosition, mChildPerspective),
+    offsetof(nsStyleDisplay, mChildPerspective),
     eStyleAnimType_Coord)
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     transform-style,
     transform_style,
     TransformStyle,
@@ -3363,7 +3365,7 @@ CSS_PROP_POSITION(
     kTransformStyleKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     backface-visibility,
     backface_visibility,
     BackfaceVisibility,
@@ -3371,7 +3373,7 @@ CSS_PROP_POSITION(
     "",
     VARIANT_HK,
     kBackfaceVisibilityKTable,
-    offsetof(nsStylePosition, mBackfaceVisibility),
+    offsetof(nsStyleDisplay, mBackfaceVisibility),
     eStyleAnimType_None)
 CSS_PROP_POSITION(
     top,
@@ -4122,7 +4124,7 @@ CSS_PROP_SVGRESET(
     offsetof(nsStyleSVGReset, mVectorEffect),
     eStyleAnimType_EnumU8)
 
-CSS_PROP_POSITION(
+CSS_PROP_DISPLAY(
     will-change,
     will_change,
     WillChange,

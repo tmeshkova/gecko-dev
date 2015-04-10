@@ -45,6 +45,8 @@ XPCOMUtils.defineLazyServiceGetter(this, "Favicons",
 XPCOMUtils.defineLazyServiceGetter(this, "gDNSService",
                                    "@mozilla.org/network/dns-service;1",
                                    "nsIDNSService");
+XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
+                                  "resource://gre/modules/LightweightThemeManager.jsm");
 
 const nsIWebNavigation = Ci.nsIWebNavigation;
 
@@ -827,10 +829,16 @@ function gKeywordURIFixup({ target: browser, data: fixupInfo }) {
 
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
-function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
+function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
+  let flags = params.flags || 0;
+  let referrer = params.referrerURI;
+  let referrerPolicy = ('referrerPolicy' in params ? params.referrerPolicy :
+                        Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT);
+  let charset = params.charset;
+  let postdata = params.postData;
 
   if (!(flags & browser.webNavigation.LOAD_FLAGS_FROM_EXTERNAL)) {
     browser.userTypedClear++;
@@ -842,12 +850,15 @@ function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
                           !E10SUtils.canLoadURIInProcess(uri, process);
   try {
     if (!mustChangeProcess) {
-      browser.webNavigation.loadURI(uri, flags, referrer, postdata, null);
+      browser.webNavigation.loadURIWithOptions(uri, flags,
+                                               referrer, referrerPolicy,
+                                               postdata, null, null);
     } else {
       LoadInOtherProcess(browser, {
         uri: uri,
         flags: flags,
         referrer: referrer ? referrer.spec : null,
+        referrerPolicy: referrerPolicy,
       });
     }
   } catch (e) {
@@ -856,7 +867,8 @@ function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
     // This might be necessary if SessionStore wasn't initialized yet i.e.
     // when the homepage is a non-remote page.
     gBrowser.updateBrowserRemotenessByURL(browser, uri);
-    browser.webNavigation.loadURI(uri, flags, referrer, postdata, null);
+    browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+                                             postdata, null, null);
   } finally {
     if (browser.userTypedClear) {
       browser.userTypedClear--;
@@ -1022,6 +1034,7 @@ var gBrowserInit = {
     CombinedStopReload.init();
     gPrivateBrowsingUI.init();
     TabsInTitlebar.init();
+    ReadingListUI.init();
 
 #ifdef XP_WIN
     if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
@@ -1176,12 +1189,23 @@ var gBrowserInit = {
           Cu.reportError(e);
         }
       }
-      // window.arguments[2]: referrer (nsIURI)
+      // window.arguments[2]: referrer (nsIURI | string)
       //                 [3]: postData (nsIInputStream)
       //                 [4]: allowThirdPartyFixup (bool)
+      //                 [5]: referrerPolicy (int)
       else if (window.arguments.length >= 3) {
-        loadURI(uriToLoad, window.arguments[2], window.arguments[3] || null,
-                window.arguments[4] || false);
+        let referrerURI = window.arguments[2];
+        if (typeof(referrerURI) == "string") {
+          try {
+            referrerURI = makeURI(referrerURI);
+          } catch (e) {
+            referrerURI = null;
+          }
+        }
+        let referrerPolicy = (window.arguments[5] != undefined ?
+            window.arguments[5] : Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT);
+        loadURI(uriToLoad, referrerURI, window.arguments[3] || null,
+                window.arguments[4] || false, referrerPolicy);
         window.focus();
       }
       // Note: loadOneOrMoreURIs *must not* be called if window.arguments.length >= 3.
@@ -1201,6 +1225,7 @@ var gBrowserInit = {
     Services.obs.addObserver(gXPInstallObserver, "addon-install-started", false);
     Services.obs.addObserver(gXPInstallObserver, "addon-install-blocked", false);
     Services.obs.addObserver(gXPInstallObserver, "addon-install-failed", false);
+    Services.obs.addObserver(gXPInstallObserver, "addon-install-confirmation", false);
     Services.obs.addObserver(gXPInstallObserver, "addon-install-complete", false);
     window.messageManager.addMessageListener("Browser:URIFixup", gKeywordURIFixup);
 
@@ -1379,7 +1404,6 @@ var gBrowserInit = {
 
       SocialUI.init();
       TabView.init();
-      ReadingListUI.init();
 
       // Telemetry for master-password - we do this after 5 seconds as it
       // can cause IO if NSS/PSM has not already initialized.
@@ -1513,6 +1537,7 @@ var gBrowserInit = {
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-started");
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-blocked");
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-failed");
+      Services.obs.removeObserver(gXPInstallObserver, "addon-install-confirmation");
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-complete");
       window.messageManager.removeMessageListener("Browser:URIFixup", gKeywordURIFixup);
       window.messageManager.removeMessageListener("Browser:LoadURI", RedirectLoad);
@@ -2065,56 +2090,91 @@ function BrowserTryToCloseWindow()
     window.close();     // WindowIsClosing does all the necessary checks
 }
 
-function loadURI(uri, referrer, postData, allowThirdPartyFixup) {
+function loadURI(uri, referrer, postData, allowThirdPartyFixup, referrerPolicy) {
   try {
     openLinkIn(uri, "current",
                { referrerURI: referrer,
+                 referrerPolicy: referrerPolicy,
                  postData: postData,
                  allowThirdPartyFixup: allowThirdPartyFixup });
   } catch (e) {}
 }
 
-function getShortcutOrURIAndPostData(aURL, aCallback) {
-  let mayInheritPrincipal = false;
-  let postData = null;
-  let shortcutURL = null;
-  let keyword = aURL;
-  let param = "";
-
-  let offset = aURL.indexOf(" ");
-  if (offset > 0) {
-    keyword = aURL.substr(0, offset);
-    param = aURL.substr(offset + 1);
+/**
+ * Given a urlbar value, discerns between URIs, keywords and aliases.
+ *
+ * @param url
+ *        The urlbar value.
+ * @param callback (optional, deprecated)
+ *        The callback function invoked when done. This parameter is
+ *        deprecated, please use the Promise that is returned.
+ *
+ * @return Promise<{ postData, url, mayInheritPrincipal }>
+ */
+function getShortcutOrURIAndPostData(url, callback = null) {
+  if (callback) {
+    Deprecated.warning("Please use the Promise returned by " +
+                       "getShortcutOrURIAndPostData() instead of passing a " +
+                       "callback",
+                       "https://bugzilla.mozilla.org/show_bug.cgi?id=1100294");
   }
 
-  let engine = Services.search.getEngineByAlias(keyword);
-  if (engine) {
-    let submission = engine.getSubmission(param, null, "keyword");
-    postData = submission.postData;
-    aCallback({ postData: submission.postData, url: submission.uri.spec,
-                mayInheritPrincipal: mayInheritPrincipal });
-    return;
-  }
+  return Task.spawn(function* () {
+    let mayInheritPrincipal = false;
+    let postData = null;
+    let shortcutURL = null;
+    let keyword = url;
+    let param = "";
 
-  [shortcutURL, postData] =
-    PlacesUtils.getURLAndPostDataForKeyword(keyword);
+    let offset = url.indexOf(" ");
+    if (offset > 0) {
+      keyword = url.substr(0, offset);
+      param = url.substr(offset + 1);
+    }
 
-  if (!shortcutURL) {
-    aCallback({ postData: postData, url: aURL,
-                mayInheritPrincipal: mayInheritPrincipal });
-    return;
-  }
+    let engine = Services.search.getEngineByAlias(keyword);
+    if (engine) {
+      let submission = engine.getSubmission(param, null, "keyword");
+      postData = submission.postData;
+      return { postData: submission.postData, url: submission.uri.spec,
+               mayInheritPrincipal };
+    }
 
-  let escapedPostData = "";
-  if (postData)
-    escapedPostData = unescape(postData);
+    let entry = yield PlacesUtils.keywords.fetch(keyword);
+    if (entry) {
+      shortcutURL = entry.url.href;
+      postData = entry.postData;
+    }
 
-  if (/%s/i.test(shortcutURL) || /%s/i.test(escapedPostData)) {
-    let charset = "";
-    const re = /^(.*)\&mozcharset=([a-zA-Z][_\-a-zA-Z0-9]+)\s*$/;
-    let matches = shortcutURL.match(re);
+    if (!shortcutURL) {
+      return { postData, url, mayInheritPrincipal };
+    }
 
-    let continueOperation = function () {
+    let escapedPostData = "";
+    if (postData)
+      escapedPostData = unescape(postData);
+
+    if (/%s/i.test(shortcutURL) || /%s/i.test(escapedPostData)) {
+      let charset = "";
+      const re = /^(.*)\&mozcharset=([a-zA-Z][_\-a-zA-Z0-9]+)\s*$/;
+      let matches = shortcutURL.match(re);
+
+      if (matches) {
+        [, shortcutURL, charset] = matches;
+      } else {
+        let uri;
+        try {
+          // makeURI() throws if URI is invalid.
+          uri = makeURI(shortcutURL);
+        } catch (ex) {}
+
+        if (uri) {
+          // Try to get the saved character-set.
+          // Will return an empty string if character-set is not found.
+          charset = yield PlacesUtils.getCharsetForURI(uri);
+        }
+      }
+
       // encodeURIComponent produces UTF-8, and cannot be used for other charsets.
       // escape() works in those cases, but it doesn't uri-encode +, @, and /.
       // Therefore we need to manually replace these ASCII characters by their
@@ -2137,40 +2197,29 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
       // document's principal.
       mayInheritPrincipal = true;
 
-      aCallback({ postData: postData, url: shortcutURL,
-                  mayInheritPrincipal: mayInheritPrincipal });
+      return { postData, url: shortcutURL, mayInheritPrincipal };
     }
 
-    if (matches) {
-      [, shortcutURL, charset] = matches;
-      continueOperation();
-    } else {
-      // Try to get the saved character-set.
-      // makeURI throws if URI is invalid.
-      // Will return an empty string if character-set is not found.
-      try {
-        PlacesUtils.getCharsetForURI(makeURI(shortcutURL))
-                   .then(c => { charset = c; continueOperation(); });
-      } catch (ex) {
-        continueOperation();
-      }
-    }
-  }
-  else if (param) {
-    // This keyword doesn't take a parameter, but one was provided. Just return
-    // the original URL.
-    postData = null;
+    if (param) {
+      // This keyword doesn't take a parameter, but one was provided. Just return
+      // the original URL.
+      postData = null;
 
-    aCallback({ postData: postData, url: aURL,
-                mayInheritPrincipal: mayInheritPrincipal });
-  } else {
+      return { postData, url, mayInheritPrincipal };
+    }
+
     // This URL came from a bookmark, so it's safe to let it inherit the current
     // document's principal.
     mayInheritPrincipal = true;
 
-    aCallback({ postData: postData, url: shortcutURL,
-                mayInheritPrincipal: mayInheritPrincipal });
-  }
+    return { postData, url: shortcutURL, mayInheritPrincipal };
+  }).then(data => {
+    if (callback) {
+      callback(data);
+    }
+
+    return data;
+  });
 }
 
 function getPostDataStream(aStringData, aKeyword, aEncKeyword, aType) {
@@ -2421,6 +2470,7 @@ function UpdatePageProxyState()
 function SetPageProxyState(aState)
 {
   BookmarkingUI.onPageProxyStateChanged(aState);
+  ReadingListUI.onPageProxyStateChanged(aState);
 
   if (!gURLBar)
     return;
@@ -2949,7 +2999,10 @@ function BrowserFullScreen()
 }
 
 function mirrorShow(popup) {
-  let services = CastingApps.getServicesForMirroring();
+  let services = [];
+  if (Services.prefs.getBoolPref("browser.casting.enabled")) {
+    services = CastingApps.getServicesForMirroring();
+  }
   popup.ownerDocument.getElementById("menu_mirrorTabCmd").hidden = !services.length;
 }
 
@@ -2959,8 +3012,11 @@ function mirrorMenuItemClicked(event) {
 }
 
 function populateMirrorTabMenu(popup) {
-  let videoEl = this.target;
   popup.innerHTML = null;
+  if (!Services.prefs.getBoolPref("browser.casting.enabled")) {
+    return;
+  }
+  let videoEl = this.target;
   let doc = popup.ownerDocument;
   let services = CastingApps.getServicesForMirroring();
   services.forEach(service => {
@@ -3213,7 +3269,7 @@ var newTabButtonObserver = {
   onDrop: function (aEvent)
   {
     let url = browserDragAndDrop.drop(aEvent, { });
-    getShortcutOrURIAndPostData(url, data => {
+    getShortcutOrURIAndPostData(url).then(data => {
       if (data.url) {
         // allow third-party services to fixup this URL
         openNewTabWith(data.url, null, data.postData, aEvent, true);
@@ -3233,7 +3289,7 @@ var newWindowButtonObserver = {
   onDrop: function (aEvent)
   {
     let url = browserDragAndDrop.drop(aEvent, { });
-    getShortcutOrURIAndPostData(url, data => {
+    getShortcutOrURIAndPostData(url).then(data => {
       if (data.url) {
         // allow third-party services to fixup this URL
         openNewWindowWith(data.url, null, data.postData, true);
@@ -4522,8 +4578,12 @@ var TabsProgressListener = {
                               aFlags) {
     // Filter out location changes caused by anchor navigation
     // or history.push/pop/replaceState.
-    if (aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)
+    if (aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) {
+      // Reader mode actually cares about these:
+      let mm = gBrowser.selectedBrowser.messageManager;
+      mm.sendAsyncMessage("Reader:PushState");
       return;
+    }
 
     // Filter out location changes in sub documents.
     if (!aWebProgress.isTopLevel)
@@ -4594,7 +4654,8 @@ function nsBrowserAccess() { }
 nsBrowserAccess.prototype = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIBrowserDOMWindow, Ci.nsISupports]),
 
-  _openURIInNewTab: function(aURI, aReferrer, aIsPrivate, aIsExternal, aForceNotRemote=false) {
+  _openURIInNewTab: function(aURI, aReferrer, aReferrerPolicy, aIsPrivate,
+                             aIsExternal, aForceNotRemote=false) {
     let win, needToFocusWin;
 
     // try the current window.  if we're in a popup, fall back on the most recent browser window
@@ -4620,6 +4681,7 @@ nsBrowserAccess.prototype = {
 
     let tab = win.gBrowser.loadOneTab(aURI ? aURI.spec : "about:blank", {
                                       referrerURI: aReferrer,
+                                      referrerPolicy: aReferrerPolicy,
                                       fromExternal: aIsExternal,
                                       inBackground: loadInBackground,
                                       forceNotRemote: aForceNotRemote});
@@ -4661,7 +4723,14 @@ nsBrowserAccess.prototype = {
       else
         aWhere = gPrefService.getIntPref("browser.link.open_newwindow");
     }
+
+    let referrer = aOpener ? makeURI(aOpener.location.href) : null;
+    let referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT;
+    if (aOpener && aOpener.document) {
+      referrerPolicy = aOpener.document.referrerPolicy;
+    }
     let isPrivate = PrivateBrowsingUtils.isWindowPrivate(aOpener || window);
+
     switch (aWhere) {
       case Ci.nsIBrowserDOMWindow.OPEN_NEWWINDOW :
         // FIXME: Bug 408379. So how come this doesn't send the
@@ -4676,7 +4745,6 @@ nsBrowserAccess.prototype = {
         newWindow = openDialog(getBrowserURL(), "_blank", features, url, null, null, null);
         break;
       case Ci.nsIBrowserDOMWindow.OPEN_NEWTAB :
-        let referrer = aOpener ? makeURI(aOpener.location.href) : null;
         // If we have an opener, that means that the caller is expecting access
         // to the nsIDOMWindow of the opened tab right away. For e10s windows,
         // this means forcing the newly opened browser to be non-remote so that
@@ -4684,18 +4752,23 @@ nsBrowserAccess.prototype = {
         // will do the job of shuttling off the newly opened browser to run in
         // the right process once it starts loading a URI.
         let forceNotRemote = !!aOpener;
-        let browser = this._openURIInNewTab(aURI, referrer, isPrivate, isExternal, forceNotRemote);
+        let browser = this._openURIInNewTab(aURI, referrer, referrerPolicy,
+                                            isPrivate, isExternal,
+                                            forceNotRemote);
         if (browser)
           newWindow = browser.contentWindow;
         break;
       default : // OPEN_CURRENTWINDOW or an illegal value
         newWindow = content;
         if (aURI) {
-          let referrer = aOpener ? makeURI(aOpener.location.href) : null;
           let loadflags = isExternal ?
                             Ci.nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL :
                             Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
-          gBrowser.loadURIWithFlags(aURI.spec, loadflags, referrer, null, null);
+          gBrowser.loadURIWithFlags(aURI.spec, {
+                                    flags: loadflags,
+                                    referrerURI: referrer,
+                                    referrerPolicy: referrerPolicy,
+                                    });
         }
         if (!gPrefService.getBoolPref("browser.tabs.loadDivertedInBackground"))
           window.focus();
@@ -4710,7 +4783,9 @@ nsBrowserAccess.prototype = {
     }
 
     var isExternal = (aContext == Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL);
-    let browser = this._openURIInNewTab(aURI, aParams.referrer, aParams.isPrivate, isExternal);
+    let browser = this._openURIInNewTab(aURI, aParams.referrer,
+                                        aParams.referrerPolicy,
+                                        aParams.isPrivate, isExternal);
     if (browser)
       return browser.QueryInterface(Ci.nsIFrameLoaderOwner);
 
@@ -5524,6 +5599,7 @@ function handleLinkClick(event, href, linkNode) {
   let params = { charset: doc.characterSet,
                  allowMixedContent: persistAllowMixedContentInChildTab,
                  referrerURI: referrerURI,
+                 referrerPolicy: doc.referrerPolicy,
                  noReferrer: BrowserUtils.linkHasNoReferrer(linkNode) };
   openLinkIn(href, where, params);
   event.preventDefault();
@@ -5549,7 +5625,7 @@ function middleMousePaste(event) {
     lastLocationChange = gBrowser.selectedBrowser.lastLocationChange;
   }
 
-  getShortcutOrURIAndPostData(clipboard, data => {
+  getShortcutOrURIAndPostData(clipboard).then(data => {
     try {
       makeURI(data.url);
     } catch (ex) {
@@ -5586,7 +5662,7 @@ function handleDroppedLink(event, url, name)
 {
   let lastLocationChange = gBrowser.selectedBrowser.lastLocationChange;
 
-  getShortcutOrURIAndPostData(url, data => {
+  getShortcutOrURIAndPostData(url).then(data => {
     if (data.url &&
         lastLocationChange == gBrowser.selectedBrowser.lastLocationChange)
       loadURI(data.url, null, data.postData, false);
@@ -6481,17 +6557,6 @@ function AddKeywordForSearchField() {
                                                  , "tags"
                                                  , "loadInSidebar" ]
                                    }, window);
-}
-
-function SwitchDocumentDirection(aWindow) {
-  // document.dir can also be "auto", in which case it won't change
-  if (aWindow.document.dir == "ltr" || aWindow.document.dir == "") {
-    aWindow.document.dir = "rtl";
-  } else if (aWindow.document.dir == "rtl") {
-    aWindow.document.dir = "ltr";
-  }
-  for (var run = 0; run < aWindow.frames.length; run++)
-    SwitchDocumentDirection(aWindow.frames[run]);
 }
 
 function convertFromUnicode(charset, str)

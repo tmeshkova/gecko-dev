@@ -21,7 +21,6 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(DynamicsCompressorNode, AudioNode,
                                    mThreshold,
                                    mKnee,
                                    mRatio,
-                                   mReduction,
                                    mAttack,
                                    mRelease)
 
@@ -64,7 +63,7 @@ public:
   };
   void SetTimelineParameter(uint32_t aIndex,
                             const AudioParamTimeline& aValue,
-                            TrackRate aSampleRate) MOZ_OVERRIDE
+                            TrackRate aSampleRate) override
   {
     MOZ_ASSERT(mSource && mDestination);
     switch (aIndex) {
@@ -96,7 +95,7 @@ public:
   virtual void ProcessBlock(AudioNodeStream* aStream,
                             const AudioChunk& aInput,
                             AudioChunk* aOutput,
-                            bool* aFinished) MOZ_OVERRIDE
+                            bool* aFinished) override
   {
     if (aInput.IsNull()) {
       // Just output silence
@@ -130,7 +129,7 @@ public:
                                    mCompressor->parameterValue(DynamicsCompressor::ParamReduction));
   }
 
-  virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE
+  virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override
   {
     // Not owned:
     // - mSource (probably)
@@ -142,7 +141,7 @@ public:
     return amount;
   }
 
-  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE
+  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
   {
     return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
   }
@@ -173,9 +172,7 @@ private:
           node = static_cast<DynamicsCompressorNode*>(mStream->Engine()->Node());
         }
         if (node) {
-          AudioParam* reduction = node->Reduction();
-          reduction->CancelAllEvents();
-          reduction->SetValue(mReduction);
+          node->SetReduction(mReduction);
         }
         return NS_OK;
       }
@@ -207,7 +204,7 @@ DynamicsCompressorNode::DynamicsCompressorNode(AudioContext* aContext)
   , mThreshold(new AudioParam(this, SendThresholdToStream, -24.f))
   , mKnee(new AudioParam(this, SendKneeToStream, 30.f))
   , mRatio(new AudioParam(this, SendRatioToStream, 12.f))
-  , mReduction(new AudioParam(this, Callback, 0.f))
+  , mReduction(0)
   , mAttack(new AudioParam(this, SendAttackToStream, 0.003f))
   , mRelease(new AudioParam(this, SendReleaseToStream, 0.25f))
 {
@@ -239,9 +236,9 @@ DynamicsCompressorNode::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 }
 
 JSObject*
-DynamicsCompressorNode::WrapObject(JSContext* aCx)
+DynamicsCompressorNode::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return DynamicsCompressorNodeBinding::Wrap(aCx, this);
+  return DynamicsCompressorNodeBinding::Wrap(aCx, this, aGivenProto);
 }
 
 void

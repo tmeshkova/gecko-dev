@@ -87,7 +87,7 @@ public:
     // Returns FALSE if the container cannot be fully rendered
     // by this composer so nothing was rendered at all
     bool TryRender(layers::Layer* aRoot,
-                   bool aGeometryChanged) MOZ_OVERRIDE;
+                   bool aGeometryChanged) override;
 
     bool Render(EGLDisplay dpy, EGLSurface sur);
 
@@ -126,7 +126,6 @@ private:
 #if ANDROID_VERSION >= 17
     android::sp<android::Fence> mPrevRetireFence;
     android::sp<android::Fence> mPrevDisplayFence;
-    nsecs_t                 mLastVsyncTime;
 #endif
     nsTArray<layers::LayerComposite*> mHwcLayerMap;
     bool                    mPrepared;

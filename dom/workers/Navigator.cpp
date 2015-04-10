@@ -44,9 +44,9 @@ WorkerNavigator::Create(bool aOnLine)
 }
 
 JSObject*
-WorkerNavigator::WrapObject(JSContext* aCx)
+WorkerNavigator::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return WorkerNavigatorBinding_workers::Wrap(aCx, this);
+  return WorkerNavigatorBinding_workers::Wrap(aCx, this, aGivenProto);
 }
 
 // A WorkerMainThreadRunnable to synchronously add DataStoreChangeEventProxy on
@@ -59,7 +59,7 @@ class DataStoreAddEventListenerRunnable : public WorkerMainThreadRunnable
 
 protected:
   virtual bool
-  MainThreadRun() MOZ_OVERRIDE
+  MainThreadRun() override
   {
     AssertIsOnMainThread();
 
@@ -142,7 +142,7 @@ GetDataStoresStructuredCloneCallbacksRead(JSContext* aCx,
     if (!global) {
       MOZ_ASSERT(false, "cannot get global!");
     } else {
-      workerStoreObj = workerStore->WrapObject(aCx);
+      workerStoreObj = workerStore->WrapObject(aCx, JS::NullPtr());
       if (!JS_WrapObject(aCx, &workerStoreObj)) {
         MOZ_ASSERT(false, "cannot wrap object for workerStoreObj!");
         workerStoreObj = nullptr;
@@ -202,7 +202,7 @@ static const JSStructuredCloneCallbacks kGetDataStoresStructuredCloneCallbacks =
 
 // A WorkerMainThreadRunnable to run WorkerNavigator::GetDataStores(...) on the
 // main thread.
-class NavigatorGetDataStoresRunnable MOZ_FINAL : public WorkerMainThreadRunnable
+class NavigatorGetDataStoresRunnable final : public WorkerMainThreadRunnable
 {
   nsRefPtr<PromiseWorkerProxy> mPromiseWorkerProxy;
   const nsString mName;
@@ -245,7 +245,7 @@ public:
 
 protected:
   virtual bool
-  MainThreadRun() MOZ_OVERRIDE
+  MainThreadRun() override
   {
     AssertIsOnMainThread();
 
@@ -343,7 +343,7 @@ WorkerNavigator::GetPlatform(nsString& aPlatform) const
 
 namespace {
 
-class GetUserAgentRunnable MOZ_FINAL : public WorkerMainThreadRunnable
+class GetUserAgentRunnable final : public WorkerMainThreadRunnable
 {
   nsString& mUA;
 
@@ -356,7 +356,7 @@ public:
     aWorkerPrivate->AssertIsOnWorkerThread();
   }
 
-  virtual bool MainThreadRun() MOZ_OVERRIDE
+  virtual bool MainThreadRun() override
   {
     AssertIsOnMainThread();
 

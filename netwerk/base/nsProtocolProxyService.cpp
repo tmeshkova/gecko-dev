@@ -18,6 +18,7 @@
 #include "nsICancelable.h"
 #include "nsIDNSService.h"
 #include "nsPIDNSService.h"
+#include "nsIScriptSecurityManager.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
 #include "nsThreadUtils.h"
@@ -96,14 +97,15 @@ GetProxyURI(nsIChannel *channel, nsIURI **aOut)
 // The nsPACManCallback portion of this implementation should be run
 // on the main thread - so call nsPACMan::AsyncGetProxyForURI() with
 // a true mainThreadResponse parameter.
-class nsAsyncResolveRequest MOZ_FINAL : public nsIRunnable
-                                      , public nsPACManCallback
-                                      , public nsICancelable
+class nsAsyncResolveRequest final : public nsIRunnable
+                                  , public nsPACManCallback
+                                  , public nsICancelable
 {
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
 
     nsAsyncResolveRequest(nsProtocolProxyService *pps, nsIChannel *channel,
+                          uint32_t aAppId, bool aIsInBrowser,
                           uint32_t aResolveFlags,
                           nsIProtocolProxyCallback *callback)
         : mStatus(NS_OK)
@@ -112,6 +114,8 @@ public:
         , mPPS(pps)
         , mXPComPPS(pps)
         , mChannel(channel)
+        , mAppId(aAppId)
+        , mIsInBrowser(aIsInBrowser)
         , mCallback(callback)
     {
         NS_ASSERTION(mCallback, "null callback");
@@ -161,14 +165,14 @@ public:
         mProxyInfo = pi;
     }
 
-    NS_IMETHOD Run() MOZ_OVERRIDE
+    NS_IMETHOD Run() override
     {
         if (mCallback)
             DoCallback();
         return NS_OK;
     }
 
-    NS_IMETHOD Cancel(nsresult reason) MOZ_OVERRIDE
+    NS_IMETHOD Cancel(nsresult reason) override
     {
         NS_ENSURE_ARG(NS_FAILED(reason));
 
@@ -203,7 +207,7 @@ private:
     // before calling DoCallback.
     void OnQueryComplete(nsresult status,
                          const nsCString &pacString,
-                         const nsCString &newPACURL) MOZ_OVERRIDE
+                         const nsCString &newPACURL) override
     {
         // If we've already called DoCallback then, nothing more to do.
         if (!mCallback)
@@ -263,8 +267,13 @@ private:
             if (NS_SUCCEEDED(rv)) {
                 // now that the load is triggered, we can resubmit the query
                 nsRefPtr<nsAsyncResolveRequest> newRequest =
-                    new nsAsyncResolveRequest(mPPS, mChannel, mResolveFlags, mCallback);
-                rv = mPPS->mPACMan->AsyncGetProxyForURI(proxyURI, newRequest, true);
+                    new nsAsyncResolveRequest(mPPS, mChannel, mAppId,
+                                              mIsInBrowser, mResolveFlags,
+                                              mCallback);
+                rv = mPPS->mPACMan->AsyncGetProxyForURI(proxyURI, mAppId,
+                                                        mIsInBrowser,
+                                                        newRequest,
+                                                        true);
             }
 
             if (NS_FAILED(rv))
@@ -301,6 +310,8 @@ private:
     nsProtocolProxyService            *mPPS;
     nsCOMPtr<nsIProtocolProxyService>  mXPComPPS;
     nsCOMPtr<nsIChannel>               mChannel;
+    uint32_t                           mAppId;
+    bool                               mIsInBrowser;
     nsCOMPtr<nsIProtocolProxyCallback> mCallback;
     nsCOMPtr<nsIProxyInfo>             mProxyInfo;
 };
@@ -1084,7 +1095,7 @@ nsProtocolProxyService::ReloadPAC()
 // the main thread is blocking on that condvar -
 //  so call nsPACMan::AsyncGetProxyForURI() with
 // a false mainThreadResponse parameter.
-class nsAsyncBridgeRequest MOZ_FINAL  : public nsPACManCallback
+class nsAsyncBridgeRequest final  : public nsPACManCallback
 {
     NS_DECL_THREADSAFE_ISUPPORTS
 
@@ -1097,7 +1108,7 @@ class nsAsyncBridgeRequest MOZ_FINAL  : public nsPACManCallback
 
     void OnQueryComplete(nsresult status,
                          const nsCString &pacString,
-                         const nsCString &newPACURL) MOZ_OVERRIDE
+                         const nsCString &newPACURL) override
     {
         MutexAutoLock lock(mMutex);
         mCompleted = true;
@@ -1152,7 +1163,8 @@ nsProtocolProxyService::DeprecatedBlockingResolve(nsIChannel *aChannel,
     // but if neither of them are in use, we can just do the work
     // right here and directly invoke the callback
 
-    rv = Resolve_Internal(aChannel, info, aFlags, &usePACThread, getter_AddRefs(pi));
+    rv = Resolve_Internal(aChannel, NECKO_NO_APP_ID, false, info, aFlags,
+                          &usePACThread, getter_AddRefs(pi));
     if (NS_FAILED(rv))
         return rv;
 
@@ -1166,7 +1178,8 @@ nsProtocolProxyService::DeprecatedBlockingResolve(nsIChannel *aChannel,
     // code, but block this thread on that completion.
     nsRefPtr<nsAsyncBridgeRequest> ctx = new nsAsyncBridgeRequest();
     ctx->Lock();
-    if (NS_SUCCEEDED(mPACMan->AsyncGetProxyForURI(uri, ctx, false))) {
+    if (NS_SUCCEEDED(mPACMan->AsyncGetProxyForURI(uri, NECKO_NO_APP_ID, false,
+                                                  ctx, false))) {
         // this can really block the main thread, so cap it at 3 seconds
        ctx->Wait();
     }
@@ -1218,9 +1231,14 @@ nsProtocolProxyService::AsyncResolveInternal(nsIChannel *channel, uint32_t flags
     nsresult rv = GetProxyURI(channel, getter_AddRefs(uri));
     if (NS_FAILED(rv)) return rv;
 
+    uint32_t appId = NECKO_NO_APP_ID;
+    bool isInBrowser = false;
+    NS_GetAppInfo(channel, &appId, &isInBrowser);
+
     *result = nullptr;
     nsRefPtr<nsAsyncResolveRequest> ctx =
-        new nsAsyncResolveRequest(this, channel, flags, callback);
+        new nsAsyncResolveRequest(this, channel, appId, isInBrowser, flags,
+                                  callback);
 
     nsProtocolInfo info;
     rv = GetProtocolInfo(uri, &info);
@@ -1234,7 +1252,8 @@ nsProtocolProxyService::AsyncResolveInternal(nsIChannel *channel, uint32_t flags
     // but if neither of them are in use, we can just do the work
     // right here and directly invoke the callback
 
-    rv = Resolve_Internal(channel, info, flags, &usePACThread, getter_AddRefs(pi));
+    rv = Resolve_Internal(channel, appId, isInBrowser, info, flags,
+                          &usePACThread, getter_AddRefs(pi));
     if (NS_FAILED(rv))
         return rv;
 
@@ -1255,7 +1274,7 @@ nsProtocolProxyService::AsyncResolveInternal(nsIChannel *channel, uint32_t flags
 
     // else kick off a PAC thread query
 
-    rv = mPACMan->AsyncGetProxyForURI(uri, ctx, true);
+    rv = mPACMan->AsyncGetProxyForURI(uri, appId, isInBrowser, ctx, true);
     if (NS_SUCCEEDED(rv))
         ctx.forget(result);
     return rv;
@@ -1285,11 +1304,22 @@ nsProtocolProxyService::AsyncResolve(nsISupports *channelOrURI, uint32_t flags,
             return NS_ERROR_NO_INTERFACE;
         }
 
-        // make a temporary channel from the URI
-        nsCOMPtr<nsIIOService> ios(do_GetIOService(&rv));
-        if (NS_FAILED(rv)) return rv;
-        rv = ios->NewChannelFromURI(uri, getter_AddRefs(channel));
-        if (NS_FAILED(rv)) return rv;
+        nsCOMPtr<nsIScriptSecurityManager> secMan(
+            do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv));
+        NS_ENSURE_SUCCESS(rv, rv);
+        nsCOMPtr<nsIPrincipal> systemPrincipal;
+        rv = secMan->GetSystemPrincipal(getter_AddRefs(systemPrincipal));
+        NS_ENSURE_SUCCESS(rv, rv);
+
+        // creating a temporary channel from the URI which is not
+        // used to perform any network loads, hence its safe to
+        // use systemPrincipal as the loadingPrincipal.
+        rv = NS_NewChannel(getter_AddRefs(channel),
+                           uri,
+                           systemPrincipal,
+                           nsILoadInfo::SEC_NORMAL,
+                           nsIContentPolicy::TYPE_OTHER);
+        NS_ENSURE_SUCCESS(rv, rv);
     }
 
     return AsyncResolveInternal(channel, flags, callback, result, false);
@@ -1665,6 +1695,8 @@ nsProtocolProxyService::NewProxyInfo_Internal(const char *aType,
 
 nsresult
 nsProtocolProxyService::Resolve_Internal(nsIChannel *channel,
+                                         uint32_t appId,
+                                         bool isInBrowser,
                                          const nsProtocolInfo &info,
                                          uint32_t flags,
                                          bool *usePACThread,
@@ -1865,11 +1897,11 @@ nsProtocolProxyService::ApplyFilters(nsIChannel *channel,
     // somewhat inefficient, but it seems like a good idea since we want each
     // filter to "see" a valid proxy list.
 
-    nsresult rv;
     nsCOMPtr<nsIProxyInfo> result;
 
     for (FilterLink *iter = mFilters; iter; iter = iter->next) {
         PruneProxyInfo(info, list);
+        nsresult rv = NS_OK;
         if (iter->filter) {
           nsCOMPtr<nsIURI> uri;
           rv = GetProxyURI(channel, getter_AddRefs(uri));

@@ -125,8 +125,8 @@ GetAppIDAndInBrowserFromWindow(nsIDOMWindow *aWindow,
 // nsOfflineCachePendingUpdate
 //-----------------------------------------------------------------------------
 
-class nsOfflineCachePendingUpdate MOZ_FINAL : public nsIWebProgressListener
-                                            , public nsSupportsWeakReference
+class nsOfflineCachePendingUpdate final : public nsIWebProgressListener
+                                        , public nsSupportsWeakReference
 {
 public:
     NS_DECL_ISUPPORTS

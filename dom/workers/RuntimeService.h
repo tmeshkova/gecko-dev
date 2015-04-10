@@ -25,7 +25,7 @@ BEGIN_WORKERS_NAMESPACE
 class SharedWorker;
 class WorkerThread;
 
-class RuntimeService MOZ_FINAL : public nsIObserver
+class RuntimeService final : public nsIObserver
 {
   struct SharedWorkerInfo
   {
@@ -129,10 +129,10 @@ public:
   CancelWorkersForWindow(nsPIDOMWindow* aWindow);
 
   void
-  SuspendWorkersForWindow(nsPIDOMWindow* aWindow);
+  FreezeWorkersForWindow(nsPIDOMWindow* aWindow);
 
   void
-  ResumeWorkersForWindow(nsPIDOMWindow* aWindow);
+  ThawWorkersForWindow(nsPIDOMWindow* aWindow);
 
   nsresult
   CreateSharedWorker(const GlobalObject& aGlobal,

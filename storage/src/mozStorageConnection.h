@@ -36,8 +36,8 @@ class nsIThread;
 namespace mozilla {
 namespace storage {
 
-class Connection MOZ_FINAL : public mozIStorageConnection
-                           , public nsIInterfaceRequestor
+class Connection final : public mozIStorageConnection
+                       , public nsIInterfaceRequestor
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -356,7 +356,7 @@ private:
  * A Runnable designed to call a mozIStorageCompletionCallback on
  * the appropriate thread.
  */
-class CallbackComplete MOZ_FINAL : public nsRunnable
+class CallbackComplete final : public nsRunnable
 {
 public:
   /**

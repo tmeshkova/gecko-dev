@@ -54,9 +54,9 @@ typedef struct _GtkWidget GtkWidget;
 class QX11EmbedContainer;
 #endif
 
-class nsFrameLoader MOZ_FINAL : public nsIFrameLoader,
-                                public nsStubMutationObserver,
-                                public mozilla::dom::ipc::MessageManagerCallback
+class nsFrameLoader final : public nsIFrameLoader,
+                            public nsStubMutationObserver,
+                            public mozilla::dom::ipc::MessageManagerCallback
 {
   friend class AutoResetInShow;
   typedef mozilla::dom::PBrowserParent PBrowserParent;
@@ -78,7 +78,9 @@ public:
   NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
   nsresult CheckForRecursiveLoad(nsIURI* aURI);
   nsresult ReallyStartLoading();
-  void Finalize();
+  void StartDestroy();
+  void DestroyDocShell();
+  void DestroyComplete();
   nsIDocShell* GetExistingDocShell() { return mDocShell; }
   mozilla::dom::EventTarget* GetTabChildGlobalAsEventTarget();
   nsresult CreateStaticClone(nsIFrameLoader* aDest);
@@ -87,15 +89,15 @@ public:
    * MessageManagerCallback methods that we override.
    */
   virtual bool DoLoadMessageManagerScript(const nsAString& aURL,
-                                          bool aRunInGlobalScope) MOZ_OVERRIDE;
+                                          bool aRunInGlobalScope) override;
   virtual bool DoSendAsyncMessage(JSContext* aCx,
                                   const nsAString& aMessage,
                                   const mozilla::dom::StructuredCloneData& aData,
                                   JS::Handle<JSObject *> aCpows,
-                                  nsIPrincipal* aPrincipal) MOZ_OVERRIDE;
-  virtual bool CheckPermission(const nsAString& aPermission) MOZ_OVERRIDE;
-  virtual bool CheckManifestURL(const nsAString& aManifestURL) MOZ_OVERRIDE;
-  virtual bool CheckAppHasPermission(const nsAString& aPermission) MOZ_OVERRIDE;
+                                  nsIPrincipal* aPrincipal) override;
+  virtual bool CheckPermission(const nsAString& aPermission) override;
+  virtual bool CheckManifestURL(const nsAString& aManifestURL) override;
+  virtual bool CheckAppHasPermission(const nsAString& aPermission) override;
 
   /**
    * Called from the layout frame associated with this frame loader;
@@ -227,6 +229,9 @@ public:
   void ActivateUpdateHitRegion();
   void DeactivateUpdateHitRegion();
 
+  // Properly retrieves documentSize of any subdocument type.
+  nsresult GetWindowDimensions(nsIntRect& aRect);
+
 private:
 
   void SetOwnerContent(mozilla::dom::Element* aContent);
@@ -282,9 +287,6 @@ private:
   nsresult MaybeCreateDocShell();
   nsresult EnsureMessageManager();
 
-  // Properly retrieves documentSize of any subdocument type.
-  nsresult GetWindowDimensions(nsIntRect& aRect);
-
   // Updates the subdocument position and size. This gets called only
   // when we have our own in-process DocShell.
   void UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame);
@@ -318,6 +320,11 @@ private:
   nsCOMPtr<nsIDocShell> mDocShell;
   nsCOMPtr<nsIURI> mURIToLoad;
   mozilla::dom::Element* mOwnerContent; // WEAK
+
+  // After the frameloader has been removed from the DOM but before all of the
+  // messages from the frame have been received, we keep a strong reference to
+  // our <browser> element.
+  nsRefPtr<mozilla::dom::Element> mOwnerContentStrong;
 
   // Note: this variable must be modified only by ResetPermissionManagerStatus()
   uint32_t mAppIdSentToPermissionManager;

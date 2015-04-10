@@ -44,73 +44,11 @@ class OwningStringOrCanvasGradientOrCanvasPattern;
 class TextMetrics;
 class SVGMatrix;
 class CanvasFilterChainObserver;
+class CanvasPath;
 
 extern const mozilla::gfx::Float SIGMA_MAX;
 
 template<typename T> class Optional;
-
-class CanvasPath MOZ_FINAL :
-  public nsWrapperCache
-{
-public:
-  NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(CanvasPath)
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(CanvasPath)
-
-  nsCOMPtr<nsISupports> GetParentObject() { return mParent; }
-
-  JSObject* WrapObject(JSContext* aCx);
-
-  static already_AddRefed<CanvasPath> Constructor(const GlobalObject& aGlobal,
-                                                  ErrorResult& rv);
-  static already_AddRefed<CanvasPath> Constructor(const GlobalObject& aGlobal,
-                                                  CanvasPath& aCanvasPath,
-                                                  ErrorResult& rv);
-  static already_AddRefed<CanvasPath> Constructor(const GlobalObject& aGlobal,
-                                                  const nsAString& aPathString,
-                                                  ErrorResult& rv);
-
-  void ClosePath();
-  void MoveTo(double x, double y);
-  void LineTo(double x, double y);
-  void QuadraticCurveTo(double cpx, double cpy, double x, double y);
-  void BezierCurveTo(double cp1x, double cp1y,
-                     double cp2x, double cp2y,
-                     double x, double y);
-  void ArcTo(double x1, double y1, double x2, double y2, double radius,
-             ErrorResult& error);
-  void Rect(double x, double y, double w, double h);
-  void Arc(double x, double y, double radius,
-           double startAngle, double endAngle, bool anticlockwise,
-           ErrorResult& error);
-
-  void LineTo(const gfx::Point& aPoint);
-  void BezierTo(const gfx::Point& aCP1,
-                const gfx::Point& aCP2,
-                const gfx::Point& aCP3);
-
-  TemporaryRef<gfx::Path> GetPath(const CanvasWindingRule& aWinding,
-                                  const gfx::DrawTarget* aTarget) const;
-
-  explicit CanvasPath(nsISupports* aParent);
-  // TemporaryRef arg because the return value from Path::CopyToBuilder() is
-  // passed directly and we can't drop the only ref to have a raw pointer.
-  CanvasPath(nsISupports* aParent,
-             TemporaryRef<gfx::PathBuilder> aPathBuilder);
-
-  void AddPath(CanvasPath& aCanvasPath,
-               const Optional<NonNull<SVGMatrix>>& aMatrix);
-
-private:
-  virtual ~CanvasPath() {}
-
-  nsCOMPtr<nsISupports> mParent;
-  static gfx::Float ToFloat(double aValue) { return gfx::Float(aValue); }
-
-  mutable RefPtr<gfx::Path> mPath;
-  mutable RefPtr<gfx::PathBuilder> mPathBuilder;
-
-  void EnsurePathBuilder() const;
-};
 
 struct CanvasBidiProcessor;
 class CanvasRenderingContext2DUserData;
@@ -119,7 +57,7 @@ class CanvasDrawObserver;
 /**
  ** CanvasRenderingContext2D
  **/
-class CanvasRenderingContext2D MOZ_FINAL :
+class CanvasRenderingContext2D final :
   public nsICanvasRenderingContextInternal,
   public nsWrapperCache
 {
@@ -131,7 +69,7 @@ typedef HTMLImageElementOrHTMLCanvasElementOrHTMLVideoElement
 public:
   CanvasRenderingContext2D();
 
-  virtual JSObject* WrapObject(JSContext *cx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
   HTMLCanvasElement* GetCanvas() const
   {
@@ -482,14 +420,14 @@ public:
   nsresult Redraw();
 
 #ifdef DEBUG
-    virtual int32_t GetWidth() const MOZ_OVERRIDE;
-    virtual int32_t GetHeight() const MOZ_OVERRIDE;
+    virtual int32_t GetWidth() const override;
+    virtual int32_t GetHeight() const override;
 #endif
   // nsICanvasRenderingContextInternal
   /**
     * Gets the pres shell from either the canvas element or the doc shell
     */
-  virtual nsIPresShell *GetPresShell() MOZ_OVERRIDE {
+  virtual nsIPresShell *GetPresShell() override {
     if (mCanvasElement) {
       return mCanvasElement->OwnerDoc()->GetShell();
     }
@@ -498,14 +436,14 @@ public:
     }
     return nullptr;
   }
-  NS_IMETHOD SetDimensions(int32_t width, int32_t height) MOZ_OVERRIDE;
-  NS_IMETHOD InitializeWithSurface(nsIDocShell *shell, gfxASurface *surface, int32_t width, int32_t height) MOZ_OVERRIDE;
+  NS_IMETHOD SetDimensions(int32_t width, int32_t height) override;
+  NS_IMETHOD InitializeWithSurface(nsIDocShell *shell, gfxASurface *surface, int32_t width, int32_t height) override;
 
   NS_IMETHOD GetInputStream(const char* aMimeType,
                             const char16_t* aEncoderOptions,
-                            nsIInputStream **aStream) MOZ_OVERRIDE;
+                            nsIInputStream **aStream) override;
 
-  mozilla::TemporaryRef<mozilla::gfx::SourceSurface> GetSurfaceSnapshot(bool* aPremultAlpha = nullptr) MOZ_OVERRIDE
+  mozilla::TemporaryRef<mozilla::gfx::SourceSurface> GetSurfaceSnapshot(bool* aPremultAlpha = nullptr) override
   {
     EnsureTarget();
     if (aPremultAlpha) {
@@ -514,26 +452,26 @@ public:
     return mTarget->Snapshot();
   }
 
-  NS_IMETHOD SetIsOpaque(bool isOpaque) MOZ_OVERRIDE;
-  bool GetIsOpaque() MOZ_OVERRIDE { return mOpaque; }
-  NS_IMETHOD Reset() MOZ_OVERRIDE;
+  NS_IMETHOD SetIsOpaque(bool isOpaque) override;
+  bool GetIsOpaque() override { return mOpaque; }
+  NS_IMETHOD Reset() override;
   already_AddRefed<CanvasLayer> GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                                CanvasLayer *aOldLayer,
-                                               LayerManager *aManager) MOZ_OVERRIDE;
-  virtual bool ShouldForceInactiveLayer(LayerManager *aManager) MOZ_OVERRIDE;
-  void MarkContextClean() MOZ_OVERRIDE;
-  NS_IMETHOD SetIsIPC(bool isIPC) MOZ_OVERRIDE;
+                                               LayerManager *aManager) override;
+  virtual bool ShouldForceInactiveLayer(LayerManager *aManager) override;
+  void MarkContextClean() override;
+  NS_IMETHOD SetIsIPC(bool isIPC) override;
   // this rect is in canvas device space
   void Redraw(const mozilla::gfx::Rect &r);
-  NS_IMETHOD Redraw(const gfxRect &r) MOZ_OVERRIDE { Redraw(ToRect(r)); return NS_OK; }
-  NS_IMETHOD SetContextOptions(JSContext* aCx, JS::Handle<JS::Value> aOptions) MOZ_OVERRIDE;
+  NS_IMETHOD Redraw(const gfxRect &r) override { Redraw(ToRect(r)); return NS_OK; }
+  NS_IMETHOD SetContextOptions(JSContext* aCx, JS::Handle<JS::Value> aOptions) override;
 
   /**
    * An abstract base class to be implemented by callers wanting to be notified
    * that a refresh has occurred. Callers must ensure an observer is removed
    * before it is destroyed.
    */
-  virtual void DidRefresh() MOZ_OVERRIDE;
+  virtual void DidRefresh() override;
 
   // this rect is in mTarget's current user space
   void RedrawUser(const gfxRect &r);
@@ -585,15 +523,15 @@ public:
 
   friend class CanvasRenderingContext2DUserData;
 
-  virtual void GetImageBuffer(uint8_t** aImageBuffer, int32_t* aFormat) MOZ_OVERRIDE;
+  virtual void GetImageBuffer(uint8_t** aImageBuffer, int32_t* aFormat) override;
 
 
   // Given a point, return hit region ID if it exists
-  nsString GetHitRegion(const mozilla::gfx::Point& aPoint) MOZ_OVERRIDE;
+  nsString GetHitRegion(const mozilla::gfx::Point& aPoint) override;
 
 
   // return true and fills in the bound rect if element has a hit region.
-  bool GetHitRegionRect(Element* aElement, nsRect& aRect) MOZ_OVERRIDE;
+  bool GetHitRegionRect(Element* aElement, nsRect& aRect) override;
 
 protected:
   nsresult GetImageDataArray(JSContext* aCx, int32_t aX, int32_t aY,

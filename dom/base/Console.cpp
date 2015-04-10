@@ -28,6 +28,7 @@
 #include "nsIDOMWindowUtils.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsILoadContext.h"
+#include "nsIProgrammingLanguage.h"
 #include "nsIServiceManager.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIWebNavigation.h"
@@ -148,7 +149,7 @@ static const JSStructuredCloneCallbacks gConsoleCallbacks = {
   ConsoleStructuredCloneCallbacksError
 };
 
-class ConsoleCallData MOZ_FINAL
+class ConsoleCallData final
 {
 public:
   ConsoleCallData()
@@ -394,7 +395,7 @@ private:
 
 // This runnable appends a CallData object into the Console queue running on
 // the main-thread.
-class ConsoleCallDataRunnable MOZ_FINAL : public ConsoleRunnable
+class ConsoleCallDataRunnable final : public ConsoleRunnable
 {
 public:
   ConsoleCallDataRunnable(Console* aConsole,
@@ -408,7 +409,7 @@ private:
   { }
 
   bool
-  PreDispatch(JSContext* aCx) MOZ_OVERRIDE
+  PreDispatch(JSContext* aCx) override
   {
     mWorkerPrivate->AssertIsOnWorkerThread();
 
@@ -441,7 +442,7 @@ private:
 
   void
   RunConsole(JSContext* aCx, nsPIDOMWindow* aOuterWindow,
-             nsPIDOMWindow* aInnerWindow) MOZ_OVERRIDE
+             nsPIDOMWindow* aInnerWindow) override
   {
     MOZ_ASSERT(NS_IsMainThread());
 
@@ -520,7 +521,7 @@ private:
 };
 
 // This runnable calls ProfileMethod() on the console on the main-thread.
-class ConsoleProfileRunnable MOZ_FINAL : public ConsoleRunnable
+class ConsoleProfileRunnable final : public ConsoleRunnable
 {
 public:
   ConsoleProfileRunnable(Console* aConsole, const nsAString& aAction,
@@ -534,7 +535,7 @@ public:
 
 private:
   bool
-  PreDispatch(JSContext* aCx) MOZ_OVERRIDE
+  PreDispatch(JSContext* aCx) override
   {
     ClearException ce(aCx);
 
@@ -570,7 +571,7 @@ private:
 
   void
   RunConsole(JSContext* aCx, nsPIDOMWindow* aOuterWindow,
-             nsPIDOMWindow* aInnerWindow) MOZ_OVERRIDE
+             nsPIDOMWindow* aInnerWindow) override
   {
     ClearException ce(aCx);
 
@@ -722,9 +723,9 @@ Console::Observe(nsISupports* aSubject, const char* aTopic,
 }
 
 JSObject*
-Console::WrapObject(JSContext* aCx)
+Console::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return ConsoleBinding::Wrap(aCx, this);
+  return ConsoleBinding::Wrap(aCx, this, aGivenProto);
 }
 
 #define METHOD(name, string)                                          \
@@ -904,8 +905,7 @@ ReifyStack(nsIStackFrame* aStack, nsTArray<ConsoleStackEntry>& aRefiedStack)
     nsresult rv = stack->GetLanguage(&language);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if (language == nsIProgrammingLanguage::JAVASCRIPT ||
-        language == nsIProgrammingLanguage::JAVASCRIPT2) {
+    if (language == nsIProgrammingLanguage::JAVASCRIPT) {
       ConsoleStackEntry& data = *aRefiedStack.AppendElement();
       rv = StackFrameToStackEntry(stack, data, language);
       NS_ENSURE_SUCCESS(rv, rv);
@@ -934,16 +934,16 @@ public:
     }
   }
 
-  virtual bool Equals(const TimelineMarker* aOther) MOZ_OVERRIDE
+  virtual bool Equals(const TimelineMarker& aOther) override
   {
     if (!TimelineMarker::Equals(aOther)) {
       return false;
     }
     // Console markers must have matching causes as well.
-    return GetCause() == aOther->GetCause();
+    return GetCause() == aOther.GetCause();
   }
 
-  virtual void AddDetails(mozilla::dom::ProfileTimelineMarker& aMarker) MOZ_OVERRIDE
+  virtual void AddDetails(mozilla::dom::ProfileTimelineMarker& aMarker) override
   {
     if (GetMetaData() == TRACING_INTERVAL_START) {
       aMarker.mCauseName.Construct(GetCause());
@@ -993,8 +993,7 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
       return;
     }
 
-    if (language == nsIProgrammingLanguage::JAVASCRIPT ||
-        language == nsIProgrammingLanguage::JAVASCRIPT2) {
+    if (language == nsIProgrammingLanguage::JAVASCRIPT) {
       callData->mTopStackFrame.emplace();
       nsresult rv = StackFrameToStackEntry(stack,
                                            *callData->mTopStackFrame,
@@ -1057,7 +1056,7 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
               MakeUnique<ConsoleTimelineMarker>(docShell,
                                                 aMethodName == MethodTime ? TRACING_INTERVAL_START : TRACING_INTERVAL_END,
                                                 key);
-            docShell->AddProfileTimelineMarker(marker);
+            docShell->AddProfileTimelineMarker(Move(marker));
           }
         }
       }
@@ -1157,8 +1156,8 @@ Console::ProcessCallData(ConsoleCallData* aData)
     event.mInnerID.Value().SetAsString() = aData->mInnerIDString;
   } else {
     MOZ_ASSERT(aData->mIDType == ConsoleCallData::eNumber);
-    event.mID.Value().SetAsUnsignedLong() = aData->mOuterIDNumber;
-    event.mInnerID.Value().SetAsUnsignedLong() = aData->mInnerIDNumber;
+    event.mID.Value().SetAsUnsignedLongLong() = aData->mOuterIDNumber;
+    event.mInnerID.Value().SetAsUnsignedLongLong() = aData->mInnerIDNumber;
   }
 
   event.mLevel = aData->mMethodString;

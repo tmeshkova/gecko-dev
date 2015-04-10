@@ -22,9 +22,9 @@ class nsSHEntryShared;
 class nsIInputStream;
 class nsIURI;
 
-class nsSHEntry MOZ_FINAL : public nsISHEntry,
-                            public nsISHContainer,
-                            public nsISHEntryInternal
+class nsSHEntry final : public nsISHEntry,
+                        public nsISHContainer,
+                        public nsISHEntryInternal
 {
 public: 
   nsSHEntry();

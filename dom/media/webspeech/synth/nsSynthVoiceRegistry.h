@@ -11,6 +11,7 @@
 #include "nsISynthVoiceRegistry.h"
 #include "nsRefPtrHashtable.h"
 #include "nsTArray.h"
+#include "MediaStreamGraph.h"
 
 class nsISpeechService;
 
@@ -23,7 +24,7 @@ class SpeechSynthesisChild;
 class nsSpeechTask;
 class VoiceData;
 
-class nsSynthVoiceRegistry MOZ_FINAL : public nsISynthVoiceRegistry
+class nsSynthVoiceRegistry final : public nsISynthVoiceRegistry
 {
 public:
   NS_DECL_ISUPPORTS
@@ -73,6 +74,8 @@ private:
   nsRefPtrHashtable<nsStringHashKey, VoiceData> mUriVoiceMap;
 
   SpeechSynthesisChild* mSpeechSynthChild;
+
+  nsRefPtr<ProcessedMediaStream> mStream;
 };
 
 } // namespace dom

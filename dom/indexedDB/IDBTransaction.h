@@ -45,10 +45,13 @@ class OpenCursorParams;
 class PBackgroundIDBDatabaseFileChild;
 class RequestParams;
 
-class IDBTransaction MOZ_FINAL
+class IDBTransaction final
   : public IDBWrapperCache
   , public nsIRunnable
 {
+  friend class BackgroundCursorChild;
+  friend class BackgroundRequestChild;
+
   class WorkerFeature;
   friend class WorkerFeature;
 
@@ -57,6 +60,7 @@ public:
   {
     READ_ONLY = 0,
     READ_WRITE,
+    READ_WRITE_FLUSH,
     VERSION_CHANGE,
 
     // Only needed for IPC serialization helper, should never be used in code.
@@ -150,9 +154,8 @@ public:
     }
   }
 
-  void
-  StartRequest(BackgroundRequestChild* aBackgroundActor,
-               const RequestParams& aParams);
+  BackgroundRequestChild*
+  StartRequest(IDBRequest* aRequest, const RequestParams& aParams);
 
   void
   OpenCursor(BackgroundCursorChild* aBackgroundActor,
@@ -160,12 +163,6 @@ public:
 
   void
   RefreshSpec(bool aMayDelete);
-
-  void
-  OnNewRequest();
-
-  void
-  OnRequestFinished();
 
   bool
   IsOpen() const;
@@ -181,7 +178,9 @@ public:
   IsWriteAllowed() const
   {
     AssertIsOnOwningThread();
-    return mMode == READ_WRITE || mMode == VERSION_CHANGE;
+    return mMode == READ_WRITE ||
+           mMode == READ_WRITE_FLUSH ||
+           mMode == VERSION_CHANGE;
   }
 
   bool
@@ -294,11 +293,11 @@ public:
 
   // nsWrapperCache
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // nsIDOMEventTarget
   virtual nsresult
-  PreHandleEvent(EventChainPreVisitor& aVisitor) MOZ_OVERRIDE;
+  PreHandleEvent(EventChainPreVisitor& aVisitor) override;
 
 private:
   IDBTransaction(IDBDatabase* aDatabase,
@@ -314,6 +313,12 @@ private:
 
   void
   SendAbort(nsresult aResultCode);
+
+  void
+  OnNewRequest();
+
+  void
+  OnRequestFinished(bool aActorDestroyedNormally);
 };
 
 } // namespace indexedDB

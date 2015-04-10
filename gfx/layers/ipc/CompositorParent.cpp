@@ -12,8 +12,7 @@
 #include "LayerTransactionParent.h"     // for LayerTransactionParent
 #include "RenderTrace.h"                // for RenderTraceLayers
 #include "base/message_loop.h"          // for MessageLoop
-#include "base/process.h"               // for ProcessHandle
-#include "base/process_util.h"          // for OpenProcessHandle
+#include "base/process.h"               // for ProcessId
 #include "base/task.h"                  // for CancelableTask, etc
 #include "base/thread.h"                // for Thread
 #include "base/tracked.h"               // for FROM_HERE
@@ -78,7 +77,7 @@ using namespace mozilla::ipc;
 using namespace mozilla::gfx;
 using namespace std;
 
-using base::ProcessHandle;
+using base::ProcessId;
 using base::Thread;
 
 CompositorParent::LayerTreeState::LayerTreeState()
@@ -332,6 +331,8 @@ CompositorVsyncObserver::Composite(TimeStamp aVsyncTimestamp)
     mCurrentCompositeTask = nullptr;
   }
 
+  DispatchTouchEvents(aVsyncTimestamp);
+
   if (mNeedsComposite && mCompositorParent) {
     mNeedsComposite = false;
     mCompositorParent->CompositeCallback(aVsyncTimestamp);
@@ -339,8 +340,6 @@ CompositorVsyncObserver::Composite(TimeStamp aVsyncTimestamp)
   } else if (mVsyncNotificationsSkipped++ > gfxPrefs::CompositorUnobserveCount()) {
     UnobserveVsync();
   }
-
-  DispatchTouchEvents(aVsyncTimestamp);
 }
 
 void
@@ -1121,6 +1120,14 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
         mRootLayerTreeID, aPaintSequenceNumber);
   }
 
+#ifdef DEBUG
+  if (aTransactionId <= mPendingTransaction) {
+    // Logging added to help diagnose why we're triggering the assert below.
+    // See bug 1145295
+    printf_stderr("CRASH: aTransactionId %" PRIu64 " <= mPendingTransaction %" PRIu64 "\n",
+      aTransactionId, mPendingTransaction);
+  }
+#endif
   MOZ_ASSERT(aTransactionId > mPendingTransaction);
   mPendingTransaction = aTransactionId;
 
@@ -1135,22 +1142,8 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
     // When testing we synchronously update the shadow tree with the animated
     // values to avoid race conditions when calling GetAnimationTransform etc.
     // (since the above SetShadowProperties will remove animation effects).
-    // However, we only do this update when a composite operation is already
-    // scheduled in order to better match the behavior under regular sampling
-    // conditions.
-    bool needTestComposite = mIsTesting && root &&
-                             (mCurrentCompositeTask ||
-                             (mCompositorVsyncObserver &&
-                              mCompositorVsyncObserver->NeedsComposite()));
-    if (needTestComposite) {
-      AutoResolveRefLayers resolve(mCompositionManager);
-      bool requestNextFrame =
-        mCompositionManager->TransformShadowTree(mTestTime);
-      if (!requestNextFrame) {
-        CancelCurrentCompositeTask();
-        // Pretend we composited in case someone is waiting for this event.
-        DidComposite();
-      }
+    if (mIsTesting) {
+      ApplyAsyncProperties(aLayerTree);
     }
   }
   mLayerManager->NotifyShadowTreeTransaction();
@@ -1195,6 +1188,31 @@ void
 CompositorParent::LeaveTestMode(LayerTransactionParent* aLayerTree)
 {
   mIsTesting = false;
+}
+
+void
+CompositorParent::ApplyAsyncProperties(LayerTransactionParent* aLayerTree)
+{
+  // NOTE: This should only be used for testing. For example, when mIsTesting is
+  // true or when called from test-only methods like
+  // LayerTransactionParent::RecvGetAnimationTransform.
+
+  // Synchronously update the layer tree, but only if a composite was already
+  // scehduled.
+  if (aLayerTree->GetRoot() &&
+      (mCurrentCompositeTask ||
+       (mCompositorVsyncObserver &&
+        mCompositorVsyncObserver->NeedsComposite()))) {
+    AutoResolveRefLayers resolve(mCompositionManager);
+    TimeStamp time = mIsTesting ? mTestTime : mLastCompose;
+    bool requestNextFrame =
+      mCompositionManager->TransformShadowTree(time);
+    if (!requestNextFrame) {
+      CancelCurrentCompositeTask();
+      // Pretend we composited in case someone is waiting for this event.
+      DidComposite();
+    }
+  }
 }
 
 bool
@@ -1282,9 +1300,7 @@ CompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aB
   if (!mLayerManager) {
     NS_WARNING("Failed to initialise Compositor");
     *aSuccess = false;
-    LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, 0,
-                                                           // child side's process id is current process Id
-                                                           base::GetProcId(base::GetCurrentProcessHandle()));
+    LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, 0);
     p->AddIPDLReference();
     return p;
   }
@@ -1293,9 +1309,7 @@ CompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aB
   *aSuccess = true;
 
   *aTextureFactoryIdentifier = mCompositor->GetTextureFactoryIdentifier();
-  LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, 0,
-                                                         // child side's process id is current process Id
-                                                         base::GetProcId(base::GetCurrentProcessHandle()));
+  LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, 0);
   p->AddIPDLReference();
   return p;
 }
@@ -1455,7 +1469,6 @@ InsertVsyncProfilerMarker(TimeStamp aVsyncTimestamp)
 {
 #ifdef MOZ_ENABLE_PROFILER_SPS
   MOZ_ASSERT(CompositorParent::IsInCompositorThread());
-  MOZ_ASSERT(profiler_is_active());
   VsyncPayload* payload = new VsyncPayload(aVsyncTimestamp);
   PROFILER_MARKER_PAYLOAD("VsyncTimestamp", payload);
 #endif
@@ -1464,6 +1477,7 @@ InsertVsyncProfilerMarker(TimeStamp aVsyncTimestamp)
 /*static */ void
 CompositorParent::PostInsertVsyncProfilerMarker(TimeStamp aVsyncTimestamp)
 {
+  // Called in the vsync thread
   if (profiler_is_active() && sCompositorThreadHolder) {
     CompositorLoop()->PostTask(FROM_HERE,
       NewRunnableFunction(InsertVsyncProfilerMarker, aVsyncTimestamp));
@@ -1494,16 +1508,15 @@ CompositorParent::RequestNotifyLayerTreeCleared(uint64_t aLayersId, CompositorUp
  * drive compositing itself.  For that it hands off work to the
  * CompositorParent it's associated with.
  */
-class CrossProcessCompositorParent MOZ_FINAL : public PCompositorParent,
-                                               public ShadowLayersManager
+class CrossProcessCompositorParent final : public PCompositorParent,
+                                           public ShadowLayersManager
 {
   friend class CompositorParent;
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CrossProcessCompositorParent)
 public:
-  CrossProcessCompositorParent(Transport* aTransport, ProcessId aOtherProcess)
+  explicit CrossProcessCompositorParent(Transport* aTransport)
     : mTransport(aTransport)
-    , mChildProcessId(aOtherProcess)
     , mCompositorThreadHolder(sCompositorThreadHolder)
     , mNotifyAfterRemotePaint(false)
   {
@@ -1517,26 +1530,26 @@ public:
   virtual IToplevelProtocol*
   CloneToplevel(const InfallibleTArray<mozilla::ipc::ProtocolFdMapping>& aFds,
                 base::ProcessHandle aPeerProcess,
-                mozilla::ipc::ProtocolCloneContext* aCtx) MOZ_OVERRIDE;
+                mozilla::ipc::ProtocolCloneContext* aCtx) override;
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   // FIXME/bug 774388: work out what shutdown protocol we need.
-  virtual bool RecvRequestOverfill() MOZ_OVERRIDE { return true; }
-  virtual bool RecvWillStop() MOZ_OVERRIDE { return true; }
-  virtual bool RecvStop() MOZ_OVERRIDE { return true; }
-  virtual bool RecvPause() MOZ_OVERRIDE { return true; }
-  virtual bool RecvResume() MOZ_OVERRIDE { return true; }
-  virtual bool RecvNotifyChildCreated(const uint64_t& child) MOZ_OVERRIDE;
-  virtual bool RecvAdoptChild(const uint64_t& child) MOZ_OVERRIDE { return false; }
+  virtual bool RecvRequestOverfill() override { return true; }
+  virtual bool RecvWillStop() override { return true; }
+  virtual bool RecvStop() override { return true; }
+  virtual bool RecvPause() override { return true; }
+  virtual bool RecvResume() override { return true; }
+  virtual bool RecvNotifyChildCreated(const uint64_t& child) override;
+  virtual bool RecvAdoptChild(const uint64_t& child) override { return false; }
   virtual bool RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
-                                const nsIntRect& aRect) MOZ_OVERRIDE
+                                const nsIntRect& aRect) override
   { return true; }
-  virtual bool RecvFlushRendering() MOZ_OVERRIDE { return true; }
-  virtual bool RecvNotifyRegionInvalidated(const nsIntRegion& aRegion) MOZ_OVERRIDE { return true; }
-  virtual bool RecvStartFrameTimeRecording(const int32_t& aBufferSize, uint32_t* aOutStartIndex) MOZ_OVERRIDE { return true; }
-  virtual bool RecvStopFrameTimeRecording(const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) MOZ_OVERRIDE  { return true; }
-  virtual bool RecvGetTileSize(int32_t* aWidth, int32_t* aHeight) MOZ_OVERRIDE
+  virtual bool RecvFlushRendering() override { return true; }
+  virtual bool RecvNotifyRegionInvalidated(const nsIntRegion& aRegion) override { return true; }
+  virtual bool RecvStartFrameTimeRecording(const int32_t& aBufferSize, uint32_t* aOutStartIndex) override { return true; }
+  virtual bool RecvStopFrameTimeRecording(const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) override  { return true; }
+  virtual bool RecvGetTileSize(int32_t* aWidth, int32_t* aHeight) override
   {
     *aWidth = gfxPlatform::GetPlatform()->GetTileWidth();
     *aHeight = gfxPlatform::GetPlatform()->GetTileHeight();
@@ -1547,15 +1560,15 @@ public:
   /**
    * Tells this CompositorParent to send a message when the compositor has received the transaction.
    */
-  virtual bool RecvRequestNotifyAfterRemotePaint() MOZ_OVERRIDE;
+  virtual bool RecvRequestNotifyAfterRemotePaint() override;
 
   virtual PLayerTransactionParent*
     AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                  const uint64_t& aId,
                                  TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                 bool *aSuccess) MOZ_OVERRIDE;
+                                 bool *aSuccess) override;
 
-  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
+  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
 
   virtual void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
                                    const uint64_t& aTransactionId,
@@ -1564,16 +1577,16 @@ public:
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
                                    uint32_t aPaintSequenceNumber,
-                                   bool aIsRepeatTransaction) MOZ_OVERRIDE;
-  virtual void ForceComposite(LayerTransactionParent* aLayerTree) MOZ_OVERRIDE;
-  virtual void NotifyClearCachedResources(LayerTransactionParent* aLayerTree) MOZ_OVERRIDE;
+                                   bool aIsRepeatTransaction) override;
+  virtual void ForceComposite(LayerTransactionParent* aLayerTree) override;
+  virtual void NotifyClearCachedResources(LayerTransactionParent* aLayerTree) override;
   virtual bool SetTestSampleTime(LayerTransactionParent* aLayerTree,
-                                 const TimeStamp& aTime) MOZ_OVERRIDE;
-  virtual void LeaveTestMode(LayerTransactionParent* aLayerTree) MOZ_OVERRIDE;
+                                 const TimeStamp& aTime) override;
+  virtual void LeaveTestMode(LayerTransactionParent* aLayerTree) override;
   virtual void GetAPZTestData(const LayerTransactionParent* aLayerTree,
-                              APZTestData* aOutData) MOZ_OVERRIDE;
+                              APZTestData* aOutData) override;
 
-  virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) MOZ_OVERRIDE;
+  virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) override;
 
   void DidComposite(uint64_t aId);
 
@@ -1588,8 +1601,6 @@ private:
   // ourself.  This is released (deferred) in ActorDestroy().
   nsRefPtr<CrossProcessCompositorParent> mSelfRef;
   Transport* mTransport;
-  // Child side's process Id.
-  base::ProcessId mChildProcessId;
 
   nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
   // If true, we should send a RemotePaintIsReady message when the layer transaction
@@ -1617,31 +1628,26 @@ CompositorParent::DidComposite()
 
 static void
 OpenCompositor(CrossProcessCompositorParent* aCompositor,
-               Transport* aTransport, ProcessHandle aHandle,
+               Transport* aTransport, ProcessId aOtherPid,
                MessageLoop* aIOLoop)
 {
-  DebugOnly<bool> ok = aCompositor->Open(aTransport, aHandle, aIOLoop);
+  DebugOnly<bool> ok = aCompositor->Open(aTransport, aOtherPid, aIOLoop);
   MOZ_ASSERT(ok);
 }
 
 /*static*/ PCompositorParent*
-CompositorParent::Create(Transport* aTransport, ProcessId aOtherProcess)
+CompositorParent::Create(Transport* aTransport, ProcessId aOtherPid)
 {
   gfxPlatform::InitLayersIPC();
 
   nsRefPtr<CrossProcessCompositorParent> cpcp =
-    new CrossProcessCompositorParent(aTransport, aOtherProcess);
-  ProcessHandle handle;
-  if (!base::OpenProcessHandle(aOtherProcess, &handle)) {
-    // XXX need to kill |aOtherProcess|, it's boned
-    return nullptr;
-  }
+    new CrossProcessCompositorParent(aTransport);
 
   cpcp->mSelfRef = cpcp;
   CompositorLoop()->PostTask(
     FROM_HERE,
     NewRunnableFunction(OpenCompositor, cpcp.get(),
-                        aTransport, handle, XRE_GetIOMessageLoop()));
+                        aTransport, aOtherPid, XRE_GetIOMessageLoop()));
   // The return value is just compared to null for success checking,
   // we're not sharing a ref.
   return cpcp.get();
@@ -1720,7 +1726,7 @@ CrossProcessCompositorParent::AllocPLayerTransactionParent(const nsTArray<Layers
     LayerManagerComposite* lm = state->mLayerManager;
     *aTextureFactoryIdentifier = lm->GetCompositor()->GetTextureFactoryIdentifier();
     *aSuccess = true;
-    LayerTransactionParent* p = new LayerTransactionParent(lm, this, aId, mChildProcessId);
+    LayerTransactionParent* p = new LayerTransactionParent(lm, this, aId);
     p->AddIPDLReference();
     sIndirectLayerTrees[aId].mLayerTree = p;
     return p;
@@ -1730,7 +1736,7 @@ CrossProcessCompositorParent::AllocPLayerTransactionParent(const nsTArray<Layers
   // XXX: should be false, but that causes us to fail some tests on Mac w/ OMTC.
   // Bug 900745. change *aSuccess to false to see test failures.
   *aSuccess = true;
-  LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, aId, mChildProcessId);
+  LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, aId);
   p->AddIPDLReference();
   return p;
 }

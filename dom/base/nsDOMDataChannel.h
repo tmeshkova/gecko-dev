@@ -24,9 +24,9 @@ class File;
 class DataChannel;
 };
 
-class nsDOMDataChannel : public mozilla::DOMEventTargetHelper,
-                         public nsIDOMDataChannel,
-                         public mozilla::DataChannelListener
+class nsDOMDataChannel final : public mozilla::DOMEventTargetHelper,
+                               public nsIDOMDataChannel,
+                               public mozilla::DataChannelListener
 {
 public:
   nsDOMDataChannel(already_AddRefed<mozilla::DataChannel>& aDataChannel,
@@ -42,8 +42,8 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsDOMDataChannel,
                                            mozilla::DOMEventTargetHelper)
 
-  virtual JSObject* WrapObject(JSContext* aCx)
-    MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
+    override;
   nsPIDOMWindow* GetParentObject() const
   {
     return GetOwner();
@@ -84,18 +84,18 @@ public:
   DoOnMessageAvailable(const nsACString& aMessage, bool aBinary);
 
   virtual nsresult
-  OnMessageAvailable(nsISupports* aContext, const nsACString& aMessage) MOZ_OVERRIDE;
+  OnMessageAvailable(nsISupports* aContext, const nsACString& aMessage) override;
 
   virtual nsresult
-  OnBinaryMessageAvailable(nsISupports* aContext, const nsACString& aMessage) MOZ_OVERRIDE;
+  OnBinaryMessageAvailable(nsISupports* aContext, const nsACString& aMessage) override;
 
   virtual nsresult OnSimpleEvent(nsISupports* aContext, const nsAString& aName);
 
   virtual nsresult
-  OnChannelConnected(nsISupports* aContext) MOZ_OVERRIDE;
+  OnChannelConnected(nsISupports* aContext) override;
 
   virtual nsresult
-  OnChannelClosed(nsISupports* aContext) MOZ_OVERRIDE;
+  OnChannelClosed(nsISupports* aContext) override;
 
   virtual void
   AppReady();

@@ -32,11 +32,8 @@ public:
   void
   Release();
 
-  void
-  UpdateSize(int64_t aSize);
-
   bool
-  MaybeAllocateMoreSpace(int64_t aOffset, int32_t aCount);
+  MaybeUpdateSize(int64_t aSize, bool aTruncate);
 
 private:
   QuotaObject(OriginInfo* aOriginInfo, const nsAString& aPath, int64_t aSize)
@@ -68,7 +65,7 @@ private:
   int64_t mSize;
 };
 
-class OriginInfo MOZ_FINAL
+class OriginInfo final
 {
   friend class GroupInfo;
   friend class QuotaManager;
@@ -96,6 +93,8 @@ private:
   ~OriginInfo()
   {
     MOZ_COUNT_DTOR(OriginInfo);
+
+    MOZ_ASSERT(!mQuotaObjects.Count());
   }
 
   void
@@ -108,18 +107,6 @@ private:
 
     mAccessTime = aAccessTime;
   }
-
-  void
-  LockedClearOriginInfos()
-  {
-    AssertCurrentThreadOwnsQuotaMutex();
-
-    mQuotaObjects.EnumerateRead(ClearOriginInfoCallback, nullptr);
-  }
-
-  static PLDHashOperator
-  ClearOriginInfoCallback(const nsAString& aKey,
-                          QuotaObject* aValue, void* aUserArg);
 
   nsDataHashtable<nsStringHashKey, QuotaObject*> mQuotaObjects;
 
@@ -147,7 +134,7 @@ public:
   }
 };
 
-class GroupInfo MOZ_FINAL
+class GroupInfo final
 {
   friend class GroupInfoPair;
   friend class OriginInfo;

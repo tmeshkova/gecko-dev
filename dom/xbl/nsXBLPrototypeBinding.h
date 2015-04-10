@@ -35,7 +35,7 @@ class CSSStyleSheet;
 // Instances of this class are owned by the nsXBLDocumentInfo object returned
 // by XBLDocumentInfo().  Consumers who want to refcount things should refcount
 // that.
-class nsXBLPrototypeBinding MOZ_FINAL
+class nsXBLPrototypeBinding final
 {
 public:
   nsIContent* GetBindingElement() const { return mBinding; }
@@ -89,11 +89,11 @@ public:
     }
   }
 
-  const nsCString& ClassName() const {
-    return mImplementation ? mImplementation->mClassName : EmptyCString();
+  const nsString& ClassName() const {
+    return mImplementation ? mImplementation->mClassName : EmptyString();
   }
 
-  nsresult InitClass(const nsCString& aClassName, JSContext * aContext,
+  nsresult InitClass(const nsString& aClassName, JSContext* aContext,
                      JS::Handle<JSObject*> aScriptObject,
                      JS::MutableHandle<JSObject*> aClassObject,
                      bool* aNew);

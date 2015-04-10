@@ -58,8 +58,6 @@
 #include "UsageInfo.h"
 #include "Utilities.h"
 
-#define BAD_TLS_INDEX ((uint32_t) -1)
-
 // The amount of time, in milliseconds, that our IO thread will stay alive
 // after the last event it processes.
 #define DEFAULT_THREAD_TIMEOUT_MS 30000
@@ -159,7 +157,7 @@ struct SynchronizedOp
   nsTArray<nsCOMPtr<nsIRunnable> > mDelayedRunnables;
 };
 
-class CollectOriginsHelper MOZ_FINAL : public nsRunnable
+class CollectOriginsHelper final : public nsRunnable
 {
 public:
   CollectOriginsHelper(mozilla::Mutex& aMutex, uint64_t aMinSizeToBeFreed);
@@ -195,7 +193,7 @@ private:
 // them before dispatching itself back to the main thread. When back on the main
 // thread the runnable will notify the QuotaManager that the job has been
 // completed.
-class OriginClearRunnable MOZ_FINAL : public nsRunnable
+class OriginClearRunnable final : public nsRunnable
 {
   enum CallbackState {
     // Not yet run.
@@ -222,7 +220,7 @@ public:
   { }
 
   NS_IMETHOD
-  Run() MOZ_OVERRIDE;
+  Run() override;
 
   void
   AdvanceState()
@@ -262,9 +260,9 @@ private:
 // files in the origin's directory before dispatching itself back to the main
 // thread. When on the main thread the runnable will call the callback and then
 // notify the QuotaManager that the job has been completed.
-class AsyncUsageRunnable MOZ_FINAL : public UsageInfo,
-                                     public nsRunnable,
-                                     public nsIQuotaRequest
+class AsyncUsageRunnable final : public UsageInfo,
+                                 public nsRunnable,
+                                 public nsIQuotaRequest
 {
   enum CallbackState {
     // Not yet run.
@@ -296,7 +294,7 @@ public:
                      nsIUsageCallback* aCallback);
 
   NS_IMETHOD
-  Run() MOZ_OVERRIDE;
+  Run() override;
 
   void
   AdvanceState()
@@ -341,7 +339,7 @@ private:
   const bool mIsApp;
 };
 
-class ResetOrClearRunnable MOZ_FINAL : public nsRunnable
+class ResetOrClearRunnable final : public nsRunnable
 {
   enum CallbackState {
     // Not yet run.
@@ -366,7 +364,7 @@ public:
   { }
 
   NS_IMETHOD
-  Run() MOZ_OVERRIDE;
+  Run() override;
 
   void
   AdvanceState()
@@ -405,7 +403,7 @@ private:
 // objects before dispatching itself back to the main thread. When back on the
 // main thread the runnable will call QuotaManager::AllowNextSynchronizedOp.
 // The runnable can also run in a shortened mode (runs only twice).
-class FinalizeOriginEvictionRunnable MOZ_FINAL : public nsRunnable
+class FinalizeOriginEvictionRunnable final : public nsRunnable
 {
   enum CallbackState {
     // Not yet run.
@@ -521,7 +519,7 @@ bool gTestingEnabled = false;
 
 // A callback runnable used by the TransactionPool when it's safe to proceed
 // with a SetVersion/DeleteDatabase/etc.
-class WaitForTransactionsToFinishRunnable MOZ_FINAL : public nsRunnable
+class WaitForTransactionsToFinishRunnable final : public nsRunnable
 {
 public:
   explicit WaitForTransactionsToFinishRunnable(SynchronizedOp* aOp)
@@ -548,7 +546,7 @@ private:
   uint32_t mCountdown;
 };
 
-class WaitForFileHandlesToFinishRunnable MOZ_FINAL : public nsRunnable
+class WaitForFileHandlesToFinishRunnable final : public nsRunnable
 {
 public:
   WaitForFileHandlesToFinishRunnable()
@@ -568,7 +566,7 @@ private:
   bool mBusy;
 };
 
-class SaveOriginAccessTimeRunnable MOZ_FINAL : public nsRunnable
+class SaveOriginAccessTimeRunnable final : public nsRunnable
 {
 public:
   SaveOriginAccessTimeRunnable(PersistenceType aPersistenceType,
@@ -586,7 +584,7 @@ private:
   int64_t mTimestamp;
 };
 
-class StorageDirectoryHelper MOZ_FINAL
+class StorageDirectoryHelper final
   : public nsRunnable
 {
   struct OriginProps;
@@ -656,7 +654,7 @@ public:
   { }
 };
 
-class MOZ_STACK_CLASS OriginParser MOZ_FINAL
+class MOZ_STACK_CLASS OriginParser final
 {
   static bool
   IgnoreWhitespace(char16_t /* aChar */)
@@ -754,16 +752,6 @@ public:
   }
 };
 
-struct MOZ_STACK_CLASS RemoveQuotaInfo
-{
-  RemoveQuotaInfo(PersistenceType aPersistenceType, const nsACString& aPattern)
-  : persistenceType(aPersistenceType), pattern(aPattern)
-  { }
-
-  PersistenceType persistenceType;
-  nsCString pattern;
-};
-
 struct MOZ_STACK_CLASS InactiveOriginsInfo
 {
   InactiveOriginsInfo(OriginCollection& aPersistentCollection,
@@ -856,7 +844,7 @@ GetLastModifiedTime(nsIFile* aFile, int64_t* aTimestamp)
   MOZ_ASSERT(aFile);
   MOZ_ASSERT(aTimestamp);
 
-  class MOZ_STACK_CLASS Helper MOZ_FINAL
+  class MOZ_STACK_CLASS Helper final
   {
   public:
     static nsresult
@@ -1270,8 +1258,7 @@ GetTemporaryStorageLimit(nsIFile* aDirectory, uint64_t aCurrentUsage,
 } // anonymous namespace
 
 QuotaManager::QuotaManager()
-: mCurrentWindowIndex(BAD_TLS_INDEX),
-  mQuotaMutex("QuotaManager.mQuotaMutex"),
+: mQuotaMutex("QuotaManager.mQuotaMutex"),
   mTemporaryStorageLimit(0),
   mTemporaryStorageUsage(0),
   mTemporaryStorageInitialized(false),
@@ -1348,15 +1335,6 @@ QuotaManager::IsShuttingDown()
 nsresult
 QuotaManager::Init()
 {
-  // We need a thread-local to hold the current window.
-  NS_ASSERTION(mCurrentWindowIndex == BAD_TLS_INDEX, "Huh?");
-
-  if (PR_NewThreadPrivateIndex(&mCurrentWindowIndex, nullptr) != PR_SUCCESS) {
-    NS_ERROR("PR_NewThreadPrivateIndex failed, QuotaManager disabled");
-    mCurrentWindowIndex = BAD_TLS_INDEX;
-    return NS_ERROR_FAILURE;
-  }
-
   nsresult rv;
   if (IsMainProcess()) {
     nsCOMPtr<nsIFile> baseDir;
@@ -3013,24 +2991,6 @@ QuotaManager::Observe(nsISupports* aSubject,
   return NS_ERROR_UNEXPECTED;
 }
 
-void
-QuotaManager::SetCurrentWindowInternal(nsPIDOMWindow* aWindow)
-{
-  NS_ASSERTION(mCurrentWindowIndex != BAD_TLS_INDEX,
-               "Should have a valid TLS storage index!");
-
-  if (aWindow) {
-    NS_ASSERTION(!PR_GetThreadPrivate(mCurrentWindowIndex),
-                 "Somebody forgot to clear the current window!");
-    PR_SetThreadPrivate(mCurrentWindowIndex, aWindow);
-  }
-  else {
-    // We cannot assert PR_GetThreadPrivate(mCurrentWindowIndex) here because
-    // there are some cases where we did not already have a window.
-    PR_SetThreadPrivate(mCurrentWindowIndex, nullptr);
-  }
-}
-
 uint64_t
 QuotaManager::LockedCollectOriginsForEviction(
                                             uint64_t aMinSizeToBeFreed,
@@ -3536,7 +3496,6 @@ QuotaManager::CollectOriginsForEviction(uint64_t aMinSizeToBeFreed,
   // Add origins that have live persistent storages.
   mDefaultLiveStorageTable.EnumerateRead(AddLiveStorageOrigins,
                                          &defaultOriginCollection);
-
 
   // Enumerate inactive origins. This must be protected by the mutex.
   nsTArray<OriginInfo*> inactiveOrigins;

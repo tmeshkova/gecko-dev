@@ -68,6 +68,9 @@ public:
     void GetKeyStatusesForSession(const nsAString& aSessionId,
                                   nsTArray<KeyStatus>& aOutKeyStatuses);
 
+    void GetSessionIdsForKeyId(const CencKeyId& aKeyId,
+                               nsTArray<nsCString>& aOutSessionIds);
+
     // Sets the capabilities of the CDM. aCaps is the logical OR of the
     // GMP_EME_CAP_* flags from gmp-decryption.h.
     void SetCaps(uint64_t aCaps);
@@ -109,7 +112,7 @@ private:
 
   nsTArray<WaitForKeys> mWaitForKeys;
 
-  nsTArray<nsRefPtr<nsIRunnable>> mWaitForCaps;
+  nsTArray<nsCOMPtr<nsIRunnable>> mWaitForCaps;
   uint64_t mCaps;
 
   // It is not safe to copy this object.

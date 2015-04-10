@@ -18,6 +18,7 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/net/DashboardTypes.h"
 #include "mozilla/Atomics.h"
+#include "mozilla/TimeStamp.h"
 
 class nsASocketHandler;
 struct PRPollDesc;
@@ -58,11 +59,11 @@ static const int32_t kDefaultTCPKeepCount =
 
 //-----------------------------------------------------------------------------
 
-class nsSocketTransportService MOZ_FINAL : public nsPISocketTransportService
-                                         , public nsIEventTarget
-                                         , public nsIThreadObserver
-                                         , public nsIRunnable
-                                         , public nsIObserver
+class nsSocketTransportService final : public nsPISocketTransportService
+                                     , public nsIEventTarget
+                                     , public nsIThreadObserver
+                                     , public nsIRunnable
+                                     , public nsIObserver
 {
     typedef mozilla::Mutex Mutex;
 
@@ -193,12 +194,17 @@ private:
     PRPollDesc *mPollList;                        /* mListSize + 1 entries */
 
     PRIntervalTime PollTimeout();            // computes ideal poll timeout
-    nsresult       DoPollIteration(bool wait);
+    nsresult       DoPollIteration(bool wait,
+                                   mozilla::TimeDuration *pollDuration);
                                              // perfoms a single poll iteration
-    int32_t        Poll(bool wait, uint32_t *interval);
+    int32_t        Poll(bool wait,
+                        uint32_t *interval,
+                        mozilla::TimeDuration *pollDuration);
                                              // calls PR_Poll.  the out param
                                              // interval indicates the poll
                                              // duration in seconds.
+                                             // pollDuration is used only for
+                                             // telemetry
 
     //-------------------------------------------------------------------------
     // pending socket queue - see NotifyWhenCanAttachSocket
@@ -221,6 +227,7 @@ private:
     bool                   mServeMultipleEventsPerPollIter;
     mozilla::Atomic<bool>  mServingPendingQueue;
     int32_t                mMaxTimePerPollIter;
+    bool                   mTelemetryEnabledPref;
 
     void OnKeepaliveEnabledPrefChange();
     void NotifyKeepaliveEnabledPrefChange(SocketContext *sock);

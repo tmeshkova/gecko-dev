@@ -269,7 +269,7 @@ namespace {
  * This runnable runs for the lifetime of the program, once started.  It's
  * responsible for "playing" vibration patterns.
  */
-class VibratorRunnable MOZ_FINAL
+class VibratorRunnable final
   : public nsIRunnable
   , public nsIObserver
 {
@@ -474,7 +474,7 @@ public:
 
 } // anonymous namespace
 
-class BatteryObserver MOZ_FINAL : public IUeventObserver
+class BatteryObserver final : public IUeventObserver
 {
 public:
   NS_INLINE_DECL_REFCOUNTING(BatteryObserver)
@@ -609,6 +609,11 @@ void
 GetCurrentBatteryInformation(hal::BatteryInformation* aBatteryInfo)
 {
   int charge;
+  static bool previousCharging = false;
+  static double previousLevel = 0.0, remainingTime = 0.0;
+  static struct timespec lastLevelChange;
+  struct timespec now;
+  double dtime, dlevel;
 
   if (GetCurrentBatteryCharge(&charge)) {
     aBatteryInfo->level() = (double)charge / 100.0;
@@ -624,11 +629,50 @@ GetCurrentBatteryInformation(hal::BatteryInformation* aBatteryInfo)
     aBatteryInfo->charging() = true;
   }
 
-  if (!aBatteryInfo->charging() || (aBatteryInfo->level() < 1.0)) {
+  if (aBatteryInfo->charging() != previousCharging){
     aBatteryInfo->remainingTime() = dom::battery::kUnknownRemainingTime;
-  } else {
-    aBatteryInfo->remainingTime() = dom::battery::kDefaultRemainingTime;
+    memset(&lastLevelChange, 0, sizeof(struct timespec));
   }
+
+  if (aBatteryInfo->charging()) {
+    if (aBatteryInfo->level() == 1.0) {
+      aBatteryInfo->remainingTime() = dom::battery::kDefaultRemainingTime;
+    } else if (aBatteryInfo->level() != previousLevel){
+      if (lastLevelChange.tv_sec != 0) {
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        dtime = now.tv_sec - lastLevelChange.tv_sec;
+        dlevel = aBatteryInfo->level() - previousLevel;
+
+        if (dlevel <= 0.0) {
+          aBatteryInfo->remainingTime() = dom::battery::kUnknownRemainingTime;
+        } else {
+          remainingTime = (double) round(dtime / dlevel * (1.0 - aBatteryInfo->level()));
+          aBatteryInfo->remainingTime() = remainingTime;
+        }
+
+        lastLevelChange = now;
+      } else { // lastLevelChange.tv_sec == 0
+        clock_gettime(CLOCK_MONOTONIC, &lastLevelChange);
+        aBatteryInfo->remainingTime() = dom::battery::kUnknownRemainingTime;
+      }
+
+    } else {
+      clock_gettime(CLOCK_MONOTONIC, &now);
+      dtime = now.tv_sec - lastLevelChange.tv_sec;
+      if (dtime < remainingTime) {
+        aBatteryInfo->remainingTime() = round(remainingTime - dtime);
+      } else {
+        aBatteryInfo->remainingTime() = dom::battery::kUnknownRemainingTime;
+      }
+
+    }
+
+  } else {
+    aBatteryInfo->remainingTime() = dom::battery::kUnknownRemainingTime;
+  }
+
+  previousCharging = aBatteryInfo->charging();
+  previousLevel = aBatteryInfo->level();
 }
 
 namespace {
@@ -1155,16 +1199,16 @@ OomAdjOfOomScoreAdj(int aOomScoreAdj)
 }
 
 static void
-RoundOomScoreAdjUpWithBackroundLRU(int& aOomScoreAdj, uint32_t aBackgroundLRU)
+RoundOomScoreAdjUpWithLRU(int& aOomScoreAdj, uint32_t aLRU)
 {
   // We want to add minimum value to round OomScoreAdj up according to
-  // the steps by aBackgroundLRU.
+  // the steps by aLRU.
   aOomScoreAdj +=
-    ceil(((float)OOM_SCORE_ADJ_MAX / OOM_ADJUST_MAX) * aBackgroundLRU);
+    ceil(((float)OOM_SCORE_ADJ_MAX / OOM_ADJUST_MAX) * aLRU);
 }
 
 #define OOM_LOG(level, args...) __android_log_print(level, "OomLogger", ##args)
-class OomVictimLogger MOZ_FINAL
+class OomVictimLogger final
   : public nsIObserver
 {
 public:
@@ -1746,12 +1790,10 @@ EnsureKernelLowMemKillerParamsSet()
 }
 
 void
-SetProcessPriority(int aPid,
-                   ProcessPriority aPriority,
-                   uint32_t aBackgroundLRU)
+SetProcessPriority(int aPid, ProcessPriority aPriority, uint32_t aLRU)
 {
   HAL_LOG("SetProcessPriority(pid=%d, priority=%d, LRU=%u)",
-          aPid, aPriority, aBackgroundLRU);
+          aPid, aPriority, aLRU);
 
   // If this is the first time SetProcessPriority was called, set the kernel's
   // OOM parameters according to our prefs.
@@ -1766,7 +1808,7 @@ SetProcessPriority(int aPid,
 
   int oomScoreAdj = pc->OomScoreAdj();
 
-  RoundOomScoreAdjUpWithBackroundLRU(oomScoreAdj, aBackgroundLRU);
+  RoundOomScoreAdjUpWithLRU(oomScoreAdj, aLRU);
 
   // We try the newer interface first, and fall back to the older interface
   // on failure.

@@ -2338,7 +2338,7 @@ public:
     {
     }
 
-    void Run() MOZ_OVERRIDE
+    void Run() override
     {
         RemoveFromAsyncList();
 
@@ -3393,7 +3393,7 @@ PluginInstanceChild::ShowPluginFrame()
         SharedDIBSurface* s = static_cast<SharedDIBSurface*>(mCurrentSurface.get());
         if (!mCurrentSurfaceActor) {
             base::SharedMemoryHandle handle = nullptr;
-            s->ShareToProcess(OtherProcess(), &handle);
+            s->ShareToProcess(OtherPid(), &handle);
 
             mCurrentSurfaceActor =
                 SendPPluginSurfaceConstructor(handle,

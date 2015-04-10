@@ -80,14 +80,26 @@ class AutoIdVector;
 class ObjectOpResult
 {
   private:
-    uint32_t code_;
+    /*
+     * code_ is either one of the special codes OkCode or Uninitialized, or
+     * an error code. For now the error codes are private to the JS engine;
+     * they're defined in js/src/js.msg.
+     *
+     * code_ is uintptr_t (rather than uint32_t) for the convenience of the
+     * JITs, which would otherwise have to deal with either padding or stack
+     * alignment on 64-bit platforms.
+     */
+    uintptr_t code_;
 
   public:
-    enum { OkCode = 0, Uninitialized = 0xffffffff };
+    enum SpecialCodes : uintptr_t {
+        OkCode = 0,
+        Uninitialized = uintptr_t(-1)
+    };
 
     ObjectOpResult() : code_(Uninitialized) {}
 
-    /* Return true if fail() was not called. */
+    /* Return true if succeed() was called. */
     bool ok() const {
         MOZ_ASSERT(code_ != Uninitialized);
         return code_ == OkCode;
@@ -121,15 +133,17 @@ class ObjectOpResult
     JS_PUBLIC_API(bool) failCantRedefineProp();
     JS_PUBLIC_API(bool) failReadOnly();
     JS_PUBLIC_API(bool) failGetterOnly();
-    JS_PUBLIC_API(bool) failCantSetInterposed();
     JS_PUBLIC_API(bool) failCantDelete();
+
+    JS_PUBLIC_API(bool) failCantSetInterposed();
+    JS_PUBLIC_API(bool) failCantDefineWindowElement();
     JS_PUBLIC_API(bool) failCantDeleteWindowElement();
     JS_PUBLIC_API(bool) failCantDeleteWindowNamedProperty();
     JS_PUBLIC_API(bool) failCantPreventExtensions();
 
     uint32_t failureCode() const {
         MOZ_ASSERT(!ok());
-        return code_;
+        return uint32_t(code_);
     }
 
     /*
@@ -146,7 +160,7 @@ class ObjectOpResult
      *     return true.
      * -   Otherwise, do nothing and return true.
      */
-    bool checkStrictErrorOrWarning(JSContext *cx, HandleObject obj, HandleId id, bool strict) {
+    bool checkStrictErrorOrWarning(JSContext* cx, HandleObject obj, HandleId id, bool strict) {
         if (ok())
             return true;
         return reportStrictErrorOrWarning(cx, obj, id, strict);
@@ -158,12 +172,12 @@ class ObjectOpResult
      * used for [[PreventExtensions]] and [[SetPrototypeOf]]. failureCode()
      * must not be an error that has "{0}" in the error message.
      */
-    bool checkStrictErrorOrWarning(JSContext *cx, HandleObject obj, bool strict) {
+    bool checkStrictErrorOrWarning(JSContext* cx, HandleObject obj, bool strict) {
         return ok() || reportStrictErrorOrWarning(cx, obj, strict);
     }
 
     /* Throw a TypeError. Call this only if !ok(). */
-    bool reportError(JSContext *cx, HandleObject obj, HandleId id) {
+    bool reportError(JSContext* cx, HandleObject obj, HandleId id) {
         return reportStrictErrorOrWarning(cx, obj, id, true);
     }
 
@@ -171,19 +185,19 @@ class ObjectOpResult
      * The same as reportError(cx, obj, id), except the operation is not
      * associated with a particular property id.
      */
-    bool reportError(JSContext *cx, HandleObject obj) {
+    bool reportError(JSContext* cx, HandleObject obj) {
         return reportStrictErrorOrWarning(cx, obj, true);
     }
 
     /* Helper function for checkStrictErrorOrWarning's slow path. */
-    JS_PUBLIC_API(bool) reportStrictErrorOrWarning(JSContext *cx, HandleObject obj, HandleId id, bool strict);
-    JS_PUBLIC_API(bool) reportStrictErrorOrWarning(JSContext *cx, HandleObject obj, bool strict);
+    JS_PUBLIC_API(bool) reportStrictErrorOrWarning(JSContext* cx, HandleObject obj, HandleId id, bool strict);
+    JS_PUBLIC_API(bool) reportStrictErrorOrWarning(JSContext* cx, HandleObject obj, bool strict);
 
     /*
      * Convenience method. Return true if ok() or if strict is false; otherwise
      * throw a TypeError and return false.
      */
-    bool checkStrict(JSContext *cx, HandleObject obj, HandleId id) {
+    bool checkStrict(JSContext* cx, HandleObject obj, HandleId id) {
         return checkStrictErrorOrWarning(cx, obj, id, true);
     }
 
@@ -191,7 +205,7 @@ class ObjectOpResult
      * Convenience method. The same as checkStrict(cx, id), except the
      * operation is not associated with a particular property id.
      */
-    bool checkStrict(JSContext *cx, HandleObject obj) {
+    bool checkStrict(JSContext* cx, HandleObject obj) {
         return checkStrictErrorOrWarning(cx, obj, true);
     }
 };
@@ -200,14 +214,16 @@ class ObjectOpResult
 
 // JSClass operation signatures.
 
-// Add or get a property named by id in obj.  Note the jsid id type -- id may
+// Get a property named by id in obj.  Note the jsid id type -- id may
 // be a string (Unicode property identifier) or an int (element index).  The
 // *vp out parameter, on success, is the new property value after the action.
 typedef bool
-(* JSGetterOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+(* JSGetterOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                JS::MutableHandleValue vp);
 
-typedef JSGetterOp JSAddPropertyOp;
+// Add a property named by id to obj.
+typedef bool
+(* JSAddPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue v);
 
 // Set a property named by id in obj, treating the assignment as strict
 // mode code if strict is true. Note the jsid id type -- id may be a string
@@ -215,8 +231,8 @@ typedef JSGetterOp JSAddPropertyOp;
 // parameter, on success, is the new property value after the
 // set.
 typedef bool
-(* JSSetterOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
-               JS::MutableHandleValue vp, JS::ObjectOpResult &result);
+(* JSSetterOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
+               JS::MutableHandleValue vp, JS::ObjectOpResult& result);
 
 // Delete a property named by id in obj.
 //
@@ -232,8 +248,8 @@ typedef bool
 // property, or an inherited property, is allowed -- it's just pointless),
 // call result.succeed() and return true.
 typedef bool
-(* JSDeletePropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
-                       JS::ObjectOpResult &result);
+(* JSDeletePropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
+                       JS::ObjectOpResult& result);
 
 // The type of ObjectOps::enumerate. This callback overrides a portion of SpiderMonkey's default
 // [[Enumerate]] internal method. When an ordinary object is enumerated, that object and each object
@@ -247,12 +263,12 @@ typedef bool
 // The callback's job is to populate 'properties' with all property keys that the for-in loop
 // should visit.
 typedef bool
-(* JSNewEnumerateOp)(JSContext *cx, JS::HandleObject obj, JS::AutoIdVector &properties);
+(* JSNewEnumerateOp)(JSContext* cx, JS::HandleObject obj, JS::AutoIdVector& properties);
 
 // The old-style JSClass.enumerate op should define all lazy properties not
 // yet reflected in obj.
 typedef bool
-(* JSEnumerateOp)(JSContext *cx, JS::HandleObject obj);
+(* JSEnumerateOp)(JSContext* cx, JS::HandleObject obj);
 
 // Resolve a lazy property named by id in obj by defining it directly in obj.
 // Lazy properties are those reflected from some peer native property space
@@ -263,32 +279,32 @@ typedef bool
 // was defined on |obj|.
 //
 typedef bool
-(* JSResolveOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
-                bool *resolvedp);
+(* JSResolveOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
+                bool* resolvedp);
 
 // Convert obj to the given type, returning true with the resulting value in
 // *vp on success, and returning false on error or exception.
 typedef bool
-(* JSConvertOp)(JSContext *cx, JS::HandleObject obj, JSType type,
+(* JSConvertOp)(JSContext* cx, JS::HandleObject obj, JSType type,
                 JS::MutableHandleValue vp);
 
 // Finalize obj, which the garbage collector has determined to be unreachable
 // from other live objects or from GC roots.  Obviously, finalizers must never
 // store a reference to obj.
 typedef void
-(* JSFinalizeOp)(JSFreeOp *fop, JSObject *obj);
+(* JSFinalizeOp)(JSFreeOp* fop, JSObject* obj);
 
 // Finalizes external strings created by JS_NewExternalString.
 struct JSStringFinalizer {
-    void (*finalize)(const JSStringFinalizer *fin, char16_t *chars);
+    void (*finalize)(const JSStringFinalizer* fin, char16_t* chars);
 };
 
 // Check whether v is an instance of obj.  Return false on error or exception,
 // true on success with true in *bp if v is an instance of obj, false in
 // *bp otherwise.
 typedef bool
-(* JSHasInstanceOp)(JSContext *cx, JS::HandleObject obj, JS::MutableHandleValue vp,
-                    bool *bp);
+(* JSHasInstanceOp)(JSContext* cx, JS::HandleObject obj, JS::MutableHandleValue vp,
+                    bool* bp);
 
 // Function type for trace operation of the class called to enumerate all
 // traceable things reachable from obj's private data structure. For each such
@@ -303,45 +319,45 @@ typedef bool
 // JS_IsGCMarkingTracer and apply a special code like emptying caches or
 // marking its native structures.
 typedef void
-(* JSTraceOp)(JSTracer *trc, JSObject *obj);
+(* JSTraceOp)(JSTracer* trc, JSObject* obj);
 
-typedef JSObject *
-(* JSWeakmapKeyDelegateOp)(JSObject *obj);
+typedef JSObject*
+(* JSWeakmapKeyDelegateOp)(JSObject* obj);
 
 typedef void
-(* JSObjectMovedOp)(JSObject *obj, const JSObject *old);
+(* JSObjectMovedOp)(JSObject* obj, const JSObject* old);
 
 /* js::Class operation signatures. */
 
 namespace js {
 
 typedef bool
-(* LookupPropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+(* LookupPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                      JS::MutableHandleObject objp, JS::MutableHandle<Shape*> propp);
 typedef bool
-(* DefinePropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue value,
-                     JSGetterOp getter, JSSetterOp setter, unsigned attrs,
-                     JS::ObjectOpResult &result);
+(* DefinePropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
+                     JS::Handle<JSPropertyDescriptor> desc,
+                     JS::ObjectOpResult& result);
 typedef bool
-(* HasPropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id, bool *foundp);
+(* HasPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, bool* foundp);
 typedef bool
-(* GetPropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver, JS::HandleId id,
+(* GetPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleObject receiver, JS::HandleId id,
                   JS::MutableHandleValue vp);
 typedef bool
-(* SetPropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleObject receiver, JS::HandleId id,
-                  JS::MutableHandleValue vp, JS::ObjectOpResult &result);
+(* SetPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue v,
+                  JS::HandleValue receiver, JS::ObjectOpResult& result);
 typedef bool
-(* GetOwnPropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+(* GetOwnPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                      JS::MutableHandle<JSPropertyDescriptor> desc);
 typedef bool
-(* DeletePropertyOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
-                     JS::ObjectOpResult &result);
+(* DeletePropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
+                     JS::ObjectOpResult& result);
 
 typedef bool
-(* WatchOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleObject callable);
+(* WatchOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleObject callable);
 
 typedef bool
-(* UnwatchOp)(JSContext *cx, JS::HandleObject obj, JS::HandleId id);
+(* UnwatchOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id);
 
 class JS_FRIEND_API(ElementAdder)
 {
@@ -358,44 +374,44 @@ class JS_FRIEND_API(ElementAdder)
   private:
     // Only one of these is used.
     JS::RootedObject resObj_;
-    JS::Value *vp_;
+    JS::Value* vp_;
 
     uint32_t index_;
     mozilla::DebugOnly<uint32_t> length_;
     GetBehavior getBehavior_;
 
   public:
-    ElementAdder(JSContext *cx, JSObject *obj, uint32_t length, GetBehavior behavior)
+    ElementAdder(JSContext* cx, JSObject* obj, uint32_t length, GetBehavior behavior)
       : resObj_(cx, obj), vp_(nullptr), index_(0), length_(length), getBehavior_(behavior)
     {}
-    ElementAdder(JSContext *cx, JS::Value *vp, uint32_t length, GetBehavior behavior)
+    ElementAdder(JSContext* cx, JS::Value* vp, uint32_t length, GetBehavior behavior)
       : resObj_(cx), vp_(vp), index_(0), length_(length), getBehavior_(behavior)
     {}
 
     GetBehavior getBehavior() const { return getBehavior_; }
 
-    void append(JSContext *cx, JS::HandleValue v);
+    void append(JSContext* cx, JS::HandleValue v);
     void appendHole();
 };
 
 typedef bool
-(* GetElementsOp)(JSContext *cx, JS::HandleObject obj, uint32_t begin, uint32_t end,
-                  ElementAdder *adder);
+(* GetElementsOp)(JSContext* cx, JS::HandleObject obj, uint32_t begin, uint32_t end,
+                  ElementAdder* adder);
 
 // A generic type for functions mapping an object to another object, or null
 // if an error or exception was thrown on cx.
-typedef JSObject *
-(* ObjectOp)(JSContext *cx, JS::HandleObject obj);
+typedef JSObject*
+(* ObjectOp)(JSContext* cx, JS::HandleObject obj);
 
 // Hook to map an object to its inner object. Infallible.
-typedef JSObject *
-(* InnerObjectOp)(JSObject *obj);
+typedef JSObject*
+(* InnerObjectOp)(JSObject* obj);
 
 typedef void
-(* FinalizeOp)(FreeOp *fop, JSObject *obj);
+(* FinalizeOp)(FreeOp* fop, JSObject* obj);
 
 #define JS_CLASS_MEMBERS(FinalizeOpType)                                      \
-    const char          *name;                                                \
+    const char*         name;                                                \
     uint32_t            flags;                                                \
                                                                               \
     /* Function pointer members (may be null). */                             \
@@ -413,10 +429,10 @@ typedef void
     JSTraceOp           trace
 
 // Callback for the creation of constructor and prototype objects.
-typedef JSObject *(*ClassObjectCreationOp)(JSContext *cx, JSProtoKey key);
+typedef JSObject* (*ClassObjectCreationOp)(JSContext* cx, JSProtoKey key);
 
 // Callback for custom post-processing after class initialization via ClassSpec.
-typedef bool (*FinishClassInitOp)(JSContext *cx, JS::HandleObject ctor,
+typedef bool (*FinishClassInitOp)(JSContext* cx, JS::HandleObject ctor,
                                   JS::HandleObject proto);
 
 const size_t JSCLASS_CACHED_PROTO_WIDTH = 6;
@@ -425,9 +441,10 @@ struct ClassSpec
 {
     ClassObjectCreationOp createConstructor;
     ClassObjectCreationOp createPrototype;
-    const JSFunctionSpec *constructorFunctions;
-    const JSFunctionSpec *prototypeFunctions;
-    const JSPropertySpec *prototypeProperties;
+    const JSFunctionSpec* constructorFunctions;
+    const JSPropertySpec* constructorProperties;
+    const JSFunctionSpec* prototypeFunctions;
+    const JSPropertySpec* prototypeProperties;
     FinishClassInitOp finishInit;
     uintptr_t flags;
 
@@ -492,7 +509,7 @@ struct ClassExtension
     JSObjectMovedOp objectMovedOp;
 };
 
-#define JS_NULL_CLASS_SPEC  {nullptr,nullptr,nullptr,nullptr,nullptr,nullptr}
+#define JS_NULL_CLASS_SPEC  {nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr}
 #define JS_NULL_CLASS_EXT   {nullptr,nullptr,false,nullptr,nullptr}
 
 struct ObjectOps
@@ -524,11 +541,11 @@ typedef void (*JSClassInternal)();
 struct JSClass {
     JS_CLASS_MEMBERS(JSFinalizeOp);
 
-    void                *reserved[24];
+    void*               reserved[25];
 };
 
 #define JSCLASS_HAS_PRIVATE             (1<<0)  // objects have private slot
-#define JSCLASS_PRIVATE_IS_NSISUPPORTS  (1<<3)  // private is (nsISupports *)
+#define JSCLASS_PRIVATE_IS_NSISUPPORTS  (1<<3)  // private is (nsISupports*)
 #define JSCLASS_IS_DOMJSCLASS           (1<<4)  // objects are DOM
 #define JSCLASS_IMPLEMENTS_BARRIERS     (1<<5)  // Correctly implements GC read
                                                 // and write barriers
@@ -687,16 +704,16 @@ static_assert(offsetof(JSClass, trace) == offsetof(Class, trace),
 static_assert(sizeof(JSClass) == sizeof(Class),
               "Class and JSClass must be consistent");
 
-static MOZ_ALWAYS_INLINE const JSClass *
-Jsvalify(const Class *c)
+static MOZ_ALWAYS_INLINE const JSClass*
+Jsvalify(const Class* c)
 {
-    return (const JSClass *)c;
+    return (const JSClass*)c;
 }
 
-static MOZ_ALWAYS_INLINE const Class *
-Valueify(const JSClass *c)
+static MOZ_ALWAYS_INLINE const Class*
+Valueify(const JSClass* c)
 {
-    return (const Class *)c;
+    return (const Class*)c;
 }
 
 /*
@@ -720,19 +737,19 @@ enum ESClassValue {
  * may be a proxy).
  */
 inline bool
-ObjectClassIs(JSObject &obj, ESClassValue classValue, JSContext *cx);
+ObjectClassIs(JSObject& obj, ESClassValue classValue, JSContext* cx);
 
 /* Just a helper that checks v.isObject before calling ObjectClassIs. */
 inline bool
-IsObjectWithClass(const JS::Value &v, ESClassValue classValue, JSContext *cx);
+IsObjectWithClass(const JS::Value& v, ESClassValue classValue, JSContext* cx);
 
 /* Fills |vp| with the unboxed value for boxed types, or undefined otherwise. */
 inline bool
-Unbox(JSContext *cx, JS::HandleObject obj, JS::MutableHandleValue vp);
+Unbox(JSContext* cx, JS::HandleObject obj, JS::MutableHandleValue vp);
 
 #ifdef DEBUG
 JS_FRIEND_API(bool)
-HasObjectMovedOp(JSObject *obj);
+HasObjectMovedOp(JSObject* obj);
 #endif
 
 }  /* namespace js */

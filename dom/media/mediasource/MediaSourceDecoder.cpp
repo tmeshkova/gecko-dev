@@ -156,10 +156,11 @@ MediaSourceDecoder::OnTrackBufferConfigured(TrackBuffer* aTrackBuffer, const Med
 }
 
 void
-MediaSourceDecoder::Ended()
+MediaSourceDecoder::Ended(bool aEnded)
 {
   ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
-  mReader->Ended();
+  static_cast<MediaSourceResource*>(GetResource())->SetEnded(aEnded);
+  mReader->Ended(aEnded);
   mon.NotifyAll();
 }
 
@@ -180,7 +181,7 @@ public:
     , mNewDuration(aNewDuration)
   { }
 
-  NS_IMETHOD Run() MOZ_OVERRIDE MOZ_FINAL {
+  NS_IMETHOD Run() override final {
     mDecoder->DurationChanged(mOldDuration, mNewDuration);
     return NS_OK;
   }
@@ -261,7 +262,7 @@ MediaSourceDecoder::ScheduleDurationChange(double aOldDuration,
     if (NS_IsMainThread()) {
       DurationChanged(aOldDuration, aNewDuration);
     } else {
-      nsRefPtr<nsIRunnable> task =
+      nsCOMPtr<nsIRunnable> task =
         new DurationChangedRunnable(this, aOldDuration, aNewDuration);
       NS_DispatchToMainThread(task);
     }
@@ -304,6 +305,18 @@ MediaSourceDecoder::SetCDMProxy(CDMProxy* aProxy)
   rv = mReader->SetCDMProxy(aProxy);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  if (aProxy) {
+    // The sub readers can't decrypt EME content until they have a CDMProxy,
+    // and the CDMProxy knows the capabilities of the CDM. The MediaSourceReader
+    // remains in "waiting for resources" state until then. We need to kick the
+    // reader out of waiting if the CDM gets added with known capabilities.
+    CDMCaps::AutoLock caps(aProxy->Capabilites());
+    if (!caps.AreCapsKnown()) {
+      nsCOMPtr<nsIRunnable> task(
+        NS_NewRunnableMethod(this, &MediaDecoder::NotifyWaitingForResourcesStatusChanged));
+      caps.CallOnMainThreadWhenCapsAvailable(task);
+    }
+  }
   return NS_OK;
 }
 #endif

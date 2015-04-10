@@ -1789,8 +1789,9 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
                 }
                 duration = ntohl(duration32);
             }
-            if (duration) {
-              mFileMetaData->setInt64(kKeyMovieDuration, duration * 1000LL);
+            if (duration && mHeaderTimescale) {
+                mFileMetaData->setInt64(
+                        kKeyMovieDuration, (duration * 1000000) / mHeaderTimescale);
             }
 
             *offset += chunk_size;
@@ -2445,7 +2446,7 @@ status_t MPEG4Extractor::updateAudioTrackInfoFromESDS_MPEG4Audio(
         return OK;
     }
 
-    if (objectTypeIndication  == 0x6b) {
+    if (objectTypeIndication  == 0x6b || objectTypeIndication  == 0x69) {
         // The media subtype is MP3 audio
         mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_MPEG);
     }

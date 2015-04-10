@@ -37,7 +37,7 @@ GetTeeLog()
 #define LOG(args)
 #endif
 
-class nsInputStreamTee MOZ_FINAL : public nsIInputStreamTee
+class nsInputStreamTee final : public nsIInputStreamTee
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -172,7 +172,7 @@ nsInputStreamTee::TeeSegment(const char* aBuf, uint32_t aCount)
     if (!SinkIsValid()) {
       return NS_OK; // nothing to do
     }
-    nsRefPtr<nsIRunnable> event =
+    nsCOMPtr<nsIRunnable> event =
       new nsInputStreamTeeWriteEvent(aBuf, aCount, mSink, this);
     LOG(("nsInputStreamTee::TeeSegment [%p] dispatching write %u bytes\n",
          this, aCount));

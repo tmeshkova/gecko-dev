@@ -43,7 +43,8 @@ loop.shared.actions = (function() {
      * Extract the token information and type for the standalone window
      */
     ExtractTokenInfo: Action.define("extractTokenInfo", {
-      windowPath: String
+      windowPath: String,
+      windowHash: String
     }),
 
     /**
@@ -65,6 +66,7 @@ loop.shared.actions = (function() {
      * token.
      */
     FetchServerData: Action.define("fetchServerData", {
+      // cryptoKey: String - Optional.
       token: String,
       windowType: String
     }),
@@ -94,6 +96,20 @@ loop.shared.actions = (function() {
      * Used to retry a failed call.
      */
     RetryCall: Action.define("retryCall", {
+    }),
+
+    /**
+     * Signals when the user wishes to accept a call.
+     */
+    AcceptCall: Action.define("acceptCall", {
+      callType: String
+    }),
+
+    /**
+     * Signals when the user declines a call.
+     */
+    DeclineCall: Action.define("declineCall", {
+      blockCaller: Boolean
     }),
 
     /**
@@ -347,7 +363,9 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     RoomFailure: Action.define("roomFailure", {
-      error: Object
+      error: Object,
+      // True when the failures occurs in the join room request to the loop-server.
+      failedJoinRequest: Boolean
     }),
 
     /**
@@ -357,7 +375,7 @@ loop.shared.actions = (function() {
      * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
      */
     SetupRoomInfo: Action.define("setupRoomInfo", {
-      roomName: String,
+      // roomName: String - Optional.
       roomOwner: String,
       roomToken: String,
       roomUrl: String
@@ -370,7 +388,8 @@ loop.shared.actions = (function() {
      * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
      */
     UpdateRoomInfo: Action.define("updateRoomInfo", {
-      roomName: String,
+      // context: Object - Optional.
+      // roomName: String - Optional.
       roomOwner: String,
       roomUrl: String
     }),

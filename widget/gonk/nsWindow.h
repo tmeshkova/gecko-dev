@@ -90,14 +90,15 @@ public:
     void DispatchTouchInputViaAPZ(mozilla::MultiTouchInput& aInput);
     void DispatchTouchEventForAPZ(const mozilla::MultiTouchInput& aInput,
                                   const ScrollableLayerGuid& aGuid,
-                                  const uint64_t aInputBlockId);
+                                  const uint64_t aInputBlockId,
+                                  nsEventStatus aApzResponse);
     NS_IMETHOD DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
                              nsEventStatus& aStatus);
     virtual nsresult SynthesizeNativeTouchPoint(uint32_t aPointerId,
                                                 TouchPointerState aPointerState,
                                                 nsIntPoint aPointerScreenPoint,
                                                 double aPointerPressure,
-                                                uint32_t aPointerOrientation) MOZ_OVERRIDE;
+                                                uint32_t aPointerOrientation) override;
 
     NS_IMETHOD CaptureRollupEvents(nsIRollupListener *aListener,
                                    bool aDoCapture)
@@ -106,11 +107,11 @@ public:
     }
     NS_IMETHOD ReparentNativeWidget(nsIWidget* aNewParent);
 
-    NS_IMETHOD MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen = nullptr) /*MOZ_OVERRIDE*/;
+    NS_IMETHOD MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen = nullptr) /*override*/;
 
     virtual mozilla::TemporaryRef<mozilla::gfx::DrawTarget>
-        StartRemoteDrawing() MOZ_OVERRIDE;
-    virtual void EndRemoteDrawing() MOZ_OVERRIDE;
+        StartRemoteDrawing() override;
+    virtual void EndRemoteDrawing() override;
 
     virtual float GetDPI();
     virtual double GetDefaultScaleInternal();
@@ -124,12 +125,14 @@ public:
                                       const InputContextAction& aAction);
     NS_IMETHOD_(InputContext) GetInputContext();
 
-    virtual uint32_t GetGLFrameBufferFormat() MOZ_OVERRIDE;
+    virtual uint32_t GetGLFrameBufferFormat() override;
 
-    virtual nsIntRect GetNaturalBounds() MOZ_OVERRIDE;
+    virtual nsIntRect GetNaturalBounds() override;
     virtual bool NeedsPaint();
 
-    virtual Composer2D* GetComposer2D() MOZ_OVERRIDE;
+    virtual Composer2D* GetComposer2D() override;
+
+    void ConfigureAPZControllerThread() override;
 
 protected:
     nsWindow* mParent;

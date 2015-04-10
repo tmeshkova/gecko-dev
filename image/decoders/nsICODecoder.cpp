@@ -70,7 +70,7 @@ nsICODecoder::nsICODecoder(RasterImage* aImage)
 nsICODecoder::~nsICODecoder()
 {
   if (mRow) {
-    moz_free(mRow);
+    free(mRow);
   }
 }
 
@@ -85,7 +85,7 @@ nsICODecoder::FinishInternal()
     mContainedDecoder->FinishSharedDecoder();
     mDecodeDone = mContainedDecoder->GetDecodeDone();
     mProgress |= mContainedDecoder->TakeProgress();
-    mInvalidRect.Union(mContainedDecoder->TakeInvalidRect());
+    mInvalidRect.UnionRect(mInvalidRect, mContainedDecoder->TakeInvalidRect());
   }
 }
 
@@ -530,7 +530,7 @@ nsICODecoder::WriteInternal(const char* aBuffer, uint32_t aCount)
           mPos++;
           mRowBytes = 0;
           mCurLine = GetRealHeight();
-          mRow = (uint8_t*)moz_realloc(mRow, rowSize);
+          mRow = (uint8_t*)realloc(mRow, rowSize);
           if (!mRow) {
             PostDecoderError(NS_ERROR_OUT_OF_MEMORY);
             return;
@@ -598,7 +598,7 @@ nsICODecoder::WriteToContainedDecoder(const char* aBuffer, uint32_t aCount)
 {
   mContainedDecoder->Write(aBuffer, aCount);
   mProgress |= mContainedDecoder->TakeProgress();
-  mInvalidRect.Union(mContainedDecoder->TakeInvalidRect());
+  mInvalidRect.UnionRect(mInvalidRect, mContainedDecoder->TakeInvalidRect());
   if (mContainedDecoder->HasDataError()) {
     mDataError = mContainedDecoder->HasDataError();
   }
@@ -646,7 +646,7 @@ nsICODecoder::AllocateFrame(const nsIntSize& aTargetSize /* = nsIntSize() */)
     rv = mContainedDecoder->AllocateFrame(aTargetSize);
     mCurrentFrame = mContainedDecoder->GetCurrentFrameRef();
     mProgress |= mContainedDecoder->TakeProgress();
-    mInvalidRect.Union(mContainedDecoder->TakeInvalidRect());
+    mInvalidRect.UnionRect(mInvalidRect, mContainedDecoder->TakeInvalidRect());
     return rv;
   }
 

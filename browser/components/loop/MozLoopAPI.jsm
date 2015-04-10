@@ -21,6 +21,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "LoopStorage",
                                         "resource:///modules/loop/LoopStorage.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "hookWindowCloseForPanelClose",
                                         "resource://gre/modules/MozSocialAPI.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PageMetadata",
+                                        "resource://gre/modules/PageMetadata.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
                                         "resource://gre/modules/PluralForm.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UITour",
@@ -147,11 +149,16 @@ const injectObjectAPI = function(api, targetWindow) {
       // If the last parameter is a function, assume its a callback
       // and wrap it differently.
       if (callbackIsFunction) {
-        api[func](...params, function(...results) {
+        api[func](...params, function callback(...results) {
           // When the function was garbage collected due to async events, like
           // closing a window, we want to circumvent a JS error.
           if (callbackIsFunction && typeof lastParam != "function") {
             MozLoopService.log.debug(func + ": callback function was lost.");
+            // Clean up event listeners.
+            if (func == "on" && api.off) {
+              api.off(results[0], callback);
+              return;
+            }
             // Assume the presence of a first result argument to be an error.
             if (results[0]) {
               MozLoopService.log.error(func + " error:", results[0]);
@@ -165,6 +172,7 @@ const injectObjectAPI = function(api, targetWindow) {
           lastParam = cloneValueInto(lastParam, api);
           return cloneValueInto(api[func](...params, lastParam), targetWindow);
         } catch (ex) {
+          MozLoopService.log.error(func + " error: ", ex, params, lastParam);
           return cloneValueInto(ex, targetWindow);
         }
       }
@@ -283,7 +291,7 @@ function injectLoopAPI(targetWindow) {
       writable: true,
       value: function(listener) {
         let win = Services.wm.getMostRecentWindow("navigator:browser");
-        let browser = win && win.gBrowser.selectedTab.linkedBrowser;
+        let browser = win && win.gBrowser.selectedBrowser;
         if (!win || !browser) {
           // This may happen when an undocked conversation window is the only
           // window left.
@@ -639,6 +647,13 @@ function injectLoopAPI(targetWindow) {
       }
     },
 
+    SHARING_STATE_CHANGE: {
+      enumerable: true,
+      get: function() {
+        return Cu.cloneInto(SHARING_STATE_CHANGE, targetWindow);
+      }
+    },
+
     fxAEnabled: {
       enumerable: true,
       get: function() {
@@ -834,6 +849,24 @@ function injectLoopAPI(targetWindow) {
 
         // Compose the Gravatar URL.
         return "https://www.gravatar.com/avatar/" + md5Email + ".jpg?default=blank&s=" + size;
+      }
+    },
+
+    /**
+     * Gets the metadata related to the currently selected tab in
+     * the most recent window.
+     *
+     * @param {Function} A callback that is passed the metadata.
+     */
+    getSelectedTabMetadata: {
+      value: function(callback) {
+        let win = Services.wm.getMostRecentWindow("navigator:browser");
+        win.messageManager.addMessageListener("PageMetadata:PageDataResult", function onPageDataResult(msg) {
+          win.messageManager.removeMessageListener("PageMetadata:PageDataResult", onPageDataResult);
+          let pageData = msg.json;
+          callback(cloneValueInto(pageData, targetWindow));
+        });
+        win.gBrowser.selectedBrowser.messageManager.sendAsyncMessage("PageMetadata:GetPageData");
       }
     },
 

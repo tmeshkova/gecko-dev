@@ -31,20 +31,19 @@ public:
   void SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId);
 
   // GeckoContentController interface
-  virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
-  virtual void HandleDoubleTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
-  virtual void HandleSingleTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
-  virtual void HandleLongTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) MOZ_OVERRIDE;
-  virtual void HandleLongTapUp(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid) MOZ_OVERRIDE;
-  virtual void RequestFlingSnap(const FrameMetrics::ViewID& aScrollId, const mozilla::CSSPoint& aDestination) MOZ_OVERRIDE;
+  virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) override;
+  virtual void HandleDoubleTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
+  virtual void HandleSingleTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
+  virtual void HandleLongTap(const CSSPoint& aPoint, mozilla::Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) override;
+  virtual void RequestFlingSnap(const FrameMetrics::ViewID& aScrollId, const mozilla::CSSPoint& aDestination) override;
 
   virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
                                        const CSSRect& aContentRect,
-                                       const CSSSize& aScrollableSize) MOZ_OVERRIDE;
-  virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) MOZ_OVERRIDE;
+                                       const CSSSize& aScrollableSize) override;
+  virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) override;
   void ClearRenderFrame();
-  virtual void PostDelayedTask(Task* aTask, int aDelayMs) MOZ_OVERRIDE;
-  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) MOZ_OVERRIDE;
+  virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
+  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) override;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
   void TransformCoordinateToGecko(const mozilla::ScreenIntPoint& aPoint,
                                   LayoutDeviceIntPoint* aRefPointOut);

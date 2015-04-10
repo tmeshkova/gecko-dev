@@ -117,7 +117,7 @@ static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 typedef nsDataHashtable<nsUint64HashKey, TabChild*> TabChildMap;
 static TabChildMap* sTabChildren;
 
-class TabChild::DelayedFireContextMenuEvent MOZ_FINAL : public nsITimerCallback
+class TabChild::DelayedFireContextMenuEvent final : public nsITimerCallback
 {
 public:
   NS_DECL_ISUPPORTS
@@ -127,7 +127,7 @@ public:
   {
   }
 
-  NS_IMETHODIMP Notify(nsITimer*) MOZ_OVERRIDE
+  NS_IMETHODIMP Notify(nsITimer*) override
   {
     mTabChild->FireContextMenuEvent();
     return NS_OK;
@@ -199,14 +199,14 @@ TabChildBase::InitializeRootMetrics()
   mLastRootMetrics.mCompositionBounds = ParentLayerRect(
       ParentLayerPoint(),
       ParentLayerSize(ViewAs<ParentLayerPixel>(mInnerSize, PixelCastJustification::ScreenIsParentLayerForRoot)));
-  mLastRootMetrics.SetZoom(mLastRootMetrics.CalculateIntrinsicScale());
+  mLastRootMetrics.SetZoom(CSSToParentLayerScale2D(mLastRootMetrics.CalculateIntrinsicScale()));
   mLastRootMetrics.SetDevPixelsPerCSSPixel(WebWidget()->GetDefaultScale());
   // We use ParentLayerToLayerScale(1) below in order to turn the
   // async zoom amount into the gecko zoom amount.
   mLastRootMetrics.SetCumulativeResolution(mLastRootMetrics.GetZoom() / mLastRootMetrics.GetDevPixelsPerCSSPixel() * ParentLayerToLayerScale(1));
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
-  mLastRootMetrics.SetPresShellResolution(mLastRootMetrics.GetCumulativeResolution().scale);
+  mLastRootMetrics.SetPresShellResolution(mLastRootMetrics.GetCumulativeResolution().ToScaleFactor().scale);
   mLastRootMetrics.SetScrollOffset(CSSPoint(0, 0));
 
   TABC_LOG("After InitializeRootMetrics, mLastRootMetrics is %s\n",
@@ -372,7 +372,7 @@ TabChildBase::HandlePossibleViewportChange(const ScreenIntSize& aOldScreenSize)
     CSSToScreenScale defaultZoom = viewportInfo.GetDefaultZoom();
     MOZ_ASSERT(viewportInfo.GetMinZoom() <= defaultZoom &&
                defaultZoom <= viewportInfo.GetMaxZoom());
-    metrics.SetZoom(ConvertScaleForRoot(defaultZoom));
+    metrics.SetZoom(CSSToParentLayerScale2D(ConvertScaleForRoot(defaultZoom)));
 
     metrics.SetScrollId(viewId);
   }
@@ -389,8 +389,8 @@ TabChildBase::HandlePossibleViewportChange(const ScreenIntSize& aOldScreenSize)
                                 * ParentLayerToLayerScale(1));
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
-  metrics.SetPresShellResolution(metrics.GetCumulativeResolution().scale);
-  utils->SetResolutionAndScaleTo(metrics.GetPresShellResolution(), metrics.GetPresShellResolution());
+  metrics.SetPresShellResolution(metrics.GetCumulativeResolution().ToScaleFactor().scale);
+  utils->SetResolutionAndScaleTo(metrics.GetPresShellResolution());
 
   CSSSize scrollPort = metrics.CalculateCompositedSizeInCssPixels();
   utils->SetScrollPositionClampingScrollPortSize(scrollPort.width, scrollPort.height);
@@ -658,7 +658,7 @@ private:
     }
 };
 
-class TabChild::DelayedDeleteRunnable MOZ_FINAL
+class TabChild::DelayedDeleteRunnable final
   : public nsRunnable
 {
     nsRefPtr<TabChild> mTabChild;
@@ -803,9 +803,25 @@ public:
     : mTabChild(do_GetWeakReference(static_cast<nsITabChild*>(aTabChild)))
   {}
 
-  void Run(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid>& aTargets) const MOZ_OVERRIDE {
+  void Run(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid>& aTargets) const override {
     if (nsCOMPtr<nsITabChild> tabChild = do_QueryReferent(mTabChild)) {
       static_cast<TabChild*>(tabChild.get())->SendSetTargetAPZC(aInputBlockId, aTargets);
+    }
+  }
+
+private:
+  nsWeakPtr mTabChild;
+};
+
+class TabChildSetAllowedTouchBehaviorCallback : public SetAllowedTouchBehaviorCallback {
+public:
+  explicit TabChildSetAllowedTouchBehaviorCallback(TabChild* aTabChild)
+    : mTabChild(do_GetWeakReference(static_cast<nsITabChild*>(aTabChild)))
+  {}
+
+  void Run(uint64_t aInputBlockId, const nsTArray<TouchBehaviorFlags>& aFlags) const override {
+    if (nsCOMPtr<nsITabChild> tabChild = do_QueryReferent(mTabChild)) {
+      static_cast<TabChild*>(tabChild.get())->SendSetAllowedTouchBehavior(aInputBlockId, aFlags);
     }
   }
 
@@ -819,7 +835,7 @@ public:
     : mTabChild(do_GetWeakReference(static_cast<nsITabChild*>(aTabChild)))
   {}
 
-  void Run(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault) const MOZ_OVERRIDE {
+  void Run(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault) const override {
     if (nsCOMPtr<nsITabChild> tabChild = do_QueryReferent(mTabChild)) {
       static_cast<TabChild*>(tabChild.get())->SendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
     }
@@ -848,6 +864,7 @@ TabChild::TabChild(nsIContentChild* aManager,
   , mUpdateHitRegion(false)
   , mIgnoreKeyPressEvent(false)
   , mSetTargetAPZCCallback(new TabChildSetTargetAPZCCallback(this))
+  , mSetAllowedTouchBehaviorCallback(new TabChildSetAllowedTouchBehaviorCallback(this))
   , mHasValidInnerSize(false)
   , mDestroyed(false)
   , mUniqueId(aTabId)
@@ -917,8 +934,7 @@ TabChild::Observe(nsISupports *aSubject,
         // until we we get an inner size.
         if (HasValidInnerSize()) {
           InitializeRootMetrics();
-          utils->SetResolutionAndScaleTo(mLastRootMetrics.GetPresShellResolution(),
-                                         mLastRootMetrics.GetPresShellResolution());
+          utils->SetResolutionAndScaleTo(mLastRootMetrics.GetPresShellResolution());
           HandlePossibleViewportChange(mInnerSize);
         }
       }
@@ -2010,8 +2026,8 @@ TabChild::RecvUpdateDimensions(const nsIntRect& rect, const ScreenIntSize& size,
     mOrientation = orientation;
     ScreenIntSize oldScreenSize = mInnerSize;
     mInnerSize = size;
-    mWidget->Resize(0, 0, size.width, size.height,
-                    true);
+    mWidget->Resize(rect.x + chromeDisp.x, rect.y + chromeDisp.y, size.width, size.height,
+                     true);
 
     nsCOMPtr<nsIBaseWindow> baseWin = do_QueryInterface(WebNavigation());
     baseWin->SetPositionAndSize(0, 0, size.width, size.height,
@@ -2093,15 +2109,6 @@ TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const Modifiers& aModifiers,
   if (mGlobal && mTabChildGlobal) {
     mAPZEventState->ProcessLongTap(GetDOMWindowUtils(), aPoint, aModifiers, aGuid,
         aInputBlockId, GetPresShellResolution());
-  }
-  return true;
-}
-
-bool
-TabChild::RecvHandleLongTapUp(const CSSPoint& aPoint, const Modifiers& aModifiers, const ScrollableLayerGuid& aGuid)
-{
-  if (mGlobal && mTabChildGlobal) {
-    mAPZEventState->ProcessLongTapUp(aPoint, aModifiers, aGuid, GetPresShellResolution());
   }
   return true;
 }
@@ -2189,6 +2196,13 @@ TabChild::RecvMouseWheelEvent(const WidgetWheelEvent& aEvent,
   if (gfxPrefs::AsyncPanZoomEnabled()) {
     mAPZEventState->ProcessWheelEvent(event, aGuid, aInputBlockId);
   }
+  return true;
+}
+
+bool
+TabChild::RecvMouseScrollTestEvent(const FrameMetrics::ViewID& aScrollId, const nsString& aEvent)
+{
+  APZCCallbackHelper::NotifyMozMouseScrollEvent(aScrollId, aEvent);
   return true;
 }
 
@@ -2344,7 +2358,7 @@ TabChild::GetPresShellResolution() const
   if (!shell) {
     return 1.0f;
   }
-  return shell->GetXResolution();
+  return shell->GetResolution();
 }
 
 bool
@@ -2361,6 +2375,10 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
       mWidget->GetDefaultScale(), GetPresShellResolution());
 
   if (localEvent.message == NS_TOUCH_START && gfxPrefs::AsyncPanZoomEnabled()) {
+    if (gfxPrefs::TouchActionEnabled()) {
+      APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(WebWidget(),
+          localEvent, aInputBlockId, mSetAllowedTouchBehaviorCallback);
+    }
     nsCOMPtr<nsIDocument> document = GetDocument();
     APZCCallbackHelper::SendSetTargetAPZCNotification(WebWidget(), document,
         localEvent, aGuid, aInputBlockId, mSetTargetAPZCCallback);
@@ -2374,7 +2392,8 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
     return true;
   }
 
-  mAPZEventState->ProcessTouchEvent(localEvent, aGuid, aInputBlockId);
+  mAPZEventState->ProcessTouchEvent(localEvent, aGuid, aInputBlockId,
+                                    nsEventStatus_eIgnore);
   return true;
 }
 
@@ -2650,32 +2669,6 @@ TabChild::RecvAppOfflineStatus(const uint32_t& aId, const bool& aOffline)
   return true;
 }
 
-class UnloadScriptEvent : public nsRunnable
-{
-public:
-  UnloadScriptEvent(TabChild* aTabChild, TabChildGlobal* aTabChildGlobal)
-    : mTabChild(aTabChild), mTabChildGlobal(aTabChildGlobal)
-  { }
-
-  NS_IMETHOD Run()
-  {
-    nsCOMPtr<nsIDOMEvent> event;
-    NS_NewDOMEvent(getter_AddRefs(event), mTabChildGlobal, nullptr, nullptr);
-    if (event) {
-      event->InitEvent(NS_LITERAL_STRING("unload"), false, false);
-      event->SetTrusted(true);
-
-      bool dummy;
-      mTabChildGlobal->DispatchEvent(event, &dummy);
-    }
-
-    return NS_OK;
-  }
-
-  nsRefPtr<TabChild> mTabChild;
-  TabChildGlobal* mTabChildGlobal;
-};
-
 bool
 TabChild::RecvDestroy()
 {
@@ -2683,10 +2676,10 @@ TabChild::RecvDestroy()
   mDestroyed = true;
 
   if (mTabChildGlobal) {
-    // Let the frame scripts know the child is being closed
-    nsContentUtils::AddScriptRunner(
-      new UnloadScriptEvent(this, mTabChildGlobal)
-    );
+    // Message handlers are called from the event loop, so it better be safe to
+    // run script.
+    MOZ_ASSERT(nsContentUtils::IsSafeToRunScript());
+    mTabChildGlobal->DispatchTrustedEvent(NS_LITERAL_STRING("unload"));
   }
 
   nsCOMPtr<nsIObserverService> observerService =

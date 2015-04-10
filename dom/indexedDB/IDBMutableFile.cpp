@@ -52,10 +52,10 @@ public:
 
   virtual nsresult
   GetSuccessResult(JSContext* aCx,
-                   JS::MutableHandle<JS::Value> aVal) MOZ_OVERRIDE;
+                   JS::MutableHandle<JS::Value> aVal) override;
 
   virtual void
-  ReleaseObjects() MOZ_OVERRIDE
+  ReleaseObjects() override
   {
     mMutableFile = nullptr;
     MetadataHelper::ReleaseObjects();
@@ -275,30 +275,13 @@ IDBMutableFile::CreateStream(bool aReadOnly)
   return result.forget();
 }
 
-void
-IDBMutableFile::SetThreadLocals()
-{
-  MOZ_ASSERT(IndexedDatabaseManager::IsMainProcess());
-  MOZ_ASSERT(mDatabase->GetOwner(), "Should have owner!");
-
-  QuotaManager::SetCurrentWindow(mDatabase->GetOwner());
-}
-
-void
-IDBMutableFile::UnsetThreadLocals()
-{
-  MOZ_ASSERT(IndexedDatabaseManager::IsMainProcess());
-
-  QuotaManager::SetCurrentWindow(nullptr);
-}
-
 JSObject*
-IDBMutableFile::WrapObject(JSContext* aCx)
+IDBMutableFile::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   MOZ_ASSERT(IndexedDatabaseManager::IsMainProcess());
   MOZ_ASSERT(NS_IsMainThread());
 
-  return IDBMutableFileBinding::Wrap(aCx, this);
+  return IDBMutableFileBinding::Wrap(aCx, this, aGivenProto);
 }
 
 IDBDatabase*

@@ -458,8 +458,11 @@ nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu,
     mPrefSize = prefSize;
   }
 
+  bool needCallback = false;
+
   if (shouldPosition) {
     SetPopupPosition(aAnchor, false, aSizedToPopup);
+    needCallback = true;
   }
 
   nsRect bounds(GetRect());
@@ -476,7 +479,8 @@ nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu,
       // so set the preferred size accordingly
       mPrefSize = newsize;
       if (isOpen) {
-        SetPopupPosition(nullptr, false, aSizedToPopup);
+        SetPopupPosition(aAnchor, false, aSizedToPopup);
+        needCallback = true;
       }
     }
   }
@@ -528,6 +532,27 @@ nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu,
     nsCOMPtr<nsIRunnable> event = new nsXULPopupShownEvent(GetContent(), pc);
     NS_DispatchToCurrentThread(event);
   }
+
+  if (needCallback && !mReflowCallbackData.mPosted) {
+    pc->PresShell()->PostReflowCallback(this);
+    mReflowCallbackData.MarkPosted(aAnchor, aSizedToPopup);
+  }
+}
+
+bool
+nsMenuPopupFrame::ReflowFinished()
+{
+  SetPopupPosition(mReflowCallbackData.mAnchor, false, mReflowCallbackData.mSizedToPopup);
+
+  mReflowCallbackData.Clear();
+
+  return false;
+}
+
+void
+nsMenuPopupFrame::ReflowCallbackCanceled()
+{
+  mReflowCallbackData.Clear();
 }
 
 nsIContent*
@@ -1221,8 +1246,9 @@ nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, bool aIsMove, bool aS
   // Relative to the screen
   parentRect.MoveBy(referenceFrame->GetScreenRectInAppUnits().TopLeft());
   // In its own app units
-  parentRect.ConvertAppUnitsRoundOut(rootPresContext->AppUnitsPerDevPixel(),
-                                     presContext->AppUnitsPerDevPixel());
+  parentRect =
+    parentRect.ScaleToOtherAppUnitsRoundOut(rootPresContext->AppUnitsPerDevPixel(),
+                                            presContext->AppUnitsPerDevPixel());
 
   // Set the popup's size to the preferred size. Below, this size will be
   // adjusted to fit on the screen or within the content area. If the anchor
@@ -1942,6 +1968,11 @@ nsMenuPopupFrame::MoveToAttributePosition()
 void
 nsMenuPopupFrame::DestroyFrom(nsIFrame* aDestructRoot)
 {
+  if (mReflowCallbackData.mPosted) {
+    PresContext()->PresShell()->CancelReflowCallback(this);
+    mReflowCallbackData.Clear();
+  }
+
   nsMenuFrame* menu = do_QueryFrame(GetParent());
   if (menu) {
     // clear the open attribute on the parent menu

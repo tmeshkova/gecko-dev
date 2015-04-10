@@ -82,6 +82,7 @@ MSG_DEF(JSMSG_EMPTY_ARRAY_REDUCE,      0, JSEXN_TYPEERR, "reduce of empty array 
 MSG_DEF(JSMSG_UNEXPECTED_TYPE,         2, JSEXN_TYPEERR, "{0} is {1}")
 MSG_DEF(JSMSG_MISSING_FUN_ARG,         2, JSEXN_TYPEERR, "missing argument {0} when calling function {1}")
 MSG_DEF(JSMSG_NOT_NONNULL_OBJECT,      1, JSEXN_TYPEERR, "{0} is not a non-null object")
+MSG_DEF(JSMSG_SET_NON_OBJECT_RECEIVER, 1, JSEXN_TYPEERR, "can't assign to properties of {0}: not an object")
 MSG_DEF(JSMSG_INVALID_DESCRIPTOR,      0, JSEXN_TYPEERR, "property descriptors must not specify a value or be writable when a getter or setter has been specified")
 MSG_DEF(JSMSG_OBJECT_NOT_EXTENSIBLE,   1, JSEXN_TYPEERR, "{0} is not extensible")
 MSG_DEF(JSMSG_CANT_REDEFINE_PROP,      1, JSEXN_TYPEERR, "can't redefine non-configurable property {0}")
@@ -100,6 +101,7 @@ MSG_DEF(JSMSG_CANT_SET_PROTO_OF,       1, JSEXN_TYPEERR, "can't set prototype of
 MSG_DEF(JSMSG_CANT_SET_PROTO_CYCLE,    0, JSEXN_TYPEERR, "can't set prototype: it would cause a prototype chain cycle")
 MSG_DEF(JSMSG_INVALID_ARG_TYPE,        3, JSEXN_TYPEERR, "Invalid type: {0} can't be a{1} {2}")
 MSG_DEF(JSMSG_TERMINATED,              1, JSEXN_ERR, "Script terminated by timeout at:\n{0}")
+MSG_DEF(JSMSG_PROTO_NOT_OBJORNULL,     1, JSEXN_TYPEERR, "{0}.prototype is not an object or null")
 
 // JSON
 MSG_DEF(JSMSG_JSON_BAD_PARSE,          3, JSEXN_SYNTAXERR, "JSON.parse: {0} at line {1} column {2} of the JSON data")
@@ -231,6 +233,7 @@ MSG_DEF(JSMSG_CURLY_IN_COMPOUND,       0, JSEXN_SYNTAXERR, "missing } in compoun
 MSG_DEF(JSMSG_DECLARATION_AFTER_EXPORT,0, JSEXN_SYNTAXERR, "missing declaration after 'export' keyword")
 MSG_DEF(JSMSG_DECLARATION_AFTER_IMPORT,0, JSEXN_SYNTAXERR, "missing declaration after 'import' keyword")
 MSG_DEF(JSMSG_DEPRECATED_DELETE_OPERAND, 0, JSEXN_SYNTAXERR, "applying the 'delete' operator to an unqualified name is deprecated")
+MSG_DEF(JSMSG_DEPRECATED_FLAGS_ARG,    0, JSEXN_NONE, "flags argument of String.prototype.{search,match,replace} is deprecated")
 MSG_DEF(JSMSG_DEPRECATED_LET_BLOCK,      0, JSEXN_NONE, "JavaScript 1.7's let blocks are deprecated")
 MSG_DEF(JSMSG_DEPRECATED_FOR_EACH,     0, JSEXN_NONE, "JavaScript 1.6's for-each-in loops are deprecated; consider using ES6 for-of instead")
 MSG_DEF(JSMSG_DEPRECATED_LET_EXPRESSION, 0, JSEXN_NONE, "JavaScript 1.7's let expressions are deprecated")
@@ -302,6 +305,7 @@ MSG_DEF(JSMSG_SEMI_AFTER_FOR_COND,     0, JSEXN_SYNTAXERR, "missing ; after for-
 MSG_DEF(JSMSG_SEMI_AFTER_FOR_INIT,     0, JSEXN_SYNTAXERR, "missing ; after for-loop initializer")
 MSG_DEF(JSMSG_SEMI_BEFORE_STMNT,       0, JSEXN_SYNTAXERR, "missing ; before statement")
 MSG_DEF(JSMSG_SOURCE_TOO_LONG,         0, JSEXN_RANGEERR, "source is too long")
+MSG_DEF(JSMSG_STMT_AFTER_SEMI_LESS,    0, JSEXN_SYNTAXERR, "unreachable expression after semicolon-less return statement")
 MSG_DEF(JSMSG_STRICT_CODE_LET_EXPR_STMT, 0, JSEXN_ERR, "strict mode code may not contain unparenthesized let expression statements")
 MSG_DEF(JSMSG_STRICT_CODE_WITH,        0, JSEXN_SYNTAXERR, "strict mode code may not contain 'with' statements")
 MSG_DEF(JSMSG_STRICT_FUNCTION_STATEMENT, 0, JSEXN_SYNTAXERR, "in strict mode code, functions may be declared only at top level or immediately within another function")
@@ -342,8 +346,10 @@ MSG_DEF(JSMSG_CANT_CHANGE_EXTENSIBILITY, 0, JSEXN_TYPEERR, "can't change object'
 MSG_DEF(JSMSG_CANT_DEFINE_INVALID,     0, JSEXN_TYPEERR, "proxy can't define an incompatible property descriptor")
 MSG_DEF(JSMSG_CANT_DEFINE_NEW,         0, JSEXN_TYPEERR, "proxy can't define a new property on a non-extensible object")
 MSG_DEF(JSMSG_CANT_DEFINE_NE_AS_NC,    0, JSEXN_TYPEERR, "proxy can't define a non-existent property as non-configurable")
+MSG_DEF(JSMSG_PROXY_DEFINE_RETURNED_FALSE, 1, JSEXN_TYPEERR, "proxy defineProperty handler returned false for property '{0}'")
 MSG_DEF(JSMSG_PROXY_DELETE_RETURNED_FALSE, 1, JSEXN_TYPEERR, "can't delete property '{0}': proxy deleteProperty handler returned false")
 MSG_DEF(JSMSG_PROXY_PREVENTEXTENSIONS_RETURNED_FALSE, 0, JSEXN_TYPEERR, "proxy preventExtensions handler returned false")
+MSG_DEF(JSMSG_PROXY_SET_RETURNED_FALSE, 1, JSEXN_TYPEERR, "proxy set handler returned false for property '{0}'")
 MSG_DEF(JSMSG_CANT_REPORT_AS_NON_EXTENSIBLE, 0, JSEXN_TYPEERR, "proxy can't report an extensible object as non-extensible")
 MSG_DEF(JSMSG_CANT_REPORT_C_AS_NC,     0, JSEXN_TYPEERR, "proxy can't report existing configurable property as non-configurable")
 MSG_DEF(JSMSG_CANT_REPORT_E_AS_NE,     0, JSEXN_TYPEERR, "proxy can't report an existing own property as non-existent on a non-extensible object")
@@ -476,6 +482,7 @@ MSG_DEF(JSMSG_ATOMICS_WAIT_NOT_ALLOWED,  0, JSEXN_ERR, "waiting is not allowed o
 
 // XPConnect wrappers and DOM bindings
 MSG_DEF(JSMSG_CANT_SET_INTERPOSED,      1, JSEXN_TYPEERR, "unable to set interposed data property '{0}'")
+MSG_DEF(JSMSG_CANT_DEFINE_WINDOW_ELEMENT, 0, JSEXN_TYPEERR, "can't define elements on a Window object")
 MSG_DEF(JSMSG_CANT_DELETE_WINDOW_ELEMENT, 0, JSEXN_TYPEERR, "can't delete elements from a Window object")
 MSG_DEF(JSMSG_CANT_DELETE_WINDOW_NAMED_PROPERTY, 1, JSEXN_TYPEERR, "can't delete property {0} from window's named properties object")
 MSG_DEF(JSMSG_CANT_PREVENT_EXTENSIONS,  0, JSEXN_TYPEERR, "can't prevent extensions on this proxy object")

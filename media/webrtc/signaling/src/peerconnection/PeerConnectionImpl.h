@@ -140,7 +140,7 @@ class RemoteSourceStreamInfo;
 // Uuid Generator
 class PCUuidGenerator : public mozilla::JsepUuidGenerator {
  public:
-  virtual bool Generate(std::string* idp) MOZ_OVERRIDE;
+  virtual bool Generate(std::string* idp) override;
 
  private:
   nsCOMPtr<nsIUUIDGenerator> mGenerator;
@@ -227,13 +227,13 @@ class RTCStatsQuery {
     } while(0)
 #define PC_AUTO_ENTER_API_CALL_NO_CHECK() CheckThread()
 
-class PeerConnectionImpl MOZ_FINAL : public nsISupports,
+class PeerConnectionImpl final : public nsISupports,
 #ifdef MOZILLA_INTERNAL_API
-                                     public mozilla::DataChannelConnection::DataConnectionListener,
-                                     public nsNSSShutDownObject,
-                                     public DOMMediaStream::PrincipalChangeObserver,
+                                 public mozilla::DataChannelConnection::DataConnectionListener,
+                                 public nsNSSShutDownObject,
+                                 public DOMMediaStream::PrincipalChangeObserver,
 #endif
-                                     public sigslot::has_slots<>
+                                 public sigslot::has_slots<>
 {
   struct Internal; // Avoid exposing c includes to bindings
 
@@ -254,7 +254,7 @@ public:
   NS_DECL_THREADSAFE_ISUPPORTS
 
 #ifdef MOZILLA_INTERNAL_API
-  bool WrapObject(JSContext* aCx, JS::MutableHandle<JSObject*> aReflector);
+  bool WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector);
 #endif
 
   static already_AddRefed<PeerConnectionImpl>
@@ -274,7 +274,7 @@ public:
 #ifdef MOZILLA_INTERNAL_API
     // PeerConnectionImpl only inherits from mozilla::DataChannelConnection
     // inside libxul.
-    MOZ_OVERRIDE
+    override
 #endif
     ;
 
@@ -418,10 +418,9 @@ public:
 
   NS_IMETHODIMP_TO_ERRORRESULT(ReplaceTrack, ErrorResult &rv,
                                mozilla::dom::MediaStreamTrack& aThisTrack,
-                               mozilla::dom::MediaStreamTrack& aWithTrack,
-                               DOMMediaStream& aStream)
+                               mozilla::dom::MediaStreamTrack& aWithTrack)
   {
-    rv = ReplaceTrack(aThisTrack, aWithTrack, aStream);
+    rv = ReplaceTrack(aThisTrack, aWithTrack);
   }
 
   nsresult GetPeerIdentity(nsAString& peerIdentity)
@@ -596,7 +595,7 @@ public:
 
   // for monitoring changes in stream ownership
   // PeerConnectionMedia can't do it because it doesn't know about principals
-  virtual void PrincipalChanged(DOMMediaStream* aMediaStream) MOZ_OVERRIDE;
+  virtual void PrincipalChanged(DOMMediaStream* aMediaStream) override;
 
   nsresult GetRemoteTrackId(const std::string streamId,
                             TrackID numericTrackId,
@@ -639,7 +638,7 @@ private:
   }
 
 #ifdef MOZILLA_INTERNAL_API
-  void virtualDestroyNSSReference() MOZ_FINAL;
+  void virtualDestroyNSSReference() final;
   void destructorSafeDestroyNSSReference();
   nsresult GetTimeSinceEpoch(DOMHighResTimeStamp *result);
 #endif

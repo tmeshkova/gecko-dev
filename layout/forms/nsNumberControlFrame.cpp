@@ -106,6 +106,7 @@ nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
                              const nsHTMLReflowState& aReflowState,
                              nsReflowStatus& aStatus)
 {
+  MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsNumberControlFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowState, aDesiredSize, aStatus);
 
@@ -269,7 +270,7 @@ public:
       mTextField(aTextField)
   {}
 
-  NS_IMETHODIMP Run() MOZ_OVERRIDE
+  NS_IMETHODIMP Run() override
   {
     if (mNumber->AsElement()->State().HasState(NS_EVENT_STATE_FOCUS)) {
       HTMLInputElement::FromContent(mTextField)->Focus();

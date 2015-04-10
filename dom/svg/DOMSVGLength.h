@@ -74,8 +74,8 @@ class ErrorResult;
  * if-else as appropriate. The bug for doing that work is:
  * https://bugzilla.mozilla.org/show_bug.cgi?id=571734
  */
-class DOMSVGLength MOZ_FINAL : public nsIDOMSVGLength,
-                               public nsWrapperCache
+class DOMSVGLength final : public nsIDOMSVGLength,
+                           public nsWrapperCache
 {
   friend class AutoChangeLengthNotifier;
 
@@ -188,7 +188,7 @@ public:
     return static_cast<nsIDOMSVGElement*> (svgElement);
   }
 
-  JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
 private:
 

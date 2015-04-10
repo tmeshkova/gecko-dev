@@ -72,12 +72,12 @@ class nsIStreamListener;
 // implements nsITransportEventSink so it can mix status events from both the
 // control connection and the data connection.
 
-class nsFtpState MOZ_FINAL : public nsBaseContentStream,
-                             public nsIInputStreamCallback,
-                             public nsITransportEventSink,
-                             public nsIRequestObserver,
-                             public nsFtpControlConnectionListener,
-                             public nsIProtocolProxyCallback
+class nsFtpState final : public nsBaseContentStream,
+                         public nsIInputStreamCallback,
+                         public nsITransportEventSink,
+                         public nsIRequestObserver,
+                         public nsFtpControlConnectionListener,
+                         public nsIProtocolProxyCallback
 {
 public:
     NS_DECL_ISUPPORTS_INHERITED
@@ -87,21 +87,21 @@ public:
     NS_DECL_NSIPROTOCOLPROXYCALLBACK
 
     // Override input stream methods:
-    NS_IMETHOD CloseWithStatus(nsresult status) MOZ_OVERRIDE;
-    NS_IMETHOD Available(uint64_t *result) MOZ_OVERRIDE;
+    NS_IMETHOD CloseWithStatus(nsresult status) override;
+    NS_IMETHOD Available(uint64_t *result) override;
     NS_IMETHOD ReadSegments(nsWriteSegmentFun fun, void *closure,
-                            uint32_t count, uint32_t *result) MOZ_OVERRIDE;
+                            uint32_t count, uint32_t *result) override;
 
     // nsFtpControlConnectionListener methods:
-    virtual void OnControlDataAvailable(const char *data, uint32_t dataLen) MOZ_OVERRIDE;
-    virtual void OnControlError(nsresult status) MOZ_OVERRIDE;
+    virtual void OnControlDataAvailable(const char *data, uint32_t dataLen) override;
+    virtual void OnControlError(nsresult status) override;
 
     nsFtpState();
     nsresult Init(nsFtpChannel *channel);
 
 protected:
     // Notification from nsBaseContentStream::AsyncWait
-    virtual void OnCallbackPending() MOZ_OVERRIDE;
+    virtual void OnCallbackPending() override;
 
 private:
     virtual ~nsFtpState();

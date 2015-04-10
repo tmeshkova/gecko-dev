@@ -106,18 +106,6 @@ public:
     return mChildProcessHandle;
   }
 
-  // Returns an "owned" handle to the child process - the handle returned
-  // by this function must be closed by the caller.
-  ProcessHandle GetOwnedChildProcessHandle() {
-    ProcessHandle handle;
-    // We use OpenPrivilegedProcessHandle as that is where our
-    // mChildProcessHandle initially came from.
-    bool ok = base::OpenPrivilegedProcessHandle(base::GetProcId(mChildProcessHandle),
-                                                &handle);
-    NS_ASSERTION(ok, "Failed to get owned process handle");
-    return ok ? handle : 0;
-  }
-
   GeckoProcessType GetProcessType() {
     return mProcessType;
   }
@@ -213,7 +201,7 @@ private:
 };
 
 #ifdef MOZ_NUWA_PROCESS
-class GeckoExistingProcessHost MOZ_FINAL : public GeckoChildProcessHost
+class GeckoExistingProcessHost final : public GeckoChildProcessHost
 {
 public:
   GeckoExistingProcessHost(GeckoProcessType aProcessType,
@@ -224,9 +212,9 @@ public:
   ~GeckoExistingProcessHost();
 
   virtual bool PerformAsyncLaunch(StringVector aExtraOpts=StringVector(),
-          base::ProcessArchitecture aArch=base::GetCurrentProcessArchitecture()) MOZ_OVERRIDE;
+          base::ProcessArchitecture aArch=base::GetCurrentProcessArchitecture()) override;
 
-  virtual void InitializeChannel() MOZ_OVERRIDE;
+  virtual void InitializeChannel() override;
 
 private:
   base::ProcessHandle mExistingProcessHandle;

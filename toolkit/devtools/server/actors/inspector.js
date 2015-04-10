@@ -1121,6 +1121,9 @@ var WalkerActor = protocol.ActorClass({
       type: "pickerNodeHovered",
       node: Arg(0, "disconnectedNode")
     },
+    "picker-node-canceled" : {
+      type: "pickerNodeCanceled"
+    },
     "highlighter-ready" : {
       type: "highlighter-ready"
     },
@@ -2403,7 +2406,29 @@ var WalkerActor = protocol.ActorClass({
       this._orphaned = new Set();
     }
 
-    return pending;
+
+    // Clear out any duplicate attribute mutations before sending them over
+    // the protocol.  Keep only the most recent change for each attribute.
+    let targetMap = {};
+    let filtered = pending.reverse().filter(mutation => {
+      if (mutation.type === "attributes") {
+        if (!targetMap[mutation.target]) {
+          targetMap[mutation.target] = {};
+        }
+        let attributesForTarget = targetMap[mutation.target];
+
+        if (attributesForTarget[mutation.attributeName]) {
+          // Since the array was reversed, if we've seen this attribute already
+          // then this one is a duplicate and can be skipped.
+          return false;
+        }
+
+        attributesForTarget[mutation.attributeName] = true;
+      }
+      return true;
+    }).reverse();
+
+    return filtered;
   }, {
     request: {
       cleanup: Option(0)

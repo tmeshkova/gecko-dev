@@ -31,12 +31,12 @@
 class nsFormHistory;
 class nsINode;
 
-class nsFormFillController MOZ_FINAL : public nsIFormFillController,
-                                       public nsIAutoCompleteInput,
-                                       public nsIAutoCompleteSearch,
-                                       public nsIDOMEventListener,
-                                       public nsIFormAutoCompleteObserver,
-                                       public nsIMutationObserver
+class nsFormFillController final : public nsIFormFillController,
+                                   public nsIAutoCompleteInput,
+                                   public nsIAutoCompleteSearch,
+                                   public nsIDOMEventListener,
+                                   public nsIFormAutoCompleteObserver,
+                                   public nsIMutationObserver
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS

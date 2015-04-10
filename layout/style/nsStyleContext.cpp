@@ -299,6 +299,12 @@ nsStyleContext::MoveTo(nsStyleContext* aNewParent)
 {
   MOZ_ASSERT(aNewParent != mParent);
 
+  // This function shouldn't be getting called if the parents have different
+  // values for some flags in mBits, because if that were the case we would need
+  // to recompute those bits for |this|. (TODO: add more flags to |mask|.)
+  DebugOnly<uint64_t> mask = NS_STYLE_IN_DISPLAY_NONE_SUBTREE;
+  MOZ_ASSERT((mParent->mBits & mask) == (aNewParent->mBits & mask));
+
   // Assertions checking for visited style are just to avoid some tricky
   // cases we can't be bothered handling at the moment.
   MOZ_ASSERT(!IsStyleIfVisited());
@@ -516,6 +522,40 @@ nsStyleContext::SetStyle(nsStyleStructID aSID, void* aStruct)
   *dataSlot = aStruct;
 }
 
+static bool
+ShouldSuppressLineBreak(const nsStyleDisplay* aStyleDisplay,
+                        const nsStyleContext* aContainerContext,
+                        const nsStyleDisplay* aContainerDisplay)
+{
+  // The display change should only occur for "in-flow" children
+  if (aStyleDisplay->IsOutOfFlowStyle()) {
+    return false;
+  }
+  if (aContainerContext->ShouldSuppressLineBreak()) {
+    // Line break suppressing bit is propagated to any children of line
+    // participants, which include inline and inline ruby boxes.
+    if (aContainerDisplay->mDisplay == NS_STYLE_DISPLAY_INLINE ||
+        aContainerDisplay->mDisplay == NS_STYLE_DISPLAY_RUBY ||
+        aContainerDisplay->mDisplay == NS_STYLE_DISPLAY_RUBY_BASE_CONTAINER) {
+      return true;
+    }
+  }
+  // Any descendant of ruby level containers is non-breakable, but
+  // the level containers themselves are breakable. We have to check
+  // the container display type against all ruby display type here
+  // because any of the ruby boxes could be anonymous.
+  if ((aContainerDisplay->IsRubyDisplayType() &&
+       aStyleDisplay->mDisplay != NS_STYLE_DISPLAY_RUBY_BASE_CONTAINER &&
+       aStyleDisplay->mDisplay != NS_STYLE_DISPLAY_RUBY_TEXT_CONTAINER) ||
+      // Since ruby base and ruby text may exist themselves without any
+      // non-anonymous frame outside, we should also check them.
+      aStyleDisplay->mDisplay == NS_STYLE_DISPLAY_RUBY_BASE ||
+      aStyleDisplay->mDisplay == NS_STYLE_DISPLAY_RUBY_TEXT) {
+    return true;
+  }
+  return false;
+}
+
 void
 nsStyleContext::ApplyStyleFixups(bool aSkipParentDisplayBasedStyleFixup)
 {
@@ -642,12 +682,8 @@ nsStyleContext::ApplyStyleFixups(bool aSkipParentDisplayBasedStyleFixup)
       }
     }
 
-    // The display change should only occur for "in-flow" children
-    if (!disp->IsOutOfFlowStyle() &&
-        ((containerDisp->mDisplay == NS_STYLE_DISPLAY_INLINE &&
-          containerContext->IsInlineDescendantOfRuby()) ||
-         containerDisp->IsRubyDisplayType())) {
-      mBits |= NS_STYLE_IS_INLINE_DESCENDANT_OF_RUBY;
+    if (::ShouldSuppressLineBreak(disp, containerContext, containerDisp)) {
+      mBits |= NS_STYLE_SUPPRESS_LINEBREAK;
       uint8_t displayVal = disp->mDisplay;
       nsRuleNode::EnsureInlineDisplay(displayVal);
       if (displayVal != disp->mDisplay) {
@@ -658,11 +694,34 @@ nsStyleContext::ApplyStyleFixups(bool aSkipParentDisplayBasedStyleFixup)
     }
   }
 
+  // Set the NS_STYLE_IN_DISPLAY_NONE_SUBTREE bit
+  if ((mParent && mParent->IsInDisplayNoneSubtree()) ||
+      disp->mDisplay == NS_STYLE_DISPLAY_NONE) {
+    mBits |= NS_STYLE_IN_DISPLAY_NONE_SUBTREE;
+  }
+
   // Suppress border/padding of ruby level containers
   if (disp->mDisplay == NS_STYLE_DISPLAY_RUBY_BASE_CONTAINER ||
       disp->mDisplay == NS_STYLE_DISPLAY_RUBY_TEXT_CONTAINER) {
     CreateEmptyStyleData(eStyleStruct_Border);
     CreateEmptyStyleData(eStyleStruct_Padding);
+  }
+
+  // Elements with display:inline whose writing-mode is orthogonal to their
+  // parent's mode will be converted to display:inline-block.
+  if (disp->mDisplay == NS_STYLE_DISPLAY_INLINE && mParent) {
+    // We don't need the full mozilla::WritingMode value (incorporating dir and
+    // text-orientation) here, all we care about is vertical vs horizontal.
+    bool thisHorizontal =
+      StyleVisibility()->mWritingMode == NS_STYLE_WRITING_MODE_HORIZONTAL_TB;
+    bool parentHorizontal = mParent->StyleVisibility()->mWritingMode ==
+                              NS_STYLE_WRITING_MODE_HORIZONTAL_TB;
+    if (thisHorizontal != parentHorizontal) {
+      nsStyleDisplay *mutable_display =
+        static_cast<nsStyleDisplay*>(GetUniqueStyleData(eStyleStruct_Display));
+      mutable_display->mOriginalDisplay = mutable_display->mDisplay =
+        NS_STYLE_DISPLAY_INLINE_BLOCK;
+    }
   }
 
   // Compute User Interface style, to trigger loads of cursors

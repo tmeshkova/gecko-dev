@@ -496,7 +496,7 @@ JSObject* XPCWrappedNativeTearOff::GetJSObjectPreserveColor() const
 inline
 JSObject* XPCWrappedNativeTearOff::GetJSObject()
 {
-    JSObject *obj = GetJSObjectPreserveColor();
+    JSObject* obj = GetJSObjectPreserveColor();
     if (obj) {
       JS::ExposeObjectToActiveJS(obj);
     }
@@ -511,7 +511,7 @@ void XPCWrappedNativeTearOff::SetJSObject(JSObject*  JSObj)
 }
 
 inline
-void XPCWrappedNativeTearOff::JSObjectMoved(JSObject *obj, const JSObject *old)
+void XPCWrappedNativeTearOff::JSObjectMoved(JSObject* obj, const JSObject* old)
 {
     MOZ_ASSERT(!IsMarked());
     MOZ_ASSERT(mJSObject == old);
@@ -521,6 +521,7 @@ void XPCWrappedNativeTearOff::JSObjectMoved(JSObject *obj, const JSObject *old)
 inline
 XPCWrappedNativeTearOff::~XPCWrappedNativeTearOff()
 {
+    MOZ_COUNT_DTOR(XPCWrappedNativeTearOff);
     MOZ_ASSERT(!(GetInterface() || GetNative() || GetJSObjectPreserveColor()),
                "tearoff not empty in dtor");
 }
@@ -538,23 +539,17 @@ XPCWrappedNative::SweepTearOffs()
 {
     XPCWrappedNativeTearOffChunk* chunk;
     for (chunk = &mFirstChunk; chunk; chunk = chunk->mNextChunk) {
-        XPCWrappedNativeTearOff* to = chunk->mTearOffs;
-        for (int i = XPC_WRAPPED_NATIVE_TEAROFFS_PER_CHUNK; i > 0; i--, to++) {
-            bool marked = to->IsMarked();
-            to->Unmark();
-            if (marked)
-                continue;
+        XPCWrappedNativeTearOff* to = &chunk->mTearOff;
+        bool marked = to->IsMarked();
+        to->Unmark();
+        if (marked)
+            continue;
 
-            // If this tearoff does not have a live dedicated JSObject,
-            // then let's recycle it.
-            if (!to->GetJSObjectPreserveColor()) {
-                nsISupports* obj = to->GetNative();
-                if (obj) {
-                    obj->Release();
-                    to->SetNative(nullptr);
-                }
-                to->SetInterface(nullptr);
-            }
+        // If this tearoff does not have a live dedicated JSObject,
+        // then let's recycle it.
+        if (!to->GetJSObjectPreserveColor()) {
+            to->SetNative(nullptr);
+            to->SetInterface(nullptr);
         }
     }
 }
@@ -570,9 +565,9 @@ xpc_ForcePropertyResolve(JSContext* cx, JS::HandleObject obj, jsid idArg)
 }
 
 inline jsid
-GetRTIdByIndex(JSContext *cx, unsigned index)
+GetRTIdByIndex(JSContext* cx, unsigned index)
 {
-  XPCJSRuntime *rt = nsXPConnect::XPConnect()->GetRuntime();
+  XPCJSRuntime* rt = nsXPConnect::XPConnect()->GetRuntime();
   return rt->GetStringID(index);
 }
 

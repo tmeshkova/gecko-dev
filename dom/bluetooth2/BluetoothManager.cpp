@@ -76,7 +76,7 @@ class GetAdaptersTask : public BluetoothReplyRunnable
   }
 
   virtual void
-  ReleaseMembers() MOZ_OVERRIDE
+  ReleaseMembers() override
   {
     BluetoothReplyRunnable::ReleaseMembers();
     mManager = nullptr;
@@ -287,7 +287,7 @@ BluetoothManager::Notify(const BluetoothSignal& aData)
 }
 
 JSObject*
-BluetoothManager::WrapObject(JSContext* aCx)
+BluetoothManager::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return BluetoothManagerBinding::Wrap(aCx, this);
+  return BluetoothManagerBinding::Wrap(aCx, this, aGivenProto);
 }

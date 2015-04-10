@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=2 sw=2 sts=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +18,7 @@
 #include "nsIRadioVisitor.h"
 #include "nsIPhonetic.h"
 
+#include "mozilla/Telemetry.h"
 #include "nsIControllers.h"
 #include "nsIStringBundle.h"
 #include "nsFocusManager.h"
@@ -209,7 +211,7 @@ const Decimal HTMLInputElement::kStepAny = Decimal(0);
 #define PROGRESS_STR "progress"
 static const uint32_t kProgressEventInterval = 50; // ms
 
-class HTMLInputElementState MOZ_FINAL : public nsISupports
+class HTMLInputElementState final : public nsISupports
 {
   public:
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_INPUT_ELEMENT_STATE_IID)
@@ -331,7 +333,7 @@ namespace {
  * nsIFile::GetDirectoryEntries, which is not guaranteed to group a directory's
  * subdirectories at the beginning of the list that it returns).
  */
-class DirPickerRecursiveFileEnumerator MOZ_FINAL
+class DirPickerRecursiveFileEnumerator final
   : public nsISimpleEnumerator
 {
   ~DirPickerRecursiveFileEnumerator() {}
@@ -367,7 +369,7 @@ public:
   }
 
   NS_IMETHOD
-  GetNext(nsISupports** aResult) MOZ_OVERRIDE
+  GetNext(nsISupports** aResult) override
   {
     MOZ_ASSERT(!NS_IsMainThread(),
                "Walking the directory tree involves I/O, so using this "
@@ -401,7 +403,7 @@ public:
   }
 
   NS_IMETHOD
-  HasMoreElements(bool* aResult) MOZ_OVERRIDE
+  HasMoreElements(bool* aResult) override
   {
     *aResult = !!mNextFile;
     return NS_OK;
@@ -501,7 +503,7 @@ DOMFileToLocalFile(nsIDOMFile* aDomFile)
 
 } // anonymous namespace
 
-class DirPickerFileListBuilderTask MOZ_FINAL
+class DirPickerFileListBuilderTask final
   : public nsRunnable
 {
 public:
@@ -723,7 +725,7 @@ HTMLInputElement::nsFilePickerShownCallback::Done(int16_t aResult)
 NS_IMPL_ISUPPORTS(HTMLInputElement::nsFilePickerShownCallback,
                   nsIFilePickerShownCallback)
 
-class nsColorPickerShownCallback MOZ_FINAL
+class nsColorPickerShownCallback final
   : public nsIColorPickerShownCallback
 {
   ~nsColorPickerShownCallback() {}
@@ -738,8 +740,8 @@ public:
 
   NS_DECL_ISUPPORTS
 
-  NS_IMETHOD Update(const nsAString& aColor) MOZ_OVERRIDE;
-  NS_IMETHOD Done(const nsAString& aColor) MOZ_OVERRIDE;
+  NS_IMETHOD Update(const nsAString& aColor) override;
+  NS_IMETHOD Done(const nsAString& aColor) override;
 
 private:
   /**
@@ -1177,7 +1179,7 @@ void
 HTMLInputElement::FreeData()
 {
   if (!IsSingleLineTextControl(false)) {
-    nsMemory::Free(mInputData.mValue);
+    free(mInputData.mValue);
     mInputData.mValue = nullptr;
   } else {
     UnbindFromFrame(nullptr);
@@ -1691,12 +1693,18 @@ HTMLInputElement::GetValueInternal(nsAString& aValue) const
 
     case VALUE_MODE_FILENAME:
       if (nsContentUtils::IsCallerChrome()) {
+#ifndef MOZ_CHILD_PERMISSIONS
+        aValue.Assign(mFirstFilePath);
+#else
+        // XXX We'd love to assert that this can't happen, but some mochitests
+        // use SpecialPowers to circumvent our more sane security model.
         if (!mFiles.IsEmpty()) {
           return mFiles[0]->GetMozFullPath(aValue);
         }
         else {
           aValue.Truncate();
         }
+#endif
       } else {
         // Just return the leaf name
         if (mFiles.IsEmpty() || NS_FAILED(mFiles[0]->GetName(aValue))) {
@@ -1902,7 +1910,7 @@ HTMLInputElement::GetList(nsIDOMHTMLElement** aValue)
     return NS_OK;
   }
 
-  CallQueryInterface(element, aValue);
+  element.forget(aValue);
   return NS_OK;
 }
 
@@ -2331,9 +2339,14 @@ HTMLInputElement::MozGetFileNameArray(uint32_t* aLength, char16_t*** aFileNames)
 void
 HTMLInputElement::MozSetFileArray(const Sequence<OwningNonNull<File>>& aFiles)
 {
+  nsCOMPtr<nsIGlobalObject> global = OwnerDoc()->GetScopeObject();
+  MOZ_ASSERT(global);
+  if (!global) {
+    return;
+  }
   nsTArray<nsRefPtr<File>> files;
   for (uint32_t i = 0; i < aFiles.Length(); ++i) {
-    files.AppendElement(aFiles[i]);
+    files.AppendElement(new File(global, aFiles[i].get()->Impl()));
   }
   SetFiles(files, true);
 }
@@ -2646,6 +2659,19 @@ HTMLInputElement::AfterSetFiles(bool aSetValueChanged)
     formControlFrame->SetFormProperty(nsGkAtoms::value, readableValue);
   }
 
+#ifndef MOZ_CHILD_PERMISSIONS
+  // Grab the full path here for any chrome callers who access our .value via a
+  // CPOW. This path won't be called from a CPOW meaning the potential sync IPC
+  // call under GetMozFullPath won't be rejected for not being urgent.
+  // XXX Protected by the ifndef because the blob code doesn't allow us to send
+  // this message in b2g.
+  if (mFiles.IsEmpty()) {
+    mFirstFilePath.Truncate();
+  } else {
+    mFiles[0]->GetMozFullPath(mFirstFilePath);
+  }
+#endif
+
   UpdateFileList();
 
   if (aSetValueChanged) {
@@ -2869,7 +2895,7 @@ HTMLInputElement::SetValueInternal(const nsAString& aValue,
           UpdateAllValidityStates(mParserCreating);
         }
       } else {
-        nsMemory::Free(mInputData.mValue);
+        free(mInputData.mValue);
         mInputData.mValue = ToNewUnicode(value);
         if (aSetValueChanged) {
           SetValueChanged(true);
@@ -3222,9 +3248,10 @@ HTMLInputElement::Focus(ErrorResult& aError)
 }
 
 bool
-HTMLInputElement::IsInteractiveHTMLContent() const
+HTMLInputElement::IsInteractiveHTMLContent(bool aIgnoreTabindex) const
 {
-  return mType != NS_FORM_INPUT_HIDDEN;
+  return mType != NS_FORM_INPUT_HIDDEN ||
+         nsGenericHTMLFormElementWithState::IsInteractiveHTMLContent(aIgnoreTabindex);
 }
 
 NS_IMETHODIMP
@@ -4496,6 +4523,12 @@ HTMLInputElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
   // And now make sure our state is up to date
   UpdateState(false);
 
+#ifdef EARLY_BETA_OR_EARLIER
+  if (mType == NS_FORM_INPUT_PASSWORD) {
+    Telemetry::Accumulate(Telemetry::PWMGR_PASSWORD_INPUT_IN_FORM, !!mForm);
+  }
+#endif
+
   return rv;
 }
 
@@ -5709,13 +5742,13 @@ HTMLInputElement::SubmitNamesValues(nsFormSubmission* aFormSubmission)
     const nsTArray<nsRefPtr<File>>& files = GetFilesInternal();
 
     for (uint32_t i = 0; i < files.Length(); ++i) {
-      aFormSubmission->AddNameFilePair(name, files[i], NullString());
+      aFormSubmission->AddNameFilePair(name, files[i]);
     }
 
     if (files.IsEmpty()) {
       // If no file was selected, pretend we had an empty file with an
       // empty filename.
-      aFormSubmission->AddNameFilePair(name, nullptr, NullString());
+      aFormSubmission->AddNameFilePair(name, nullptr);
 
     }
 
@@ -7569,9 +7602,9 @@ HTMLInputElement::PickerClosed()
 }
 
 JSObject*
-HTMLInputElement::WrapNode(JSContext* aCx)
+HTMLInputElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLInputElementBinding::Wrap(aCx, this);
+  return HTMLInputElementBinding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

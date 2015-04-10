@@ -149,9 +149,10 @@ NS_IMPL_STRING_ATTR(HTMLImageElement, UseMap, usemap)
 NS_IMPL_INT_ATTR(HTMLImageElement, Vspace, vspace)
 
 bool
-HTMLImageElement::IsInteractiveHTMLContent() const
+HTMLImageElement::IsInteractiveHTMLContent(bool aIgnoreTabindex) const
 {
-  return HasAttr(kNameSpaceID_None, nsGkAtoms::usemap);
+  return HasAttr(kNameSpaceID_None, nsGkAtoms::usemap) ||
+          nsGenericHTMLElement::IsInteractiveHTMLContent(aIgnoreTabindex);
 }
 
 bool
@@ -419,7 +420,8 @@ HTMLImageElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
     // SetAttr handles setting src since it needs to catch img.src =
     // img.src, so we only need to handle the unset case
     if (InResponsiveMode()) {
-      if (mResponsiveSelector->Content() == this) {
+      if (mResponsiveSelector &&
+          mResponsiveSelector->Content() == this) {
         mResponsiveSelector->SetDefaultSource(NullString());
       }
       QueueImageLoadTask();
@@ -801,9 +803,9 @@ HTMLImageElement::GetCORSMode()
 }
 
 JSObject*
-HTMLImageElement::WrapNode(JSContext* aCx)
+HTMLImageElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLImageElementBinding::Wrap(aCx, this);
+  return HTMLImageElementBinding::Wrap(aCx, this, aGivenProto);
 }
 
 #ifdef DEBUG

@@ -14,10 +14,11 @@
 namespace mozilla {
 namespace webgl {
 
-class ShaderValidator MOZ_FINAL
+class ShaderValidator final
 {
     const ShHandle mHandle;
     const int mCompileOptions;
+    const int mMaxVaryingVectors;
     bool mHasRun;
 
 public:
@@ -27,9 +28,10 @@ public:
                                    int compileOptions);
 
 private:
-    ShaderValidator(ShHandle handle, int compileOptions)
+    ShaderValidator(ShHandle handle, int compileOptions, int maxVaryingVectors)
         : mHandle(handle)
         , mCompileOptions(compileOptions)
+        , mMaxVaryingVectors(maxVaryingVectors)
         , mHasRun(false)
     { }
 

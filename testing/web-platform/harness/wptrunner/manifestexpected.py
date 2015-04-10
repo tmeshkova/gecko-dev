@@ -54,7 +54,6 @@ class ExpectedManifest(ManifestItem):
         """Add a test to the manifest"""
         ManifestItem.append(self, child)
         self.child_map[child.id] = child
-        #assert len(self.child_map) == len(self.children), "%r %r" % (self.child_map, self.children)
 
     def _remove_child(self, child):
         del self.child_map[child.id]
@@ -107,6 +106,15 @@ class TestNode(ManifestItem):
             return self.get("disabled")
         except KeyError:
             return False
+
+    def prefs(self):
+        try:
+            prefs = self.get("prefs")
+            if type(prefs) in (str, unicode):
+                prefs = [prefs]
+            return [item.split(":", 1) for item in prefs]
+        except KeyError:
+            return []
 
     def append(self, node):
         """Add a subtest to the current test

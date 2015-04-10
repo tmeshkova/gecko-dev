@@ -58,8 +58,8 @@ public:
     NS_DECL_NSIIPCSERIALIZABLEURI
 
     // nsISizeOf
-    virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
-    virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
+    virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const override;
+    virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const override;
 
     explicit nsStandardURL(bool aSupportsFileURL = false, bool aTrackURL = true);
 
@@ -93,7 +93,7 @@ public: /* internal -- HPUX compiler can't handle this being private */
     //
     // Pref observer
     //
-    class nsPrefObserver MOZ_FINAL : public nsIObserver
+    class nsPrefObserver final : public nsIObserver
     {
         ~nsPrefObserver() {}
 
@@ -236,6 +236,8 @@ private:
 
     void FindHostLimit(nsACString::const_iterator& aStart,
                        nsACString::const_iterator& aEnd);
+    // Checks that the Ref contains only allowed characters
+    nsresult CheckRefCharacters(const nsACString &input);
 
     // mSpec contains the normalized version of the URL spec (UTF-8 encoded).
     nsCString mSpec;

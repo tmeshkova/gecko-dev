@@ -28,7 +28,7 @@
 BEGIN_WORKERS_NAMESPACE
 using mozilla::dom::GlobalObject;
 
-class URLProxy MOZ_FINAL
+class URLProxy final
 {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(URLProxy)
@@ -583,9 +583,9 @@ URL::~URL()
 }
 
 bool
-URL::WrapObject(JSContext* aCx, JS::MutableHandle<JSObject*> aReflector)
+URL::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector)
 {
-  return URLBinding_workers::Wrap(aCx, this, aReflector);
+  return URLBinding_workers::Wrap(aCx, this, aGivenProto, aReflector);
 }
 
 void

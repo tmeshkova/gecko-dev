@@ -33,7 +33,6 @@ Request::Request(nsIGlobalObject* aOwner, InternalRequest* aRequest)
   : FetchBody<Request>()
   , mOwner(aOwner)
   , mRequest(aRequest)
-  , mContext(RequestContext::Fetch)
 {
 }
 
@@ -82,6 +81,7 @@ Request::Constructor(const GlobalObject& aGlobal,
 
   RequestMode fallbackMode = RequestMode::EndGuard_;
   RequestCredentials fallbackCredentials = RequestCredentials::EndGuard_;
+  RequestCache fallbackCache = RequestCache::EndGuard_;
   if (aInput.IsUSVString()) {
     nsString input;
     input.Assign(aInput.GetAsUSVString());
@@ -127,6 +127,7 @@ Request::Constructor(const GlobalObject& aGlobal,
     request->SetURL(NS_ConvertUTF16toUTF8(requestURL));
     fallbackMode = RequestMode::Cors;
     fallbackCredentials = RequestCredentials::Omit;
+    fallbackCache = RequestCache::Default;
   }
 
   // CORS-with-forced-preflight is not publicly exposed and should not be
@@ -145,11 +146,20 @@ Request::Constructor(const GlobalObject& aGlobal,
                                    : fallbackCredentials;
 
   if (mode != RequestMode::EndGuard_) {
+    request->ClearCreatedByFetchEvent();
     request->SetMode(mode);
   }
 
   if (credentials != RequestCredentials::EndGuard_) {
+    request->ClearCreatedByFetchEvent();
     request->SetCredentialsMode(credentials);
+  }
+
+  RequestCache cache = aInit.mCache.WasPassed() ?
+                       aInit.mCache.Value() : fallbackCache;
+  if (cache != RequestCache::EndGuard_) {
+    request->ClearCreatedByFetchEvent();
+    request->SetCacheMode(cache);
   }
 
   // Request constructor step 14.
@@ -177,8 +187,10 @@ Request::Constructor(const GlobalObject& aGlobal,
         upperCaseMethod.EqualsLiteral("POST") ||
         upperCaseMethod.EqualsLiteral("PUT") ||
         upperCaseMethod.EqualsLiteral("OPTIONS")) {
+      request->ClearCreatedByFetchEvent();
       request->SetMethod(upperCaseMethod);
     } else {
+      request->ClearCreatedByFetchEvent();
       request->SetMethod(method);
     }
   }
@@ -191,6 +203,7 @@ Request::Constructor(const GlobalObject& aGlobal,
     if (aRv.Failed()) {
       return nullptr;
     }
+    request->ClearCreatedByFetchEvent();
     headers = h->GetInternalHeaders();
   } else {
     headers = new InternalHeaders(*requestHeaders);
@@ -228,7 +241,7 @@ Request::Constructor(const GlobalObject& aGlobal,
       return nullptr;
     }
 
-    const OwningArrayBufferOrArrayBufferViewOrBlobOrUSVStringOrURLSearchParams& bodyInit = aInit.mBody.Value();
+    const OwningArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams& bodyInit = aInit.mBody.Value();
     nsCOMPtr<nsIInputStream> stream;
     nsCString contentType;
     aRv = ExtractByteStreamFromBody(bodyInit,
@@ -236,6 +249,7 @@ Request::Constructor(const GlobalObject& aGlobal,
     if (NS_WARN_IF(aRv.Failed())) {
       return nullptr;
     }
+    request->ClearCreatedByFetchEvent();
     request->SetBody(stream);
 
     if (!contentType.IsVoid() &&

@@ -1417,12 +1417,14 @@ nsIOService::OnNetworkLinkEvent(const char *data)
     }
 
     bool isUp;
-    if (!strcmp(data, NS_NETWORK_LINK_DATA_DOWN)) {
+    if (!strcmp(data, NS_NETWORK_LINK_DATA_CHANGED)) {
+        // CHANGED means UP/DOWN didn't change
+        return NS_OK;
+    } else if (!strcmp(data, NS_NETWORK_LINK_DATA_DOWN)) {
         isUp = false;
     } else if (!strcmp(data, NS_NETWORK_LINK_DATA_UP)) {
         isUp = true;
-    } else if (!strcmp(data, NS_NETWORK_LINK_DATA_CHANGED) ||
-               !strcmp(data, NS_NETWORK_LINK_DATA_UNKNOWN)) {
+    } else if (!strcmp(data, NS_NETWORK_LINK_DATA_UNKNOWN)) {
         nsresult rv = mNetworkLinkService->GetIsLinkUp(&isUp);
         NS_ENSURE_SUCCESS(rv, rv);
     } else {
@@ -1488,7 +1490,7 @@ nsIOService::ExtractCharsetFromContentType(const nsACString &aTypeHeader,
 }
 
 // nsISpeculativeConnect
-class IOServiceProxyCallback MOZ_FINAL : public nsIProtocolProxyCallback
+class IOServiceProxyCallback final : public nsIProtocolProxyCallback
 {
     ~IOServiceProxyCallback() {}
 
@@ -1559,18 +1561,39 @@ nsIOService::SpeculativeConnect(nsIURI *aURI,
     nsresult rv;
     nsCOMPtr<nsIProtocolProxyService> pps =
             do_GetService(NS_PROTOCOLPROXYSERVICE_CONTRACTID, &rv);
-    if (NS_FAILED(rv))
-        return rv;
+    NS_ENSURE_SUCCESS(rv, rv);
 
+    nsCOMPtr<nsIScriptSecurityManager> secMan(
+        do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv));
+    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIPrincipal> systemPrincipal;
+    rv = secMan->GetSystemPrincipal(getter_AddRefs(systemPrincipal));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // dummy channel used to create a TCP connection.
+    // we perform security checks on the *real* channel, responsible
+    // for any network loads. this real channel just checks the TCP
+    // pool if there is an available connection created by the
+    // channel we create underneath - hence it's safe to use
+    // the systemPrincipal as the loadingPrincipal for this channel.
     nsCOMPtr<nsIChannel> channel;
-    rv = NewChannelFromURI(aURI, getter_AddRefs(channel));
-    if (NS_FAILED(rv)) {
-        return rv;
-    }
+    rv = NewChannelFromURI2(aURI,
+                            nullptr, // aLoadingNode,
+                            systemPrincipal,
+                            nullptr, //aTriggeringPrincipal,
+                            nsILoadInfo::SEC_NORMAL,
+                            nsIContentPolicy::TYPE_OTHER,
+                            getter_AddRefs(channel));
+
+    NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsICancelable> cancelable;
     nsRefPtr<IOServiceProxyCallback> callback =
         new IOServiceProxyCallback(aCallbacks, this);
+    nsCOMPtr<nsIProtocolProxyService2> pps2 = do_QueryInterface(pps);
+    if (pps2) {
+        return pps2->AsyncResolve2(channel, 0, callback, getter_AddRefs(cancelable));
+    }
     return pps->AsyncResolve(channel, 0, callback, getter_AddRefs(cancelable));
 }
 

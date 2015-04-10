@@ -17,8 +17,7 @@ loop.store.StandaloneAppStore = (function() {
   var sharedActions = loop.shared.actions;
   var sharedUtils = loop.shared.utils;
 
-  var OLD_STYLE_CALL_REGEXP = /\#call\/(.*)/;
-  var NEW_STYLE_CALL_REGEXP = /\/c\/([\w\-]+)$/;
+  var CALL_REGEXP = /\/c\/([\w\-]+)$/;
   var ROOM_REGEXP = /\/([\w\-]+)$/;
 
   /**
@@ -80,9 +79,7 @@ loop.store.StandaloneAppStore = (function() {
       }
 
       if (windowPath) {
-        // Is this a call url (the hash is a backwards-compatible url)?
-        match = extractId(windowPath, OLD_STYLE_CALL_REGEXP) ||
-                extractId(windowPath, NEW_STYLE_CALL_REGEXP);
+        match = extractId(windowPath, CALL_REGEXP);
 
         if (match) {
           windowType = "outgoing";
@@ -99,8 +96,20 @@ loop.store.StandaloneAppStore = (function() {
     },
 
     /**
+     * Extracts the crypto key from the hash for the page.
+     */
+    _extractCryptoKey: function(windowHash) {
+      if (windowHash && windowHash[0] === "#") {
+        return windowHash.substring(1, windowHash.length);
+      }
+
+      return null;
+    },
+
+    /**
      * Handles the extract token info action - obtains the token information
-     * and its type; updates the store and notifies interested components.
+     * and its type; extracts any crypto information; updates the store and
+     * notifies interested components.
      *
      * @param {sharedActions.GetWindowData} actionData The action data
      */
@@ -138,6 +147,7 @@ loop.store.StandaloneAppStore = (function() {
       // it.
       if (token) {
         this._dispatcher.dispatch(new loop.shared.actions.FetchServerData({
+          cryptoKey: this._extractCryptoKey(actionData.windowHash),
           token: token,
           windowType: windowType
         }));

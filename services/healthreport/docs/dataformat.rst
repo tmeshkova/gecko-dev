@@ -1078,6 +1078,39 @@ org.mozilla.crashes.crashes
 
 This measurement contains a historical record of application crashes.
 
+Version 6
+^^^^^^^^^
+
+This version adds tracking for out-of-memory (OOM) crashes in the main process.
+An OOM crash will be counted as both main-crash and main-crash-oom.
+
+This measurement will be reported on each day there was a crash or crash
+submission. Records may contain the following fields, whose values indicate
+the number of crashes, hangs, or submissions that occurred on the given day:
+
+* content-crash
+* content-crash-submission-succeeded
+* content-crash-submission-failed
+* content-hang
+* content-hang-submission-succeeded
+* content-hang-submission-failed
+* gmplugin-crash
+* gmplugin-crash-submission-succeeded
+* gmplugin-crash-submission-failed
+* main-crash
+* main-crash-oom
+* main-crash-submission-succeeded
+* main-crash-submission-failed
+* main-hang
+* main-hang-submission-succeeded
+* main-hang-submission-failed
+* plugin-crash
+* plugin-crash-submission-succeeded
+* plugin-crash-submission-failed
+* plugin-hang
+* plugin-hang-submission-succeeded
+* plugin-hang-submission-failed
+
 Version 5
 ^^^^^^^^^
 
@@ -1898,4 +1931,58 @@ Example
       "another-tag": [
         "foobar-value"
       ]
+    }
+
+org.mozilla.passwordmgr.passwordmgr
+-----------------------------------
+
+Daily measurement reporting information about the Password Manager
+
+Version 1
+^^^^^^^^^
+
+Property:
+
+numSavedPasswords
+    number of passwords saved in the Password Manager
+
+enabled
+    Whether or not the user has disabled the Password Manager in prefernces
+
+Example
+^^^^^^^
+
+::
+
+    "org.mozilla.passwordmgr.passwordmgr": {
+      "_v": 1,
+      "numSavedPasswords": 5,
+      "enabled": 0,
+    }
+
+Version 2
+^^^^^^^^^
+
+More detailed measurements of login forms & their behavior
+
+numNewSavedPasswordsInSession
+    Number of passwords saved to the password manager this session.
+
+numSuccessfulFills
+    Number of times the password manager filled in password fields for user this session.
+
+numTotalLoginsEncountered
+    Number of times a login form was encountered by the user in the session.
+
+Example
+^^^^^^^
+
+::
+    "org.mozilla.passwordmgr.passwordmgr": {
+      "_v": 2,
+      "numSavedPasswords": 32,
+      "enabled": 1,
+      "numNewSavedPasswords": 5,
+      "numSuccessfulFills": 11,
+      "numTotalLoginsEncountered": 23,
     }

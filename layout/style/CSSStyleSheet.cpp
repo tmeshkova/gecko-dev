@@ -50,17 +50,17 @@ using namespace mozilla::dom;
 // -------------------------------
 // Style Rule List for the DOM
 //
-class CSSRuleListImpl MOZ_FINAL : public CSSRuleList
+class CSSRuleListImpl final : public CSSRuleList
 {
 public:
   explicit CSSRuleListImpl(CSSStyleSheet *aStyleSheet);
 
-  virtual CSSStyleSheet* GetParentObject() MOZ_OVERRIDE;
+  virtual CSSStyleSheet* GetParentObject() override;
 
   virtual nsIDOMCSSRule*
-  IndexedGetter(uint32_t aIndex, bool& aFound) MOZ_OVERRIDE;
+  IndexedGetter(uint32_t aIndex, bool& aFound) override;
   virtual uint32_t
-  Length() MOZ_OVERRIDE;
+  Length() override;
 
   void DropReference() { mStyleSheet = nullptr; }
 
@@ -497,9 +497,9 @@ nsMediaList::~nsMediaList()
 }
 
 /* virtual */ JSObject*
-nsMediaList::WrapObject(JSContext* aCx)
+nsMediaList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return MediaListBinding::Wrap(aCx, this);
+  return MediaListBinding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -2181,9 +2181,9 @@ CSSStyleSheet::GetOriginalURI() const
 
 /* virtual */
 JSObject*
-CSSStyleSheet::WrapObject(JSContext* aCx)
+CSSStyleSheet::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return CSSStyleSheetBinding::Wrap(aCx, this);
+  return CSSStyleSheetBinding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace mozilla

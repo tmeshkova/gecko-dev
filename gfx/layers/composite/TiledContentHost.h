@@ -13,7 +13,7 @@
 #include "TiledLayerBuffer.h"           // for TiledLayerBuffer, etc
 #include "CompositableHost.h"
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
-#include "mozilla/Attributes.h"         // for MOZ_OVERRIDE
+#include "mozilla/Attributes.h"         // for override
 #include "mozilla/RefPtr.h"             // for RefPtr
 #include "mozilla/gfx/Point.h"          // for Point
 #include "mozilla/gfx/Rect.h"           // for Rect
@@ -34,7 +34,6 @@
 class gfxReusableSurfaceWrapper;
 struct nsIntPoint;
 struct nsIntRect;
-struct nsIntSize;
 
 namespace mozilla {
 namespace gfx {
@@ -106,6 +105,10 @@ public:
     }
   }
 
+  void Dump(std::stringstream& aStream) {
+    aStream << "TileHost(...)"; // fill in as needed
+  }
+
   void DumpTexture(std::stringstream& aStream) {
     // TODO We should combine the OnWhite/OnBlack here an just output a single image.
     CompositableHost::DumpTextureHost(aStream, mTextureHost);
@@ -136,7 +139,7 @@ public:
 
   // Stores the absolute resolution of the containing frame, calculated
   // by the sum of the resolutions of all parent layers' FrameMetrics.
-  const CSSToParentLayerScale& GetFrameResolution() { return mFrameResolution; }
+  const CSSToParentLayerScale2D& GetFrameResolution() { return mFrameResolution; }
 
   void ReadUnlock();
 
@@ -176,7 +179,7 @@ protected:
   void UnlockTile(TileHost aTile) {}
   void PostValidate(const nsIntRegion& aPaintRegion) {}
 private:
-  CSSToParentLayerScale mFrameResolution;
+  CSSToParentLayerScale2D mFrameResolution;
   bool mHasDoubleBufferedTiles;
   bool mIsValid;
 };
@@ -211,7 +214,7 @@ protected:
   ~TiledContentHost();
 
 public:
-  virtual LayerRenderState GetRenderState() MOZ_OVERRIDE
+  virtual LayerRenderState GetRenderState() override
   {
     return LayerRenderState();
   }
@@ -220,23 +223,23 @@ public:
   virtual bool UpdateThebes(const ThebesBufferData& aData,
                             const nsIntRegion& aUpdated,
                             const nsIntRegion& aOldValidRegionBack,
-                            nsIntRegion* aUpdatedRegionBack) MOZ_OVERRIDE
+                            nsIntRegion* aUpdatedRegionBack) override
   {
     NS_ERROR("N/A for tiled layers");
     return false;
   }
 
-  const nsIntRegion& GetValidLowPrecisionRegion() const MOZ_OVERRIDE
+  const nsIntRegion& GetValidLowPrecisionRegion() const override
   {
     return mLowPrecisionTiledBuffer.GetValidRegion();
   }
 
-  const nsIntRegion& GetValidRegion() const MOZ_OVERRIDE
+  const nsIntRegion& GetValidRegion() const override
   {
     return mTiledBuffer.GetValidRegion();
   }
 
-  virtual void SetCompositor(Compositor* aCompositor) MOZ_OVERRIDE
+  virtual void SetCompositor(Compositor* aCompositor) override
   {
     CompositableHost::SetCompositor(aCompositor);
     mTiledBuffer.SetCompositor(aCompositor);
@@ -246,31 +249,31 @@ public:
   }
 
   virtual bool UseTiledLayerBuffer(ISurfaceAllocator* aAllocator,
-                                   const SurfaceDescriptorTiles& aTiledDescriptor) MOZ_OVERRIDE;
+                                   const SurfaceDescriptorTiles& aTiledDescriptor) override;
 
   void Composite(EffectChain& aEffectChain,
                  float aOpacity,
                  const gfx::Matrix4x4& aTransform,
                  const gfx::Filter& aFilter,
                  const gfx::Rect& aClipRect,
-                 const nsIntRegion* aVisibleRegion = nullptr) MOZ_OVERRIDE;
+                 const nsIntRegion* aVisibleRegion = nullptr) override;
 
-  virtual CompositableType GetType() MOZ_OVERRIDE { return CompositableType::CONTENT_TILED; }
+  virtual CompositableType GetType() override { return CompositableType::CONTENT_TILED; }
 
-  virtual TiledLayerComposer* AsTiledLayerComposer() MOZ_OVERRIDE { return this; }
+  virtual TiledLayerComposer* AsTiledLayerComposer() override { return this; }
 
   virtual void Attach(Layer* aLayer,
                       Compositor* aCompositor,
-                      AttachFlags aFlags = NO_FLAGS) MOZ_OVERRIDE;
+                      AttachFlags aFlags = NO_FLAGS) override;
 
   virtual void Detach(Layer* aLayer = nullptr,
-                      AttachFlags aFlags = NO_FLAGS) MOZ_OVERRIDE;
+                      AttachFlags aFlags = NO_FLAGS) override;
 
   virtual void Dump(std::stringstream& aStream,
                     const char* aPrefix="",
-                    bool aDumpHtml=false) MOZ_OVERRIDE;
+                    bool aDumpHtml=false) override;
 
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) MOZ_OVERRIDE;
+  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
   /**
@@ -305,7 +308,7 @@ private:
                   const gfx::Rect& aClipRect,
                   const nsIntRegion& aScreenRegion,
                   const nsIntPoint& aTextureOffset,
-                  const nsIntSize& aTextureBounds);
+                  const gfx::IntSize& aTextureBounds);
 
   void EnsureTileStore() {}
 

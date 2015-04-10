@@ -36,8 +36,8 @@ protected:
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                const uint64_t& aId,
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                               bool* aSuccess) MOZ_OVERRIDE;
-  virtual void ScheduleTask(CancelableTask*, int) MOZ_OVERRIDE;
+                               bool* aSuccess) override;
+  virtual void ScheduleTask(CancelableTask*, int) override;
   void PrepareOffscreen();
 
 private:

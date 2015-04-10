@@ -13,6 +13,8 @@ const Ci = Components.interfaces;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+                                  "resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
                                   "resource://gre/modules/PluralForm.jsm");
 
@@ -50,7 +52,7 @@ this.webrtcUI = {
   showGlobalIndicator: false,
   showCameraIndicator: false,
   showMicrophoneIndicator: false,
-  showScreenSharingIndicator: "", // either "Application", "Screen" or "Window"
+  showScreenSharingIndicator: "", // either "Application", "Screen", "Window" or "Browser"
 
   _streams: [],
   // The boolean parameters indicate which streams should be included in the result.
@@ -90,8 +92,7 @@ this.webrtcUI = {
     let PopupNotifications = browserWindow.PopupNotifications;
     let notif = PopupNotifications.getNotification("webRTC-sharing" + aType,
                                                    aActiveStream.browser);
-#ifdef XP_MACOSX
-    if (!Services.focus.activeWindow) {
+    if (AppConstants.platform == "macosx" && !Services.focus.activeWindow) {
       browserWindow.addEventListener("activate", function onActivate() {
         browserWindow.removeEventListener("activate", onActivate);
         Services.tm.mainThread.dispatch(function() {
@@ -102,7 +103,6 @@ this.webrtcUI = {
         .activateApplication(true);
       return;
     }
-#endif
     notif.reshow();
   },
 
@@ -167,8 +167,15 @@ function getHost(uri, href) {
   } catch (ex) {};
   if (!host) {
     if (uri && uri.scheme.toLowerCase() == "about") {
-      // For about URIs, just use the full spec, without any #hash parts
-      host = uri.specIgnoringRef;
+      // Special case-ing Loop/ Hello gUM requests.
+      if (uri.specIgnoringRef == "about:loopconversation") {
+        const kBundleURI = "chrome://browser/locale/loop/loop.properties";
+        let bundle = Services.strings.createBundle(kBundleURI);
+        host = bundle.GetStringFromName("clientShortname2");
+      } else {
+        // For other about URIs, just use the full spec, without any #hash parts.
+        host = uri.specIgnoringRef;
+      }
     } else {
       // This is unfortunate, but we should display *something*...
       const kBundleURI = "chrome://browser/locale/browser.properties";
@@ -454,12 +461,13 @@ function removePrompt(aBrowser, aCallId) {
 }
 
 function getGlobalIndicator() {
-#ifndef XP_MACOSX
-  const INDICATOR_CHROME_URI = "chrome://browser/content/webrtcIndicator.xul";
-  const features = "chrome,dialog=yes,titlebar=no,popup=yes";
+  if (AppConstants.platform != "macosx") {
+    const INDICATOR_CHROME_URI = "chrome://browser/content/webrtcIndicator.xul";
+    const features = "chrome,dialog=yes,titlebar=no,popup=yes";
 
-  return Services.ww.openWindow(null, INDICATOR_CHROME_URI, "_blank", features, []);
-#else
+    return Services.ww.openWindow(null, INDICATOR_CHROME_URI, "_blank", features, []);
+  }
+
   let indicator = {
     _camera: null,
     _microphone: null,
@@ -475,7 +483,7 @@ function getGlobalIndicator() {
       let type = this.getAttribute("type");
       if (type == "Camera" || type == "Microphone")
         type = "Devices";
-      else if (type == "Window" || type == "Application")
+      else if (type == "Window" || type == "Application" || type == "Browser")
         type = "Screen";
       webrtcUI.showSharingDoorhanger(aEvent.target.stream, type);
     },
@@ -586,7 +594,6 @@ function getGlobalIndicator() {
 
   indicator.updateIndicatorState();
   return indicator;
-#endif
 }
 
 function onTabSharingMenuPopupShowing(e) {
@@ -643,18 +650,20 @@ function showOrCreateMenuForWindow(aWindow) {
     menu.id = "tabSharingMenu";
     let labelStringId = "getUserMedia.sharingMenu.label";
     menu.setAttribute("label", stringBundle.getString(labelStringId));
-#ifdef XP_MACOSX
-    let container = document.getElementById("windowPopup");
-    let insertionPoint = document.getElementById("sep-window-list");
-    let separator = document.createElement("menuseparator");
-    separator.id = "tabSharingSeparator";
-    container.insertBefore(separator, insertionPoint);
-#else
-    let accesskeyStringId = "getUserMedia.sharingMenu.accesskey";
-    menu.setAttribute("accesskey", stringBundle.getString(accesskeyStringId));
-    let container = document.getElementById("main-menubar");
-    let insertionPoint = document.getElementById("helpMenu");
-#endif
+
+    let container, insertionPoint;
+    if (AppConstants.platform == "macosx") {
+      container = document.getElementById("windowPopup");
+      insertionPoint = document.getElementById("sep-window-list");
+      let separator = document.createElement("menuseparator");
+      separator.id = "tabSharingSeparator";
+      container.insertBefore(separator, insertionPoint);
+    } else {
+      let accesskeyStringId = "getUserMedia.sharingMenu.accesskey";
+      menu.setAttribute("accesskey", stringBundle.getString(accesskeyStringId));
+      container = document.getElementById("main-menubar");
+      insertionPoint = document.getElementById("helpMenu");
+    }
     let popup = document.createElement("menupopup");
     popup.id = "tabSharingMenuPopup";
     popup.addEventListener("popupshowing", onTabSharingMenuPopupShowing);
@@ -663,9 +672,9 @@ function showOrCreateMenuForWindow(aWindow) {
     container.insertBefore(menu, insertionPoint);
   } else {
     menu.hidden = false;
-#ifdef XP_MACOSX
-    document.getElementById("tabSharingSeparator").hidden = false;
-#endif
+    if (AppConstants.platform == "macosx") {
+      document.getElementById("tabSharingSeparator").hidden = false;
+    }
   }
 }
 
@@ -694,12 +703,12 @@ function updateIndicators(data) {
       if (existingMenu) {
         existingMenu.hidden = true;
       }
-#ifdef XP_MACOSX
-      let separator = doc.getElementById("tabSharingSeparator");
-      if (separator) {
-        separator.hidden = true;
+      if (AppConstants.platform == "macosx") {
+        let separator = doc.getElementById("tabSharingSeparator");
+        if (separator) {
+          separator.hidden = true;
+        }
       }
-#endif
     }
   }
 
@@ -790,8 +799,9 @@ function updateBrowserSpecificIndicator(aBrowser, aState) {
   }
 
   let screenSharingNotif; // Used by action callbacks.
+  let isBrowserSharing = aState.screen == "Browser";
   options = {
-    hideNotNow: true,
+    hideNotNow: !isBrowserSharing,
     dismissed: true,
     eventCallback: function(aTopic, aNewBrowser) {
       if (aTopic == "shown") {
@@ -815,6 +825,11 @@ function updateBrowserSpecificIndicator(aBrowser, aState) {
       mm.sendAsyncMessage("webrtc:StopSharing", "screen:" + windowId);
     }
   }];
+
+  // Ending browser-sharing from the gUM doorhanger is not supported at the moment.
+  // See bug 1142091.
+  if (isBrowserSharing)
+    mainAction = secondaryActions = null;
   // If we are sharing both a window and the screen, we show 'Screen'.
   let stringId = "getUserMedia.sharing" + aState.screen;
   screenSharingNotif =

@@ -197,9 +197,9 @@ IsValidVideoRegion(const nsIntSize& aFrame, const nsIntRect& aPicture,
     aDisplay.width * aDisplay.height != 0;
 }
 
-TemporaryRef<SharedThreadPool> GetMediaDecodeThreadPool()
+TemporaryRef<SharedThreadPool> GetMediaThreadPool()
 {
-  return SharedThreadPool::Get(NS_LITERAL_CSTRING("Media Decode"),
+  return SharedThreadPool::Get(NS_LITERAL_CSTRING("Media Playback"),
                                Preferences::GetUint("media.num-decode-threads", 25));
 }
 
@@ -233,6 +233,12 @@ ExtractH264CodecDetails(const nsAString& aCodec,
   aLevel = PromiseFlatString(Substring(aCodec, 9, 2)).ToInteger(&rv, 16);
   NS_ENSURE_SUCCESS(rv, false);
 
+  if (aLevel == 9) {
+    aLevel = H264_LEVEL_1_b;
+  } else if (aLevel <= 5) {
+    aLevel *= 10;
+  }
+
   // Capture the constraint_set flag value for the purpose of Telemetry.
   // We don't NS_ENSURE_SUCCESS here because ExtractH264CodecDetails doesn't
   // care about this, but we make sure constraints is above 4 (constraint_set5_flag)
@@ -255,18 +261,16 @@ ExtractH264CodecDetails(const nsAString& aCodec,
 }
 
 nsresult
-GenerateRandomPathName(nsCString& aOutSalt, uint32_t aLength)
+GenerateRandomName(nsCString& aOutSalt, uint32_t aLength)
 {
   nsresult rv;
   nsCOMPtr<nsIRandomGenerator> rg =
     do_GetService("@mozilla.org/security/random-generator;1", &rv);
   if (NS_FAILED(rv)) return rv;
 
-  // For each three bytes of random data we will get four bytes of
-  // ASCII. Request a bit more to be safe and truncate to the length
-  // we want at the end.
+  // For each three bytes of random data we will get four bytes of ASCII.
   const uint32_t requiredBytesLength =
-    static_cast<uint32_t>((aLength + 1) / 4 * 3);
+    static_cast<uint32_t>((aLength + 3) / 4 * 3);
 
   uint8_t* buffer;
   rv = rg->GenerateRandomBytes(requiredBytesLength, &buffer);
@@ -280,14 +284,19 @@ GenerateRandomPathName(nsCString& aOutSalt, uint32_t aLength)
   buffer = nullptr;
   if (NS_FAILED (rv)) return rv;
 
-  temp.Truncate(aLength);
+  aOutSalt = temp;
+  return NS_OK;
+}
+
+nsresult
+GenerateRandomPathName(nsCString& aOutSalt, uint32_t aLength)
+{
+  nsresult rv = GenerateRandomName(aOutSalt, aLength);
+  if (NS_FAILED(rv)) return rv;
 
   // Base64 characters are alphanumeric (a-zA-Z0-9) and '+' and '/', so we need
   // to replace illegal characters -- notably '/'
-  temp.ReplaceChar(FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS, '_');
-
-  aOutSalt = temp;
-
+  aOutSalt.ReplaceChar(FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS, '_');
   return NS_OK;
 }
 
@@ -295,7 +304,7 @@ class CreateTaskQueueTask : public nsRunnable {
 public:
   NS_IMETHOD Run() {
     MOZ_ASSERT(NS_IsMainThread());
-    mTaskQueue = new MediaTaskQueue(GetMediaDecodeThreadPool());
+    mTaskQueue = new MediaTaskQueue(GetMediaThreadPool());
     return NS_OK;
   }
   nsRefPtr<MediaTaskQueue> mTaskQueue;
@@ -305,7 +314,7 @@ class CreateFlushableTaskQueueTask : public nsRunnable {
 public:
   NS_IMETHOD Run() {
     MOZ_ASSERT(NS_IsMainThread());
-    mTaskQueue = new FlushableMediaTaskQueue(GetMediaDecodeThreadPool());
+    mTaskQueue = new FlushableMediaTaskQueue(GetMediaThreadPool());
     return NS_OK;
   }
   nsRefPtr<FlushableMediaTaskQueue> mTaskQueue;

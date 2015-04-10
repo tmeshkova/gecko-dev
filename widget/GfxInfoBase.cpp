@@ -53,7 +53,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD Observe(nsISupports *subject, const char *aTopic,
-                     const char16_t *aData) MOZ_OVERRIDE
+                     const char16_t *aData) override
   {
     MOZ_ASSERT(strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0);
 
@@ -123,8 +123,8 @@ GetPrefNameForFeature(int32_t aFeature)
     case nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS:
       name = BLACKLIST_PREF_BRANCH "layers.direct3d11";
       break;
-    case nsIGfxInfo::FEATURE_DXVA:
-      name = BLACKLIST_PREF_BRANCH "dxva";
+    case nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING:
+      name = BLACKLIST_PREF_BRANCH "hardwarevideodecoding";
       break;
     case nsIGfxInfo::FEATURE_OPENGL_LAYERS:
       name = BLACKLIST_PREF_BRANCH "layers.opengl";
@@ -290,8 +290,8 @@ BlacklistFeatureToGfxFeature(const nsAString& aFeature)
     return nsIGfxInfo::FEATURE_DIRECT3D_10_1_LAYERS;
   else if (aFeature.EqualsLiteral("DIRECT3D_11_LAYERS"))
     return nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS;
-  else if (aFeature.EqualsLiteral("DXVA"))
-    return nsIGfxInfo::FEATURE_DXVA;
+  else if (aFeature.EqualsLiteral("HARDWARE_VIDEO_DECODING"))
+    return nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING;
   else if (aFeature.EqualsLiteral("OPENGL_LAYERS"))
     return nsIGfxInfo::FEATURE_OPENGL_LAYERS;
   else if (aFeature.EqualsLiteral("WEBGL_OPENGL"))
@@ -606,23 +606,34 @@ GfxInfoBase::FindBlocklistedDeviceInList(const nsTArray<GfxDriverInfo>& info,
 {
   int32_t status = nsIGfxInfo::FEATURE_STATUS_UNKNOWN;
 
-  nsAutoString adapterVendorID;
-  nsAutoString adapterDeviceID;
-  nsAutoString adapterDriverVersionString;
-  if (NS_FAILED(GetAdapterVendorID(adapterVendorID)) ||
-      NS_FAILED(GetAdapterDeviceID(adapterDeviceID)) ||
-      NS_FAILED(GetAdapterDriverVersion(adapterDriverVersionString)))
-  {
-    return 0;
-  }
-
-#if defined(XP_WIN) || defined(ANDROID)
-  uint64_t driverVersion;
-  ParseDriverVersion(adapterDriverVersionString, &driverVersion);
-#endif
-
   uint32_t i = 0;
   for (; i < info.Length(); i++) {
+    // XXX: it would be better not to do this everytime round the loop
+    nsAutoString adapterVendorID;
+    nsAutoString adapterDeviceID;
+    nsAutoString adapterDriverVersionString;
+    if (info[i].mGpu2) {
+      if (NS_FAILED(GetAdapterVendorID2(adapterVendorID)) ||
+          NS_FAILED(GetAdapterDeviceID2(adapterDeviceID)) ||
+          NS_FAILED(GetAdapterDriverVersion2(adapterDriverVersionString)))
+      {
+        return 0;
+      }
+    } else {
+      if (NS_FAILED(GetAdapterVendorID(adapterVendorID)) ||
+          NS_FAILED(GetAdapterDeviceID(adapterDeviceID)) ||
+          NS_FAILED(GetAdapterDriverVersion(adapterDriverVersionString)))
+      {
+        return 0;
+      }
+    }
+
+#if defined(XP_WIN) || defined(ANDROID)
+    uint64_t driverVersion;
+    ParseDriverVersion(adapterDriverVersionString, &driverVersion);
+#endif
+
+
     if (info[i].mOperatingSystem != DRIVER_OS_ALL &&
         info[i].mOperatingSystem != os)
     {
@@ -847,7 +858,7 @@ GfxInfoBase::EvaluateDownloadedBlacklist(nsTArray<GfxDriverInfo>& aDriverInfo)
     nsIGfxInfo::FEATURE_DIRECT3D_10_LAYERS,
     nsIGfxInfo::FEATURE_DIRECT3D_10_1_LAYERS,
     nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS,
-    nsIGfxInfo::FEATURE_DXVA,
+    nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING,
     nsIGfxInfo::FEATURE_OPENGL_LAYERS,
     nsIGfxInfo::FEATURE_WEBGL_OPENGL,
     nsIGfxInfo::FEATURE_WEBGL_ANGLE,
@@ -908,7 +919,7 @@ GfxInfoBase::LogFailure(const nsACString &failure)
 }
 
 /* void getFailures (out unsigned long failureCount, [optional, array, size_is (failureCount)] out long indices, [array, size_is (failureCount), retval] out string failures); */
-/* XPConnect method of returning arrays is very ugly. Would not recommend. Fallable nsMemory::Alloc makes things worse */
+/* XPConnect method of returning arrays is very ugly. Would not recommend. */
 NS_IMETHODIMP GfxInfoBase::GetFailures(uint32_t* failureCount,
 				       int32_t** indices,
 				       char ***failures)
@@ -939,14 +950,14 @@ NS_IMETHODIMP GfxInfoBase::GetFailures(uint32_t* failureCount,
   *failureCount = loggedStrings.size();
 
   if (*failureCount != 0) {
-    *failures = (char**)nsMemory::Alloc(*failureCount * sizeof(char*));
+    *failures = (char**)moz_xmalloc(*failureCount * sizeof(char*));
     if (!(*failures)) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
     if (indices) {
-      *indices = (int32_t*)nsMemory::Alloc(*failureCount * sizeof(int32_t));
+      *indices = (int32_t*)moz_xmalloc(*failureCount * sizeof(int32_t));
       if (!(*indices)) {
-        nsMemory::Free(*failures);
+        free(*failures);
         *failures = nullptr;
         return NS_ERROR_OUT_OF_MEMORY;
       }

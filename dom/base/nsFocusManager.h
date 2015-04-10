@@ -31,9 +31,9 @@ struct nsDelayedBlurOrFocusEvent;
  * which receives key events.
  */
 
-class nsFocusManager MOZ_FINAL : public nsIFocusManager,
-                                 public nsIObserver,
-                                 public nsSupportsWeakReference
+class nsFocusManager final : public nsIFocusManager,
+                             public nsIObserver,
+                             public nsSupportsWeakReference
 {
   typedef mozilla::widget::InputContextAction InputContextAction;
 

@@ -14,8 +14,8 @@
 namespace mozilla {
 namespace dom {
 
-class ValidityState MOZ_FINAL : public nsIDOMValidityState,
-                                public nsWrapperCache
+class ValidityState final : public nsIDOMValidityState,
+                            public nsWrapperCache
 {
   ~ValidityState() {}
 
@@ -30,7 +30,7 @@ public:
     return mConstraintValidation;
   }
 
-  virtual JSObject* WrapObject(JSContext *aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // Web IDL methods
   bool ValueMissing() const

@@ -256,10 +256,13 @@ make_CA testCA 'CN=Test CA' test-ca.der
 make_CA otherCA 'CN=Other test CA' other-test-ca.der
 
 make_EE localhostAndExampleCom 'CN=Test End-entity' testCA "localhost,*.example.com,*.pinning.example.com,*.include-subdomains.pinning.example.com,*.exclude-subdomains.pinning.example.com"
+# Make another EE cert using testCA for subject / pubkey revocation
+make_EE sameIssuerEE 'CN=Another Test End-entity' testCA "localhost,*.example.com"
 # Make an EE cert issued by otherCA
 make_EE otherIssuerEE 'CN=Wrong CA Pin Test End-Entity' otherCA "*.include-subdomains.pinning.example.com,*.exclude-subdomains.pinning.example.com,*.pinning.example.com"
 
 export_cert localhostAndExampleCom default-ee.der
+export_cert sameIssuerEE same-issuer-ee.der
 export_cert otherIssuerEE other-issuer-ee.der
 
 # A cert that is like localhostAndExampleCom, but with a different serial number for
@@ -333,6 +336,8 @@ make_EE_with_nsCertType nsCertTypeCriticalWithExtKeyUsage 'CN=nsCertType Critica
 make_V1 v1Cert 'CN=V1 Cert' testCA
 export_cert v1Cert v1Cert.der
 make_EE eeIssuedByV1Cert 'CN=EE Issued by V1 Cert' v1Cert "localhost,*.example.com"
+
+make_EE eeIssuedByNonCA 'CN=EE Issued by non-CA' localhostAndExampleCom "localhost,*.example.com"
 
 # Make a valid EE using testINT to test OneCRL revocation of testINT
 make_EE eeIssuedByIntermediate 'CN=EE issued by intermediate' testINT "localhost"

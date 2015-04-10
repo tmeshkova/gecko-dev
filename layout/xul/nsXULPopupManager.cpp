@@ -471,7 +471,7 @@ nsXULPopupManager::PopupMoved(nsIFrame* aFrame, nsIntPoint aPnt)
 }
 
 void
-nsXULPopupManager::PopupResized(nsIFrame* aFrame, nsIntSize aSize)
+nsXULPopupManager::PopupResized(nsIFrame* aFrame, LayoutDeviceIntSize aSize)
 {
   nsMenuPopupFrame* menuPopupFrame = GetPopupToMoveOrResize(aFrame);
   if (!menuPopupFrame)
@@ -490,8 +490,8 @@ nsXULPopupManager::PopupResized(nsIFrame* aFrame, nsIntSize aSize)
   // as 'width' and 'height' attributes on the popup.
   nsPresContext* presContext = menuPopupFrame->PresContext();
 
-  nsIntSize newCSS(presContext->DevPixelsToIntCSSPixels(aSize.width),
-                   presContext->DevPixelsToIntCSSPixels(aSize.height));
+  CSSIntSize newCSS(presContext->DevPixelsToIntCSSPixels(aSize.width),
+                    presContext->DevPixelsToIntCSSPixels(aSize.height));
 
   nsIContent* popup = menuPopupFrame->GetContent();
   nsAutoString width, height;
@@ -996,7 +996,7 @@ public:
   {
   }
 
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) MOZ_OVERRIDE
+  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override
   {
     mContent->RemoveSystemEventListener(NS_LITERAL_STRING("transitionend"), this, false);
 

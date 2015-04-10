@@ -92,7 +92,7 @@ RecordStackWalker(uint32_t aFrameNumber, void* aPC, void* aSP, void* aClosure)
  * An implementation of IOInterposeObserver to be registered with IOInterposer.
  * This observer logs all writes as late writes.
  */
-class LateWriteObserver MOZ_FINAL : public IOInterposeObserver
+class LateWriteObserver final : public IOInterposeObserver
 {
 public:
   explicit LateWriteObserver(const char* aProfileDirectory)
@@ -120,7 +120,7 @@ LateWriteObserver::Observe(IOInterposeObserver::Observation& aOb)
   }
 
   // If we have shutdown mode SCM_NOTHING or we can't record then abort
-  if (gShutdownChecks == SCM_NOTHING || !Telemetry::CanRecord()) {
+  if (gShutdownChecks == SCM_NOTHING || !Telemetry::CanRecordExtended()) {
     return;
   }
 

@@ -714,12 +714,10 @@ WebGLContext::DeleteRenderbuffer(WebGLRenderbuffer* rbuf)
     if (mBoundReadFramebuffer)
         mBoundReadFramebuffer->DetachRenderbuffer(rbuf);
 
-    // Invalidate framebuffer status cache
-    rbuf->NotifyFBsStatusChanged();
+    rbuf->InvalidateStatusOfAttachedFBs();
 
     if (mBoundRenderbuffer == rbuf)
-        BindRenderbuffer(LOCAL_GL_RENDERBUFFER,
-                         static_cast<WebGLRenderbuffer*>(nullptr));
+        BindRenderbuffer(LOCAL_GL_RENDERBUFFER, nullptr);
 
     rbuf->RequestDelete();
 }
@@ -742,8 +740,7 @@ WebGLContext::DeleteTexture(WebGLTexture* tex)
     if (mBoundReadFramebuffer)
         mBoundReadFramebuffer->DetachTexture(tex);
 
-    // Invalidate framebuffer status cache
-    tex->NotifyFBsStatusChanged();
+    tex->InvalidateStatusOfAttachedFBs();
 
     GLuint activeTexture = mActiveTexture;
     for (int32_t i = 0; i < mGLMaxTextureUnits; i++) {
@@ -752,7 +749,7 @@ WebGLContext::DeleteTexture(WebGLTexture* tex)
             (mBound3DTextures[i] == tex && tex->Target() == LOCAL_GL_TEXTURE_3D))
         {
             ActiveTexture(LOCAL_GL_TEXTURE0 + i);
-            BindTexture(tex->Target().get(), static_cast<WebGLTexture*>(nullptr));
+            BindTexture(tex->Target().get(), nullptr);
         }
     }
     ActiveTexture(LOCAL_GL_TEXTURE0 + activeTexture);
@@ -868,11 +865,8 @@ WebGLContext::FramebufferRenderbuffer(GLenum target, GLenum attachment,
                                     rbtarget);
     }
 
-    if (!ValidateFramebufferAttachment(fb, attachment,
-                                       "framebufferRenderbuffer"))
-    {
+    if (!ValidateFramebufferAttachment(fb, attachment, "framebufferRenderbuffer"))
         return;
-    }
 
     fb->FramebufferRenderbuffer(attachment, rbtarget, wrb);
 }
@@ -889,6 +883,11 @@ WebGLContext::FramebufferTexture2D(GLenum target,
 
     if (!ValidateFramebufferTarget(target, "framebufferTexture2D"))
         return;
+
+    if (!IsWebGL2() && level != 0) {
+        ErrorInvalidValue("framebufferTexture2D: level must be 0.");
+        return;
+    }
 
     WebGLFramebuffer* fb;
     switch (target) {
@@ -1141,11 +1140,11 @@ WebGLContext::GetFramebufferAttachmentParameter(JSContext* cx,
     }
 
     if (IsExtensionEnabled(WebGLExtensionID::WEBGL_draw_buffers))
-        fb->EnsureColorAttachments(attachment - LOCAL_GL_COLOR_ATTACHMENT0);
+        fb->EnsureColorAttachPoints(attachment - LOCAL_GL_COLOR_ATTACHMENT0);
 
     MakeContextCurrent();
 
-    const WebGLFramebuffer::Attachment& fba = fb->GetAttachment(attachment);
+    const WebGLFramebuffer::AttachPoint& fba = fb->GetAttachPoint(attachment);
 
     if (fba.Renderbuffer()) {
         switch (pname) {
@@ -1501,10 +1500,10 @@ void WebGLContext::TexParameter_base(GLenum rawTarget, GLenum pname,
             case LOCAL_GL_NOTEQUAL:
             case LOCAL_GL_ALWAYS:
             case LOCAL_GL_NEVER:
-                paramValueInvalid = false;
+                break;
 
             default:
-                paramValueInvalid = true;
+                pnameAndParamAreIncompatible = true;
             }
             break;
 
@@ -2324,8 +2323,6 @@ WebGLContext::RenderbufferStorage_base(const char* funcName, GLenum target,
                        height != mBoundRenderbuffer->Height();
 
     if (willRealloc) {
-        // Invalidate framebuffer status cache
-        mBoundRenderbuffer->NotifyFBsStatusChanged();
         GetAndFlushUnderlyingGLErrors();
         mBoundRenderbuffer->RenderbufferStorage(samples, internalFormatForGL,
                                                 width, height);
@@ -2804,7 +2801,7 @@ WebGLContext::UniformMatrix2fv_base(WebGLUniformLocation* loc, bool transpose,
 {
     GLuint rawLoc;
     GLsizei numElementsToUpload;
-    if (!ValidateUniformMatrixArraySetter(loc, 2, LOCAL_GL_FLOAT, arrayLength,
+    if (!ValidateUniformMatrixArraySetter(loc, 2, 2, LOCAL_GL_FLOAT, arrayLength,
                                           transpose, "uniformMatrix2fv",
                                           &rawLoc, &numElementsToUpload))
     {
@@ -2821,7 +2818,7 @@ WebGLContext::UniformMatrix3fv_base(WebGLUniformLocation* loc, bool transpose,
 {
     GLuint rawLoc;
     GLsizei numElementsToUpload;
-    if (!ValidateUniformMatrixArraySetter(loc, 3, LOCAL_GL_FLOAT, arrayLength,
+    if (!ValidateUniformMatrixArraySetter(loc, 3, 3, LOCAL_GL_FLOAT, arrayLength,
                                           transpose, "uniformMatrix3fv",
                                           &rawLoc, &numElementsToUpload))
     {
@@ -2838,7 +2835,7 @@ WebGLContext::UniformMatrix4fv_base(WebGLUniformLocation* loc, bool transpose,
 {
     GLuint rawLoc;
     GLsizei numElementsToUpload;
-    if (!ValidateUniformMatrixArraySetter(loc, 4, LOCAL_GL_FLOAT, arrayLength,
+    if (!ValidateUniformMatrixArraySetter(loc, 4, 4, LOCAL_GL_FLOAT, arrayLength,
                                           transpose, "uniformMatrix4fv",
                                           &rawLoc, &numElementsToUpload))
     {

@@ -309,7 +309,7 @@ private:
   // and is shutdown when the RefreshDriverTimer is deleted. The alternative is
   // to (a) make all RefreshDriverTimer RefCounted or (b) use different
   // VsyncObserver types.
-  class RefreshDriverVsyncObserver MOZ_FINAL : public VsyncObserver
+  class RefreshDriverVsyncObserver final : public VsyncObserver
   {
   public:
     explicit RefreshDriverVsyncObserver(VsyncRefreshDriverTimer* aVsyncRefreshDriverTimer)
@@ -320,7 +320,7 @@ private:
       MOZ_ASSERT(NS_IsMainThread());
     }
 
-    virtual bool NotifyVsync(TimeStamp aVsyncTimestamp) MOZ_OVERRIDE
+    virtual bool NotifyVsync(TimeStamp aVsyncTimestamp) override
     {
       if (!NS_IsMainThread()) {
         MOZ_ASSERT(XRE_IsParentProcess());
@@ -405,7 +405,7 @@ private:
     mVsyncObserver = nullptr;
   }
 
-  virtual void StartTimer() MOZ_OVERRIDE
+  virtual void StartTimer() override
   {
     mLastFireEpoch = JS_Now();
     mLastFireTime = TimeStamp::Now();
@@ -417,7 +417,7 @@ private:
     }
   }
 
-  virtual void StopTimer() MOZ_OVERRIDE
+  virtual void StopTimer() override
   {
     if (XRE_IsParentProcess()) {
       mVsyncDispatcher->SetParentRefreshTimer(nullptr);
@@ -426,7 +426,7 @@ private:
     }
   }
 
-  virtual void ScheduleNextTick(TimeStamp aNowTime) MOZ_OVERRIDE
+  virtual void ScheduleNextTick(TimeStamp aNowTime) override
   {
     // Do nothing since we just wait for the next vsync from
     // RefreshDriverVsyncObserver.
@@ -510,7 +510,9 @@ protected:
         this,
         (aNowTime - mTargetTime).ToMilliseconds(),
         delay);
+#ifndef ANDROID  /* bug 1142079 */
     Telemetry::Accumulate(Telemetry::FX_REFRESH_DRIVER_FRAME_DELAY_MS, (aNowTime - mTargetTime).ToMilliseconds());
+#endif
 
     // then schedule the timer
     LOG("[%p] scheduling callback for %d ms (2)", this, delay);
@@ -625,7 +627,9 @@ protected:
         this,
         (aNowTime - mTargetTime).ToMilliseconds(),
         delay);
+#ifndef ANDROID  /* bug 1142079 */
     Telemetry::Accumulate(Telemetry::FX_REFRESH_DRIVER_FRAME_DELAY_MS, (aNowTime - mTargetTime).ToMilliseconds());
+#endif
 
     // then schedule the timer
     LOG("[%p] scheduling callback for %d ms (2)", this, delay);
@@ -649,7 +653,7 @@ protected:
  * add that complexity.  All we want is for inactive drivers to tick
  * at some point, but we don't care too much about how often.
  */
-class InactiveRefreshDriverTimer MOZ_FINAL :
+class InactiveRefreshDriverTimer final :
     public SimpleTimerBasedRefreshDriverTimer
 {
 public:
@@ -764,7 +768,7 @@ protected:
 // The PBackground protocol connection callback. It will be called when
 // PBackground is ready. Then we create the PVsync sub-protocol for our
 // vsync-base RefreshTimer.
-class VsyncChildCreateCallback MOZ_FINAL : public nsIIPCBackgroundChildCreateCallback
+class VsyncChildCreateCallback final : public nsIIPCBackgroundChildCreateCallback
 {
   NS_DECL_ISUPPORTS
 
@@ -787,14 +791,14 @@ public:
 private:
   virtual ~VsyncChildCreateCallback() {}
 
-  virtual void ActorCreated(PBackgroundChild* aPBackgroundChild) MOZ_OVERRIDE
+  virtual void ActorCreated(PBackgroundChild* aPBackgroundChild) override
   {
     MOZ_ASSERT(NS_IsMainThread());
     MOZ_ASSERT(aPBackgroundChild);
     CreateVsyncActor(aPBackgroundChild);
   }
 
-  virtual void ActorFailed() MOZ_OVERRIDE
+  virtual void ActorFailed() override
   {
     MOZ_ASSERT(NS_IsMainThread());
     MOZ_CRASH("Failed To Create VsyncChild Actor");
@@ -1471,6 +1475,16 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
     return;
   }
 
+  // We can have a race condition where the vsync timestamp
+  // is before the most recent refresh due to a forced refresh.
+  // The underlying assumption is that the refresh driver tick can only
+  // go forward in time, not backwards. To prevent the refresh
+  // driver from going back in time, just skip this tick and
+  // wait until the next tick.
+  if ((aNowTime <= mMostRecentRefresh) && !mTestControllingRefreshes) {
+    return;
+  }
+
   TimeStamp previousRefresh = mMostRecentRefresh;
 
   mMostRecentRefresh = aNowTime;
@@ -1725,7 +1739,9 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
     }
   }
 
+#ifndef ANDROID  /* bug 1142079 */
   mozilla::Telemetry::AccumulateTimeDelta(mozilla::Telemetry::REFRESH_DRIVER_TICK, mTickStart);
+#endif
 
   for (uint32_t i = 0; i < mPostRefreshObservers.Length(); ++i) {
     mPostRefreshObservers[i]->DidRefresh();

@@ -165,7 +165,7 @@ enum HistCmd{
 //***      nsSHistoryObserver
 //*****************************************************************************
 
-class nsSHistoryObserver MOZ_FINAL : public nsIObserver
+class nsSHistoryObserver final : public nsIObserver
 {
 
 public:
@@ -1406,7 +1406,7 @@ nsSHistory::RemoveEntries(nsTArray<uint64_t>& aIDs, int32_t aStartIndex)
     --index;
   }
   if (didRemove && mRootDocShell) {
-    nsRefPtr<nsIRunnable> ev =
+    nsCOMPtr<nsIRunnable> ev =
       NS_NewRunnableMethod(static_cast<nsDocShell*>(mRootDocShell),
                            &nsDocShell::FireDummyOnLocationChange);
     NS_DispatchToCurrentThread(ev);
@@ -1513,12 +1513,13 @@ nsSHistory::GetSessionHistory(nsISHistory** aSessionHistory)
 }
 
 NS_IMETHODIMP
-nsSHistory::LoadURIWithBase(const char16_t* aURI,
-                            uint32_t aLoadFlags,
-                            nsIURI* aReferringURI,
-                            nsIInputStream* aPostStream,
-                            nsIInputStream* aExtraHeaderStream,
-                            nsIURI* aBaseURI)
+nsSHistory::LoadURIWithOptions(const char16_t* aURI,
+                               uint32_t aLoadFlags,
+                               nsIURI* aReferringURI,
+                               uint32_t aReferrerPolicy,
+                               nsIInputStream* aPostStream,
+                               nsIInputStream* aExtraHeaderStream,
+                               nsIURI* aBaseURI)
 {
   return NS_OK;
 }
@@ -1790,8 +1791,6 @@ nsSHistory::InitiateLoad(nsISHEntry * aFrameEntry, nsIDocShell * aFrameDS, long 
 
 }
 
-
-
 NS_IMETHODIMP
 nsSHistory::SetRootDocShell(nsIDocShell * aDocShell)
 {
@@ -1800,27 +1799,12 @@ nsSHistory::SetRootDocShell(nsIDocShell * aDocShell)
 }
 
 NS_IMETHODIMP
-nsSHistory::GetRootDocShell(nsIDocShell ** aDocShell)
-{
-  NS_ENSURE_ARG_POINTER(aDocShell);
-
-  *aDocShell = mRootDocShell;
-  //Not refcounted. May this method should not be available for public
-  // NS_IF_ADDREF(*aDocShell);
-  return NS_OK;
-}
-
-
-NS_IMETHODIMP
 nsSHistory::GetSHistoryEnumerator(nsISimpleEnumerator** aEnumerator)
 {
-  nsresult status = NS_OK;
-
   NS_ENSURE_ARG_POINTER(aEnumerator);
-  nsSHEnumerator * iterator = new nsSHEnumerator(this);
-  if (iterator && NS_FAILED(status = CallQueryInterface(iterator, aEnumerator)))
-    delete iterator;
-  return status;
+  nsRefPtr<nsSHEnumerator> iterator = new nsSHEnumerator(this);
+  iterator.forget(aEnumerator);
+  return NS_OK;
 }
 
 

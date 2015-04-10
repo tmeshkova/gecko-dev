@@ -23,8 +23,8 @@ namespace dom {
 
 class ArrayBufferViewOrArrayBuffer;
 
-class MediaKeyStatusMap MOZ_FINAL : public nsISupports,
-                                    public nsWrapperCache
+class MediaKeyStatusMap final : public nsISupports,
+                                public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -41,7 +41,7 @@ protected:
 public:
   nsPIDOMWindow* GetParentObject() const;
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   MediaKeyStatus Get(JSContext* aCx,
                      const ArrayBufferViewOrArrayBuffer& aKey,

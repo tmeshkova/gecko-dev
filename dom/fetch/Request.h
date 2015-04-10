@@ -26,9 +26,9 @@ class InternalHeaders;
 class Promise;
 class RequestOrUSVString;
 
-class Request MOZ_FINAL : public nsISupports
-                        , public FetchBody<Request>
-                        , public nsWrapperCache
+class Request final : public nsISupports
+                    , public FetchBody<Request>
+                    , public nsWrapperCache
 {
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(Request)
@@ -37,9 +37,9 @@ public:
   Request(nsIGlobalObject* aOwner, InternalRequest* aRequest);
 
   JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
   {
-    return RequestBinding::Wrap(aCx, this);
+    return RequestBinding::Wrap(aCx, this, aGivenProto);
   }
 
   void
@@ -78,14 +78,20 @@ public:
   RequestContext
   Context() const
   {
-    return mContext;
+    return mRequest->Context();
   }
 
   // [ChromeOnly]
   void
   SetContext(RequestContext aContext)
   {
-    mContext = aContext;
+    mRequest->SetContext(aContext);
+  }
+
+  void
+  SetContentPolicyType(nsContentPolicyType aContentPolicyType)
+  {
+    mRequest->SetContentPolicyType(aContentPolicyType);
   }
 
   void
@@ -126,7 +132,6 @@ private:
   nsRefPtr<InternalRequest> mRequest;
   // Lazily created.
   nsRefPtr<Headers> mHeaders;
-  RequestContext mContext;
 };
 
 } // namespace dom

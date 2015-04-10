@@ -163,7 +163,7 @@ EmbedLiteCompositorProcessParent::AllocPLayerTransactionParent(const nsTArray<La
     // XXX: should be false, but that causes us to fail some tests on Mac w/ OMTC.
     // Bug 900745. change *aSuccess to false to see test failures.
     *aSuccess = true;
-    LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, aId, mChildProcessId);
+    LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, aId);
     p->AddIPDLReference();
     return p;
   }
@@ -171,7 +171,7 @@ EmbedLiteCompositorProcessParent::AllocPLayerTransactionParent(const nsTArray<La
   mCompositionManager = new AsyncCompositionManager(mLayerManager);
   *aSuccess = true;
   *aTextureFactoryIdentifier = mCompositor->GetTextureFactoryIdentifier();
-  LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, aId, mChildProcessId);
+  LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, aId);
   p->AddIPDLReference();
   return p;
 }

@@ -2087,7 +2087,7 @@ nsTreeBodyFrame::GetTwistyRect(int32_t aRowIndex,
   }
 
   if (useTheme) {
-    nsIntSize minTwistySizePx(0,0);
+    LayoutDeviceIntSize minTwistySizePx;
     bool canOverride = true;
     theme->GetMinimumWidgetSize(aPresContext, this, twistyDisplayData->mAppearance,
                                 &minTwistySizePx, &canOverride);
@@ -2771,7 +2771,7 @@ nsTreeBodyFrame::HandleEvent(nsPresContext* aPresContext,
   return NS_OK;
 }
 
-class nsDisplayTreeBody MOZ_FINAL : public nsDisplayItem {
+class nsDisplayTreeBody final : public nsDisplayItem {
 public:
   nsDisplayTreeBody(nsDisplayListBuilder* aBuilder, nsFrame* aFrame) :
     nsDisplayItem(aBuilder, aFrame),
@@ -2785,7 +2785,7 @@ public:
 #endif
 
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx) MOZ_OVERRIDE
+                     nsRenderingContext* aCtx) override
   {
     gfxContext* ctx = aCtx->ThebesContext();
     gfxContextAutoDisableSubpixelAntialiasing disable(ctx, mDisableSubpixelAA);
@@ -2794,12 +2794,12 @@ public:
   }
   NS_DISPLAY_DECL_NAME("XULTreeBody", TYPE_XUL_TREE_BODY)
 
-  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE
+  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) override
   {
     bool snap;
     return GetBounds(aBuilder, &snap);
   }
-  virtual void DisableComponentAlpha() MOZ_OVERRIDE {
+  virtual void DisableComponentAlpha() override {
     mDisableSubpixelAA = true;
   }
 
@@ -4200,23 +4200,29 @@ nsTreeBodyFrame::ScrollHorzInternal(const ScrollParts& aParts, int32_t aPosition
 }
 
 void
-nsTreeBodyFrame::ScrollByPage(nsScrollbarFrame* aScrollbar, int32_t aDirection)
+nsTreeBodyFrame::ScrollByPage(nsScrollbarFrame* aScrollbar, int32_t aDirection,
+                              nsIScrollbarMediator::ScrollSnapMode aSnap)
 {
+  // CSS Scroll Snapping is not enabled for XUL, aSnap is ignored
   MOZ_ASSERT(aScrollbar != nullptr);
   ScrollByPages(aDirection);
 }
 
 void
-nsTreeBodyFrame::ScrollByWhole(nsScrollbarFrame* aScrollbar, int32_t aDirection)
+nsTreeBodyFrame::ScrollByWhole(nsScrollbarFrame* aScrollbar, int32_t aDirection,
+                               nsIScrollbarMediator::ScrollSnapMode aSnap)
 {
+  // CSS Scroll Snapping is not enabled for XUL, aSnap is ignored
   MOZ_ASSERT(aScrollbar != nullptr); 
   int32_t newIndex = aDirection < 0 ? 0 : mTopRowIndex;
   ScrollToRow(newIndex);
 }
 
 void
-nsTreeBodyFrame::ScrollByLine(nsScrollbarFrame* aScrollbar, int32_t aDirection)
+nsTreeBodyFrame::ScrollByLine(nsScrollbarFrame* aScrollbar, int32_t aDirection,
+                              nsIScrollbarMediator::ScrollSnapMode aSnap)
 {
+  // CSS Scroll Snapping is not enabled for XUL, aSnap is ignored
   MOZ_ASSERT(aScrollbar != nullptr);
   ScrollByLines(aDirection);
 }
@@ -4719,7 +4725,7 @@ class nsOverflowChecker : public nsRunnable
 {
 public:
   explicit nsOverflowChecker(nsTreeBodyFrame* aFrame) : mFrame(aFrame) {}
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     if (mFrame.IsAlive()) {
       nsTreeBodyFrame* tree = static_cast<nsTreeBodyFrame*>(mFrame.GetFrame());

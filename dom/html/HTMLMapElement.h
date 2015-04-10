@@ -17,8 +17,8 @@ class nsContentList;
 namespace mozilla {
 namespace dom {
 
-class HTMLMapElement MOZ_FINAL : public nsGenericHTMLElement,
-                                 public nsIDOMHTMLMapElement
+class HTMLMapElement final : public nsGenericHTMLElement,
+                             public nsIDOMHTMLMapElement
 {
 public:
   explicit HTMLMapElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
@@ -29,7 +29,7 @@ public:
   // nsIDOMHTMLMapElement
   NS_DECL_NSIDOMHTMLMAPELEMENT
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult) const MOZ_OVERRIDE;
+  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult) const override;
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED_NO_UNLINK(HTMLMapElement,
                                                      nsGenericHTMLElement)
@@ -41,7 +41,7 @@ public:
   }
   nsIHTMLCollection* Areas();
 
-  virtual JSObject* WrapNode(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
 protected:
   ~HTMLMapElement() {}

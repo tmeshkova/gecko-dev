@@ -2,7 +2,7 @@
 metadata:
   name: 'Task graph used to build {{project}} specific jobs'
   description: |
-    {{project}} push for {{owner}} with comment: {{comment}}.
+    {{project}} push for {{owner}}
   owner: mozilla-taskcluster-maintenance@mozilla.com
   source: "{{{source}}}"
 
@@ -16,6 +16,8 @@ tasks:
   - taskId: '{{#as_slugid}}decision task{{/as_slugid}}'
     reruns: 3
     task:
+      routes:
+        - tc-treeherder-stage.{{project}}.{{revision_hash}}
       created: '{{now}}'
       deadline: '{{#from_now}}1 day{{/from_now}}'
       metadata:
@@ -65,6 +67,7 @@ tasks:
           - >
             source ./bin/decision.sh &&
             ./mach taskcluster-graph
+            --pushlog-id='{{pushlog_id}}'
             --message='{{comment}}'
             --project='{{project}}'
             --owner='{{owner}}'
@@ -76,4 +79,3 @@ tasks:
       extra:
         treeherder:
           symbol: D
-

@@ -166,11 +166,16 @@ public:
   // Main thread only.
   void OnKeyStatusesChange(const nsAString& aSessionId);
 
+  void GetSessionIdsForKeyId(const nsTArray<uint8_t>& aKeyId,
+                             nsTArray<nsCString>& aSessionIds);
+
 #ifdef DEBUG
   bool IsOnGMPThread();
 #endif
 
 private:
+  friend class gmp_InitDoneCallback;
+  friend class gmp_InitGetGMPDecryptorCallback;
 
   struct InitData {
     uint32_t mPromiseId;
@@ -180,7 +185,11 @@ private:
   };
 
   // GMP thread only.
-  void gmp_Init(nsAutoPtr<InitData> aData);
+  void gmp_Init(nsAutoPtr<InitData>&& aData);
+  void gmp_InitDone(GMPDecryptorProxy* aCDM, nsAutoPtr<InitData>&& aData);
+  void gmp_InitGetGMPDecryptor(nsresult aResult,
+                               const nsACString& aNodeId,
+                               nsAutoPtr<InitData>&& aData);
 
   // GMP thread only.
   void gmp_Shutdown();
@@ -317,6 +326,10 @@ private:
   // from it.
   // GMP thread only.
   uint32_t mDecryptionJobCount;
+
+  // True if CDMProxy::gmp_Shutdown was called.
+  // GMP thread only.
+  bool mShutdownCalled;
 };
 
 

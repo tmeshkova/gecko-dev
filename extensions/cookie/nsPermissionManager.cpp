@@ -185,7 +185,7 @@ GetNextSubDomainForHost(const nsACString& aHost)
   return subDomain;
 }
 
-class AppClearDataObserver MOZ_FINAL : public nsIObserver {
+class AppClearDataObserver final : public nsIObserver {
   ~AppClearDataObserver() {}
 
 public:
@@ -193,7 +193,7 @@ public:
 
   // nsIObserver implementation.
   NS_IMETHODIMP
-  Observe(nsISupports *aSubject, const char *aTopic, const char16_t *data) MOZ_OVERRIDE
+  Observe(nsISupports *aSubject, const char *aTopic, const char16_t *data) override
   {
     MOZ_ASSERT(!nsCRT::strcmp(aTopic, "webapps-clear-data"));
 
@@ -247,7 +247,7 @@ nsPermissionManager::PermissionKey::PermissionKey(nsIPrincipal* aPrincipal)
  * Note: Once the callback has been called this DeleteFromMozHostListener cannot
  * be reused.
  */
-class CloseDatabaseListener MOZ_FINAL : public mozIStorageCompletionCallback
+class CloseDatabaseListener final : public mozIStorageCompletionCallback
 {
   ~CloseDatabaseListener() {}
 
@@ -298,7 +298,7 @@ CloseDatabaseListener::Complete(nsresult, nsISupports*)
  * Note: Once the callback has been called this DeleteFromMozHostListener cannot
  * be reused.
  */
-class DeleteFromMozHostListener MOZ_FINAL : public mozIStorageStatementCallback
+class DeleteFromMozHostListener final : public mozIStorageStatementCallback
 {
   ~DeleteFromMozHostListener() {}
 
@@ -419,34 +419,26 @@ nsPermissionManager::Init()
   }
 
   if (IsChildProcess()) {
-    // Get the permissions from the parent process
-    InfallibleTArray<IPC::Permission> perms;
-    ChildProcess()->SendReadPermissions(&perms);
-
-    for (uint32_t i = 0; i < perms.Length(); i++) {
-      const IPC::Permission &perm = perms[i];
-
-      nsCOMPtr<nsIPrincipal> principal;
-      rv = GetPrincipal(perm.host, perm.appId, perm.isInBrowserElement, getter_AddRefs(principal));
-      NS_ENSURE_SUCCESS(rv, rv);
-
-      // The child process doesn't care about modification times - it neither
-      // reads nor writes, nor removes them based on the date - so 0 (which
-      // will end up as now()) is fine.
-      uint64_t modificationTime = 0;
-      AddInternal(principal, perm.type, perm.capability, 0, perm.expireType,
-                  perm.expireTime, modificationTime, eNotify, eNoDBOperation,
-                  true /* ignoreSessionPermissions */);
-    }
-
     // Stop here; we don't need the DB in the child process
-    return NS_OK;
+    return FetchPermissions();
   }
 
   // ignore failure here, since it's non-fatal (we can run fine without
   // persistent storage - e.g. if there's no profile).
   // XXX should we tell the user about this?
   InitDB(false);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsPermissionManager::RefreshPermission() {
+  NS_ENSURE_TRUE(IsChildProcess(), NS_ERROR_FAILURE);
+
+  nsresult rv = RemoveAllFromMemory();
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = FetchPermissions();
+  NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
 }
@@ -2211,6 +2203,32 @@ nsPermissionManager::UpdateExpireTime(nsIPrincipal* aPrincipal,
     perm.mExpireTime = aPersistentExpireTime;
   } else if (perm.mExpireType == EXPIRE_SESSION && perm.mExpireTime != 0) {
     perm.mExpireTime = aSessionExpireTime;
+  }
+  return NS_OK;
+}
+
+nsresult
+nsPermissionManager::FetchPermissions() {
+  MOZ_ASSERT(IsChildProcess(), "FetchPermissions can only be invoked in child process");
+  // Get the permissions from the parent process
+  InfallibleTArray<IPC::Permission> perms;
+  ChildProcess()->SendReadPermissions(&perms);
+
+  for (uint32_t i = 0; i < perms.Length(); i++) {
+    const IPC::Permission &perm = perms[i];
+
+    nsCOMPtr<nsIPrincipal> principal;
+    nsresult rv = GetPrincipal(perm.host, perm.appId,
+                               perm.isInBrowserElement, getter_AddRefs(principal));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // The child process doesn't care about modification times - it neither
+    // reads nor writes, nor removes them based on the date - so 0 (which
+    // will end up as now()) is fine.
+    uint64_t modificationTime = 0;
+    AddInternal(principal, perm.type, perm.capability, 0, perm.expireType,
+                perm.expireTime, modificationTime, eNotify, eNoDBOperation,
+                true /* ignoreSessionPermissions */);
   }
   return NS_OK;
 }

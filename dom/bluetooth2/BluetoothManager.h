@@ -20,8 +20,8 @@ BEGIN_BLUETOOTH_NAMESPACE
 class BluetoothAdapter;
 class BluetoothValue;
 
-class BluetoothManager : public DOMEventTargetHelper
-                       , public BluetoothSignalObserver
+class BluetoothManager final : public DOMEventTargetHelper
+                             , public BluetoothSignalObserver
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -63,8 +63,9 @@ public:
     return GetOwner();
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
-  virtual void DisconnectFromOwner() MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx,
+                               JS::Handle<JSObject*> aGivenProto) override;
+  virtual void DisconnectFromOwner() override;
 
   /**
    * Create a BluetoothAdapter object based on properties array

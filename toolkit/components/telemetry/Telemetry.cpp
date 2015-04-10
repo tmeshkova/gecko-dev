@@ -637,7 +637,7 @@ ClearIOReporting()
 
 class KeyedHistogram;
 
-class TelemetryImpl MOZ_FINAL
+class TelemetryImpl final
   : public nsITelemetry
   , public nsIMemoryReporter
 {
@@ -648,7 +648,8 @@ class TelemetryImpl MOZ_FINAL
 public:
   void InitMemoryReporter();
 
-  static bool CanRecord();
+  static bool CanRecordBase();
+  static bool CanRecordExtended();
   static already_AddRefed<nsITelemetry> CreateTelemetryInstance();
   static void ShutdownTelemetry();
   static void RecordSlowStatement(const nsACString &sql, const nsACString &dbName,
@@ -731,7 +732,8 @@ private:
   typedef nsBaseHashtableET<nsDepCharHashKey, Telemetry::ID> CharPtrEntryType;
   typedef AutoHashtable<CharPtrEntryType> HistogramMapType;
   HistogramMapType mHistogramMap;
-  bool mCanRecord;
+  bool mCanRecordBase;
+  bool mCanRecordExtended;
   static TelemetryImpl *sTelemetry;
   AutoHashtable<SlowSQLEntryType> mPrivateSQL;
   AutoHashtable<SlowSQLEntryType> mSanitizedSQL;
@@ -1210,7 +1212,7 @@ JSHistogram_Add(JSContext *cx, unsigned argc, JS::Value *vp)
     }
   }
 
-  if (TelemetryImpl::CanRecord()) {
+  if (TelemetryImpl::CanRecordExtended()) {
     HistogramAdd(*h, value);
   }
 
@@ -1751,7 +1753,7 @@ TelemetryImpl::AsyncFetchTelemetryData(nsIFetchTelemetryDataCallback *aCallback)
   // We make this check so that GetShutdownTimeFileName() doesn't get
   // called; calling that function without telemetry enabled violates
   // assumptions that the write-the-shutdown-timestamp machinery makes.
-  if (!Telemetry::CanRecord()) {
+  if (!Telemetry::CanRecordExtended()) {
     mCachedTelemetryData = true;
     aCallback->Complete();
     return NS_OK;
@@ -1805,8 +1807,10 @@ TelemetryImpl::AsyncFetchTelemetryData(nsIFetchTelemetryDataCallback *aCallback)
 
 TelemetryImpl::TelemetryImpl():
 mHistogramMap(Telemetry::HistogramCount),
-mCanRecord(XRE_GetProcessType() == GeckoProcessType_Default ||
-           XRE_GetProcessType() == GeckoProcessType_Content),
+mCanRecordBase(XRE_GetProcessType() == GeckoProcessType_Default ||
+               XRE_GetProcessType() == GeckoProcessType_Content),
+mCanRecordExtended(XRE_GetProcessType() == GeckoProcessType_Default ||
+                   XRE_GetProcessType() == GeckoProcessType_Content),
 mHashMutex("Telemetry::mHashMutex"),
 mHangReportsMutex("Telemetry::mHangReportsMutex"),
 mThreadHangStatsMutex("Telemetry::mThreadHangStatsMutex"),
@@ -1816,11 +1820,23 @@ mFailedLockCount(0)
 {
   // A whitelist to prevent Telemetry reporting on Addon & Thunderbird DBs
   const char *trackedDBs[] = {
-    "addons.sqlite", "content-prefs.sqlite", "cookies.sqlite",
-    "downloads.sqlite", "extensions.sqlite", "formhistory.sqlite",
-    "index.sqlite", "healthreport.sqlite", "netpredictions.sqlite",
-    "permissions.sqlite", "places.sqlite", "search.sqlite", "signons.sqlite",
-    "urlclassifier3.sqlite", "webappsstore.sqlite"
+    "818200132aebmoouht.sqlite", // IndexedDB for about:home, see aboutHome.js
+    "addons.sqlite",
+    "content-prefs.sqlite",
+    "cookies.sqlite",
+    "downloads.sqlite",
+    "extensions.sqlite",
+    "formhistory.sqlite",
+    "healthreport.sqlite",
+    "index.sqlite",
+    "netpredictions.sqlite",
+    "permissions.sqlite",
+    "places.sqlite",
+    "reading-list.sqlite",
+    "search.sqlite",
+    "signons.sqlite",
+    "urlclassifier3.sqlite",
+    "webappsstore.sqlite"
   };
 
   for (size_t i = 0; i < ArrayLength(trackedDBs); i++)
@@ -3072,7 +3088,7 @@ GetRegisteredHistogramIds(bool keyed, uint32_t dataset, uint32_t *aCount,
   }
 
   const size_t bytes = collection.Length() * sizeof(char*);
-  char** histograms = static_cast<char**>(nsMemory::Alloc(bytes));
+  char** histograms = static_cast<char**>(moz_xmalloc(bytes));
   memcpy(histograms, collection.Elements(), bytes);
   *aHistograms = histograms;
   *aCount = collection.Length();
@@ -3132,24 +3148,56 @@ TelemetryImpl::GetKeyedHistogramById(const nsACString &name)
 }
 
 NS_IMETHODIMP
-TelemetryImpl::GetCanRecord(bool *ret) {
-  *ret = mCanRecord;
+TelemetryImpl::GetCanRecordBase(bool *ret) {
+  *ret = mCanRecordBase;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-TelemetryImpl::SetCanRecord(bool canRecord) {
-  mCanRecord = !!canRecord;
+TelemetryImpl::SetCanRecordBase(bool canRecord) {
+  mCanRecordBase = canRecord;
   return NS_OK;
 }
 
+/**
+ * Indicates if Telemetry can record base data (FHR data). This is true if the
+ * FHR data reporting service or self-support are enabled.
+ *
+ * In the unlikely event that adding a new base probe is needed, please check the data
+ * collection wiki at https://wiki.mozilla.org/Firefox/Data_Collection and talk to the
+ * Telemetry team.
+ */
 bool
-TelemetryImpl::CanRecord() {
-  return !sTelemetry || sTelemetry->mCanRecord;
+TelemetryImpl::CanRecordBase() {
+  return !sTelemetry || sTelemetry->mCanRecordBase;
 }
 
 NS_IMETHODIMP
-TelemetryImpl::GetCanSend(bool *ret) {
+TelemetryImpl::GetCanRecordExtended(bool *ret) {
+  *ret = mCanRecordExtended;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::SetCanRecordExtended(bool canRecord) {
+  mCanRecordExtended = canRecord;
+  return NS_OK;
+}
+
+/**
+ * Indicates if Telemetry is allowed to record extended data. Returns false if the user
+ * hasn't opted into "extended Telemetry" on the Release channel, when the user has
+ * explicitly opted out of Telemetry on Nightly/Aurora/Beta or if manually set to false
+ * during tests.
+ * If the returned value is false, gathering of extended telemetry statistics is disabled.
+ */
+bool
+TelemetryImpl::CanRecordExtended() {
+  return !sTelemetry || sTelemetry->mCanRecordExtended;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::GetIsOfficialTelemetry(bool *ret) {
 #if defined(MOZILLA_OFFICIAL) && defined(MOZ_TELEMETRY_REPORTING)
   *ret = true;
 #else
@@ -3344,7 +3392,7 @@ TelemetryImpl::RecordSlowStatement(const nsACString &sql,
                                    const nsACString &dbName,
                                    uint32_t delay)
 {
-  if (!sTelemetry || !sTelemetry->mCanRecord)
+  if (!sTelemetry || !sTelemetry->mCanRecordExtended)
     return;
 
   bool isFirefoxDB = sTelemetry->mTrackedDBs.Contains(dbName);
@@ -3379,7 +3427,7 @@ TelemetryImpl::RecordChromeHang(uint32_t aDuration,
                                 int32_t aFirefoxUptime,
                                 HangAnnotationsPtr aAnnotations)
 {
-  if (!sTelemetry || !sTelemetry->mCanRecord)
+  if (!sTelemetry || !sTelemetry->mCanRecordExtended)
     return;
 
   HangAnnotationsPtr annotations;
@@ -3399,7 +3447,7 @@ TelemetryImpl::RecordChromeHang(uint32_t aDuration,
 void
 TelemetryImpl::RecordThreadHangStats(Telemetry::ThreadHangStats& aStats)
 {
-  if (!sTelemetry || !sTelemetry->mCanRecord)
+  if (!sTelemetry || !sTelemetry->mCanRecordExtended)
     return;
 
   MutexAutoLock autoLock(sTelemetry->mThreadHangStatsMutex);
@@ -3519,7 +3567,7 @@ RecordShutdownStartTimeStamp() {
   recorded = true;
 #endif
 
-  if (!Telemetry::CanRecord())
+  if (!Telemetry::CanRecordExtended())
     return;
 
   gRecordedShutdownStartTime = TimeStamp::Now();
@@ -3568,7 +3616,7 @@ namespace Telemetry {
 void
 Accumulate(ID aHistogram, uint32_t aSample)
 {
-  if (!TelemetryImpl::CanRecord()) {
+  if (!TelemetryImpl::CanRecordExtended()) {
     return;
   }
   Histogram *h;
@@ -3580,7 +3628,7 @@ Accumulate(ID aHistogram, uint32_t aSample)
 void
 Accumulate(ID aID, const nsCString& aKey, uint32_t aSample)
 {
-  if (!TelemetryImpl::CanRecord()) {
+  if (!TelemetryImpl::CanRecordExtended()) {
     return;
   }
 
@@ -3593,7 +3641,7 @@ Accumulate(ID aID, const nsCString& aKey, uint32_t aSample)
 void
 Accumulate(const char* name, uint32_t sample)
 {
-  if (!TelemetryImpl::CanRecord()) {
+  if (!TelemetryImpl::CanRecordExtended()) {
     return;
   }
   ID id;
@@ -3617,9 +3665,15 @@ AccumulateTimeDelta(ID aHistogram, TimeStamp start, TimeStamp end)
 }
 
 bool
-CanRecord()
+CanRecordBase()
 {
-  return TelemetryImpl::CanRecord();
+  return TelemetryImpl::CanRecordBase();
+}
+
+bool
+CanRecordExtended()
+{
+  return TelemetryImpl::CanRecordExtended();
 }
 
 base::Histogram*
@@ -4102,7 +4156,7 @@ KeyedHistogram::ClearHistogramEnumerator(KeyedHistogramEntry* entry, void*)
 nsresult
 KeyedHistogram::Add(const nsCString& key, uint32_t sample)
 {
-  if (!TelemetryImpl::CanRecord()) {
+  if (!TelemetryImpl::CanRecordExtended()) {
     return NS_OK;
   }
 

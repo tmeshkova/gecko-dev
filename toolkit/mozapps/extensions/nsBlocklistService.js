@@ -297,6 +297,8 @@ function Blocklist() {
   gPref.addObserver("extensions.blocklist.", this, false);
   gPref.addObserver(PREF_EM_LOGGING_ENABLED, this, false);
   this.wrappedJSObject = this;
+  // requests from child processes come in here, see receiveMessage.
+  Services.ppmm.addMessageListener("Blocklist::getPluginBlocklistState", this);
 }
 
 Blocklist.prototype = {
@@ -318,12 +320,17 @@ Blocklist.prototype = {
   _addonEntries: null,
   _pluginEntries: null,
 
+  shutdown: function () {
+    Services.obs.removeObserver(this, "xpcom-shutdown");
+    Services.ppmm.removeMessageListener("Blocklist::getPluginBlocklistState", this);
+    gPref.removeObserver("extensions.blocklist.", this);
+    gPref.removeObserver(PREF_EM_LOGGING_ENABLED, this);
+  },
+
   observe: function Blocklist_observe(aSubject, aTopic, aData) {
     switch (aTopic) {
     case "xpcom-shutdown":
-      Services.obs.removeObserver(this, "xpcom-shutdown");
-      gPref.removeObserver("extensions.blocklist.", this);
-      gPref.removeObserver(PREF_EM_LOGGING_ENABLED, this);
+      this.shutdown();
       break;
     case "nsPref:changed":
       switch (aData) {
@@ -346,6 +353,18 @@ Blocklist.prototype = {
       Services.obs.removeObserver(this, "sessionstore-windows-restored");
       this._preloadBlocklist();
       break;
+    }
+  },
+
+  // Message manager message handlers
+  receiveMessage: function (aMsg) {
+    switch (aMsg.name) {
+      case "Blocklist::getPluginBlocklistState":
+        return this.getPluginBlocklistState(aMsg.data.addonData,
+                                            aMsg.data.appVersion,
+                                            aMsg.data.toolkitVersion);
+      default:
+        throw new Error("Unknown blocklist message received from content: " + aMsg.name);
     }
   },
 
@@ -734,6 +753,9 @@ Blocklist.prototype = {
 #          <!-- ... as is the serial number DER data -->
 #          <serialNumber>AkHVNA==</serialNumber>
 #        </certItem>
+#        <!-- subject is the DER subject name data base64 encoded... -->
+#        <certItem subject="MA0xCzAJBgNVBAMMAmNh" pubKeyHash="/xeHA5s+i9/z9d8qy6JEuE1xGoRYIwgJuTE/lmaGJ7M=">
+#        </certItem>
 #      </certItems>
 #    </blocklist>
    */
@@ -907,13 +929,27 @@ Blocklist.prototype = {
   _handleCertItemNode: function Blocklist_handleCertItemNode(blocklistElement,
                                                              result) {
     let issuer = blocklistElement.getAttribute("issuerName");
-    for (let snElement of blocklistElement.children) {
+    if (issuer) {
+      for (let snElement of blocklistElement.children) {
+        try {
+          gCertBlocklistService.revokeCertByIssuerAndSerial(issuer, snElement.textContent);
+        } catch (e) {
+          // we want to keep trying other elements since missing all items
+          // is worse than missing one
+          LOG("Blocklist::_handleCertItemNode: Error adding revoked cert by Issuer and Serial" + e);
+        }
+      }
+      return;
+    }
+
+    let pubKeyHash = blocklistElement.getAttribute("pubKeyHash");
+    let subject = blocklistElement.getAttribute("subject");
+
+    if (pubKeyHash && subject) {
       try {
-        gCertBlocklistService.addRevokedCert(issuer, snElement.textContent);
+        gCertBlocklistService.revokeCertBySubjectAndPubKey(subject, pubKeyHash);
       } catch (e) {
-        // we want to keep trying other elements since missing all items
-        // is worse than missing one
-        LOG("Blocklist::_handleCertItemNode: Error adding revoked cert " + e);
+        LOG("Blocklist::_handleCertItemNode: Error adding revoked cert by Subject and PubKey" + e);
       }
     }
   },

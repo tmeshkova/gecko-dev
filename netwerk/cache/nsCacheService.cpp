@@ -202,14 +202,14 @@ private:
 
 NS_IMPL_ISUPPORTS(nsCacheProfilePrefObserver, nsIObserver)
 
-class nsSetDiskSmartSizeCallback MOZ_FINAL : public nsITimerCallback
+class nsSetDiskSmartSizeCallback final : public nsITimerCallback
 {
     ~nsSetDiskSmartSizeCallback() {}
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
 
-    NS_IMETHOD Notify(nsITimer* aTimer) MOZ_OVERRIDE {
+    NS_IMETHOD Notify(nsITimer* aTimer) override {
         if (nsCacheService::gService) {
             nsCacheServiceAutoLock autoLock(LOCK_TELEM(NSSETDISKSMARTSIZECALLBACK_NOTIFY));
             nsCacheService::gService->SetDiskSmartSize_Locked();
@@ -1232,6 +1232,7 @@ nsCacheService::Shutdown()
         // Make sure to wait for any pending cache-operations before
         // proceeding with destructive actions (bug #620660)
         (void) SyncWithCacheIOThread();
+        mActiveEntries.Shutdown();
 
         // obtain the disk cache directory in case we need to sanitize it
         parentDir = mObserver->DiskCacheParentDirectory();

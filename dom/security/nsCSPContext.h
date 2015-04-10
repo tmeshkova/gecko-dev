@@ -24,6 +24,8 @@
 { 0x09d9ed1a, 0xe5d4, 0x4004, \
   { 0xbf, 0xe0, 0x27, 0xce, 0xb9, 0x23, 0xd9, 0xac } }
 
+class nsINetworkInterceptController;
+
 class nsCSPContext : public nsIContentSecurityPolicy
 {
   public:
@@ -98,8 +100,8 @@ class CSPViolationReportListener : public nsIStreamListener
 // The POST of the violation report (if it happens) should not follow
 // redirects, per the spec. hence, we implement an nsIChannelEventSink
 // with an object so we can tell XHR to abort if a redirect happens.
-class CSPReportRedirectSink MOZ_FINAL : public nsIChannelEventSink,
-                                        public nsIInterfaceRequestor
+class CSPReportRedirectSink final : public nsIChannelEventSink,
+                                    public nsIInterfaceRequestor
 {
   public:
     NS_DECL_NSICHANNELEVENTSINK
@@ -109,8 +111,13 @@ class CSPReportRedirectSink MOZ_FINAL : public nsIChannelEventSink,
   public:
     CSPReportRedirectSink();
 
+    void SetInterceptController(nsINetworkInterceptController* aInterceptController);
+
   protected:
     virtual ~CSPReportRedirectSink();
+
+  private:
+    nsCOMPtr<nsINetworkInterceptController> mInterceptController;
 };
 
 #endif /* nsCSPContext_h___ */

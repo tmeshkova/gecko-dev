@@ -45,7 +45,7 @@ var SelectionHandler = {
 
   _activeType: 0, // TYPE_NONE
   _selectionPrivate: null, // private selection reference
-  _selectionID: 0, // Unique Selection ID
+  _selectionID: null, // Unique Selection ID
 
   _draggingHandles: false, // True while user drags text selection handles
   _dragStartAnchorOffset: null, // Editables need initial pos during HandleMove events
@@ -82,6 +82,13 @@ var SelectionHandler = {
   get _domWinUtils() {
     return BrowserApp.selectedBrowser.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).
                                                     getInterface(Ci.nsIDOMWindowUtils);
+  },
+
+  // Provides UUID service for selection ID's.
+  get _idService() {
+    delete this._idService;
+    return this._idService = Cc["@mozilla.org/uuid-generator;1"].
+      getService(Ci.nsIUUIDGenerator);
   },
 
   _addObservers: function sh_addObservers() {
@@ -672,7 +679,8 @@ var SelectionHandler = {
       order: 4,
       selector: {
         matches: function(aElement) {
-          return SelectionHandler.isElementEditableText(aElement) ?
+          // Disallow cut for contentEditable elements (until Bug 1112276 is fixed).
+          return !aElement.isContentEditable && SelectionHandler.isElementEditableText(aElement) ?
             SelectionHandler.isSelectionActive() : false;
         }
       }
@@ -704,10 +712,10 @@ var SelectionHandler = {
       id: "paste_action",
       icon: "drawable://ab_paste",
       action: function(aElement) {
-        if (aElement && (aElement instanceof Ci.nsIDOMNSEditableElement)) {
-          let target = aElement.QueryInterface(Ci.nsIDOMNSEditableElement);
-          target.editor.paste(Ci.nsIClipboard.kGlobalClipboard);
-          target.focus();
+        if (aElement) {
+          let target = SelectionHandler._getEditor();
+          aElement.focus();
+          target.paste(Ci.nsIClipboard.kGlobalClipboard);
           SelectionHandler._closeSelection();
           UITelemetry.addEvent("action.1", "actionbar", null, "paste");
         }
@@ -828,7 +836,7 @@ var SelectionHandler = {
       aElement.focus();
     }
 
-    this._selectionID++;
+    this._selectionID = this._idService.generateUUID().toString();
     this._stopDraggingHandles();
     this._contentWindow = aElement.ownerDocument.defaultView;
     this._targetIsRTL = (this._contentWindow.getComputedStyle(aElement, "").direction == "rtl");
@@ -888,7 +896,8 @@ var SelectionHandler = {
 
   isElementEditableText: function (aElement) {
     return (((aElement instanceof HTMLInputElement && aElement.mozIsTextField(false)) ||
-            (aElement instanceof HTMLTextAreaElement)) && !aElement.readOnly);
+            (aElement instanceof HTMLTextAreaElement)) && !aElement.readOnly) ||
+            aElement.isContentEditable;
   },
 
   _isNonTextInputElement: function(aElement) {
@@ -956,7 +965,7 @@ var SelectionHandler = {
   _moveCaret: function sh_moveCaret(aX, aY) {
     // Get rect of text inside element
     let range = document.createRange();
-    range.selectNodeContents(this._targetElement.QueryInterface(Ci.nsIDOMNSEditableElement).editor.rootElement);
+    range.selectNodeContents(this._getEditor().rootElement);
     let textBounds = range.getBoundingClientRect();
 
     // Get rect of editor

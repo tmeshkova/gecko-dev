@@ -25,6 +25,7 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/DOMStringList.h"
 #include "mozilla/dom/DOMStringListBinding.h"
+#include "mozilla/dom/Exceptions.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/IDBDatabaseBinding.h"
 #include "mozilla/dom/IDBObjectStoreBinding.h"
@@ -67,7 +68,7 @@ const char kCycleCollectionObserverTopic[] = "cycle-collector-end";
 const char kMemoryPressureObserverTopic[] = "memory-pressure";
 const char kWindowObserverTopic[] = "inner-window-destroyed";
 
-class CancelableRunnableWrapper MOZ_FINAL
+class CancelableRunnableWrapper final
   : public nsICancelableRunnable
 {
   nsCOMPtr<nsIRunnable> mRunnable;
@@ -91,7 +92,7 @@ private:
 };
 
 // XXX This should either be ported to PBackground or removed someday.
-class CreateFileHelper MOZ_FINAL
+class CreateFileHelper final
   : public nsRunnable
 {
   nsRefPtr<IDBDatabase> mDatabase;
@@ -137,7 +138,7 @@ private:
   NS_DECL_NSIRUNNABLE
 };
 
-class DatabaseFile MOZ_FINAL
+class DatabaseFile final
   : public PBackgroundIDBDatabaseFileChild
 {
   IDBDatabase* mDatabase;
@@ -161,7 +162,7 @@ private:
   }
 
   virtual void
-  ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE
+  ActorDestroy(ActorDestroyReason aWhy) override
   {
     MOZ_ASSERT(mDatabase);
     mDatabase->AssertIsOnOwningThread();
@@ -179,7 +180,7 @@ private:
 
 } // anonymous namespace
 
-class IDBDatabase::LogWarningRunnable MOZ_FINAL
+class IDBDatabase::LogWarningRunnable final
   : public nsRunnable
 {
   nsCString mMessageName;
@@ -219,7 +220,7 @@ private:
   NS_DECL_NSIRUNNABLE
 };
 
-class IDBDatabase::Observer MOZ_FINAL
+class IDBDatabase::Observer final
   : public nsIObserver
 {
   IDBDatabase* mWeakDatabase;
@@ -430,7 +431,7 @@ IDBDatabase::RefreshSpec(bool aMayDelete)
 {
   AssertIsOnOwningThread();
 
-  class MOZ_STACK_CLASS Helper MOZ_FINAL
+  class MOZ_STACK_CLASS Helper final
   {
   public:
     static PLDHashOperator
@@ -649,73 +650,97 @@ IDBDatabase::DeleteObjectStore(const nsAString& aName, ErrorResult& aRv)
 }
 
 already_AddRefed<IDBTransaction>
-IDBDatabase::Transaction(const nsAString& aStoreName,
+IDBDatabase::Transaction(const StringOrStringSequence& aStoreNames,
                          IDBTransactionMode aMode,
                          ErrorResult& aRv)
 {
   AssertIsOnOwningThread();
 
-  Sequence<nsString> storeNames;
-  if (!storeNames.AppendElement(aStoreName)) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+  aRv.MightThrowJSException();
+
+  if (aMode == IDBTransactionMode::Readwriteflush &&
+      !IndexedDatabaseManager::ExperimentalFeaturesEnabled()) {
+    // Pretend that this mode doesn't exist. We don't have a way to annotate
+    // certain enum values as depending on preferences so we just duplicate the
+    // normal exception generation here.
+    ThreadsafeAutoJSContext cx;
+
+    // Disable any automatic error reporting that might be set up so that we
+    // can grab the exception object.
+    AutoForceSetExceptionOnContext forceExn(cx);
+
+    MOZ_ALWAYS_FALSE(
+      ThrowErrorMessage(cx,
+                        MSG_INVALID_ENUM_VALUE,
+                        "Argument 2 of IDBDatabase.transaction",
+                        "readwriteflush",
+                        "IDBTransactionMode"));
+    MOZ_ASSERT(JS_IsExceptionPending(cx));
+
+    JS::Rooted<JS::Value> exception(cx);
+    MOZ_ALWAYS_TRUE(JS_GetPendingException(cx, &exception));
+
+    aRv.ThrowJSException(cx, exception);
     return nullptr;
   }
 
-  return Transaction(storeNames, aMode, aRv);
+  nsRefPtr<IDBTransaction> transaction;
+  aRv = Transaction(aStoreNames, aMode, getter_AddRefs(transaction));
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+
+  return transaction.forget();
 }
 
-already_AddRefed<IDBTransaction>
-IDBDatabase::Transaction(const Sequence<nsString>& aStoreNames,
+nsresult
+IDBDatabase::Transaction(const StringOrStringSequence& aStoreNames,
                          IDBTransactionMode aMode,
-                         ErrorResult& aRv)
+                         IDBTransaction** aTransaction)
 {
   AssertIsOnOwningThread();
+
+  if (NS_WARN_IF(aMode == IDBTransactionMode::Readwriteflush &&
+                 !IndexedDatabaseManager::ExperimentalFeaturesEnabled())) {
+    IDB_REPORT_INTERNAL_ERR();
+    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
+  }
 
   if (QuotaManager::IsShuttingDown()) {
     IDB_REPORT_INTERNAL_ERR();
-    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
-    return nullptr;
+    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
   }
 
-  if (mClosed) {
-    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
-    return nullptr;
+  if (mClosed || RunningVersionChangeTransaction()) {
+    return NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR;
   }
 
-  if (RunningVersionChangeTransaction()) {
-    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
-    return nullptr;
+  nsAutoTArray<nsString, 1> stackSequence;
+
+  if (aStoreNames.IsString()) {
+    stackSequence.AppendElement(aStoreNames.GetAsString());
+  } else {
+    MOZ_ASSERT(aStoreNames.IsStringSequence());
+    if (aStoreNames.GetAsStringSequence().IsEmpty()) {
+      return NS_ERROR_DOM_INVALID_ACCESS_ERR;
+    }
   }
 
-  if (aStoreNames.IsEmpty()) {
-    aRv.Throw(NS_ERROR_DOM_INVALID_ACCESS_ERR);
-    return nullptr;
-  }
-
-  IDBTransaction::Mode mode;
-  switch (aMode) {
-    case IDBTransactionMode::Readonly:
-      mode = IDBTransaction::READ_ONLY;
-      break;
-    case IDBTransactionMode::Readwrite:
-      mode = IDBTransaction::READ_WRITE;
-      break;
-    case IDBTransactionMode::Versionchange:
-      aRv.Throw(NS_ERROR_DOM_INVALID_ACCESS_ERR);
-      return nullptr;
-    default:
-      MOZ_CRASH("Unknown mode!");
-  }
+  const nsTArray<nsString>& storeNames =
+    aStoreNames.IsString() ?
+    stackSequence :
+    static_cast<const nsTArray<nsString>&>(aStoreNames.GetAsStringSequence());
+  MOZ_ASSERT(!storeNames.IsEmpty());
 
   const nsTArray<ObjectStoreSpec>& objectStores = mSpec->objectStores();
-  const uint32_t nameCount = aStoreNames.Length();
+  const uint32_t nameCount = storeNames.Length();
 
   nsTArray<nsString> sortedStoreNames;
   sortedStoreNames.SetCapacity(nameCount);
 
   // Check to make sure the object store names we collected actually exist.
   for (uint32_t nameIndex = 0; nameIndex < nameCount; nameIndex++) {
-    const nsString& name = aStoreNames[nameIndex];
+    const nsString& name = storeNames[nameIndex];
 
     bool found = false;
 
@@ -729,8 +754,7 @@ IDBDatabase::Transaction(const Sequence<nsString>& aStoreNames,
     }
 
     if (!found) {
-      aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_FOUND_ERR);
-      return nullptr;
+      return NS_ERROR_DOM_INDEXEDDB_NOT_FOUND_ERR;
     }
 
     sortedStoreNames.InsertElementSorted(name);
@@ -743,12 +767,29 @@ IDBDatabase::Transaction(const Sequence<nsString>& aStoreNames,
     }
   }
 
+  IDBTransaction::Mode mode;
+  switch (aMode) {
+    case IDBTransactionMode::Readonly:
+      mode = IDBTransaction::READ_ONLY;
+      break;
+    case IDBTransactionMode::Readwrite:
+      mode = IDBTransaction::READ_WRITE;
+      break;
+    case IDBTransactionMode::Readwriteflush:
+      mode = IDBTransaction::READ_WRITE_FLUSH;
+      break;
+    case IDBTransactionMode::Versionchange:
+      return NS_ERROR_DOM_INVALID_ACCESS_ERR;
+
+    default:
+      MOZ_CRASH("Unknown mode!");
+  }
+
   nsRefPtr<IDBTransaction> transaction =
     IDBTransaction::Create(this, sortedStoreNames, mode);
   if (NS_WARN_IF(!transaction)) {
     IDB_REPORT_INTERNAL_ERR();
-    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
-    return nullptr;
+    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
   }
 
   BackgroundTransactionChild* actor =
@@ -769,7 +810,8 @@ IDBDatabase::Transaction(const Sequence<nsString>& aStoreNames,
 
   transaction->SetBackgroundActor(actor);
 
-  return transaction.forget();
+  transaction.forget(aTransaction);
+  return NS_OK;
 }
 
 StorageType
@@ -847,7 +889,7 @@ IDBDatabase::AbortTransactions(bool aShouldWarn)
 {
   AssertIsOnOwningThread();
 
-  class MOZ_STACK_CLASS Helper MOZ_FINAL
+  class MOZ_STACK_CLASS Helper final
   {
   public:
     static void
@@ -1001,7 +1043,7 @@ IDBDatabase::NoteFinishedFileActor(PBackgroundIDBDatabaseFileChild* aFileActor)
   AssertIsOnOwningThread();
   MOZ_ASSERT(aFileActor);
 
-  class MOZ_STACK_CLASS Helper MOZ_FINAL
+  class MOZ_STACK_CLASS Helper final
   {
   public:
     static PLDHashOperator
@@ -1140,7 +1182,7 @@ IDBDatabase::ExpireFileActors(bool aExpireAll)
 {
   AssertIsOnOwningThread();
 
-  class MOZ_STACK_CLASS Helper MOZ_FINAL
+  class MOZ_STACK_CLASS Helper final
   {
   public:
     static PLDHashOperator
@@ -1335,7 +1377,7 @@ nsresult
 IDBDatabase::PostHandleEvent(EventChainPostVisitor& aVisitor)
 {
   nsresult rv =
-    IndexedDatabaseManager::CommonPostHandleEvent(this, mFactory, aVisitor);
+    IndexedDatabaseManager::CommonPostHandleEvent(aVisitor, mFactory);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -1344,9 +1386,9 @@ IDBDatabase::PostHandleEvent(EventChainPostVisitor& aVisitor)
 }
 
 JSObject*
-IDBDatabase::WrapObject(JSContext* aCx)
+IDBDatabase::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return IDBDatabaseBinding::Wrap(aCx, this);
+  return IDBDatabaseBinding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_ISUPPORTS(CancelableRunnableWrapper, nsIRunnable, nsICancelableRunnable)

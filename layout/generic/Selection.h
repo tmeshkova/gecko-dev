@@ -48,9 +48,9 @@ struct RangeData
 namespace mozilla {
 namespace dom {
 
-class Selection MOZ_FINAL : public nsISelectionPrivate,
-                            public nsWrapperCache,
-                            public nsSupportsWeakReference
+class Selection final : public nsISelectionPrivate,
+                        public nsWrapperCache,
+                        public nsSupportsWeakReference
 {
 protected:
   virtual ~Selection();
@@ -126,6 +126,7 @@ public:
   void         SetDirection(nsDirection aDir){mDirection = aDir;}
   nsresult     SetAnchorFocusToRange(nsRange *aRange);
   void         ReplaceAnchorFocusRange(nsRange *aRange);
+  void         AdjustAnchorFocusForMultiRange(nsDirection aDirection);
 
   //  NS_IMETHOD   GetPrimaryFrameForRangeEndpoint(nsIDOMNode *aNode, int32_t aOffset, bool aIsEndNode, nsIFrame **aResultFrame);
   NS_IMETHOD   GetPrimaryFrameForAnchorNode(nsIFrame **aResultFrame);
@@ -141,7 +142,7 @@ public:
 
   nsresult     StopAutoScrollTimer();
 
-  JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL methods
   nsINode*     GetAnchorNode();
@@ -314,7 +315,7 @@ private:
 };
 
 // Stack-class to turn on/off selection batching.
-class MOZ_STACK_CLASS SelectionBatcher MOZ_FINAL
+class MOZ_STACK_CLASS SelectionBatcher final
 {
 private:
   nsRefPtr<Selection> mSelection;

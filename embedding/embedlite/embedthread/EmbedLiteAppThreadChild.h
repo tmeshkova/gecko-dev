@@ -20,7 +20,7 @@ public:
 protected:
   virtual ~EmbedLiteAppThreadChild();
 
-  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) MOZ_OVERRIDE;
+  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) override;
   virtual PCompositorChild* AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess);
 
 private:

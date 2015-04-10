@@ -122,12 +122,16 @@ class ADBCommand(object):
 
     def __init__(self,
                  adb='adb',
+                 adb_host=None,
+                 adb_port=None,
                  logger_name='adb',
                  timeout=300,
                  verbose=False):
         """Initializes the ADBCommand object.
 
         :param adb: path to adb executable. Defaults to 'adb'.
+        :param adb_host: host of the adb server.
+        :param adb_port: port of the adb server.
         :param logger_name: logging logger name. Defaults to 'adb'.
 
         :raises: * ADBError
@@ -140,6 +144,8 @@ class ADBCommand(object):
         self._logger = self._get_logger(logger_name)
         self._verbose = verbose
         self._adb_path = adb
+        self._adb_host = adb_host
+        self._adb_port = adb_port
         self._timeout = timeout
         self._polling_interval = 0.1
 
@@ -204,6 +210,10 @@ class ADBCommand(object):
 
         """
         args = [self._adb_path]
+        if self._adb_host:
+            args.extend(['-H', self._adb_host])
+        if self._adb_port:
+            args.extend(['-P', str(self._adb_port)])
         if device_serial:
             args.extend(['-s', device_serial, 'wait-for-device'])
         args.extend(cmds)
@@ -294,19 +304,24 @@ class ADBHost(ADBCommand):
     """
     def __init__(self,
                  adb='adb',
+                 adb_host=None,
+                 adb_port=None,
                  logger_name='adb',
                  timeout=300,
                  verbose=False):
         """Initializes the ADBHost object.
 
         :param adb: path to adb executable. Defaults to 'adb'.
+        :param adb_host: host of the adb server.
+        :param adb_port: port of the adb server.
         :param logger_name: logging logger name. Defaults to 'adb'.
 
         :raises: * ADBError
                  * ADBTimeoutError
 
         """
-        ADBCommand.__init__(self, adb=adb, logger_name=logger_name,
+        ADBCommand.__init__(self, adb=adb, adb_host=adb_host,
+                            adb_port=adb_port, logger_name=logger_name,
                             timeout=timeout, verbose=verbose)
 
     def command(self, cmds, timeout=None):
@@ -371,6 +386,24 @@ class ADBHost(ADBCommand):
             specified, the value set in the ADBHost constructor is used.
         :raises: * ADBTimeoutError
                  * ADBError
+
+        Attempting to use start_server with any adb_host value other than None
+        will fail with an ADBError exception.
+
+        You will need to start the server on the remote host via the command:
+
+        .. code-block:: shell
+
+            adb -a fork-server server
+
+        If you wish the remote adb server to restart automatically, you can
+        enclose the command in a loop as in:
+
+        .. code-block:: shell
+
+            while true; do
+              adb -a fork-server server
+            done
 
         """
         self.command_output(["start-server"], timeout=timeout)
@@ -460,6 +493,8 @@ class ADBDevice(ADBCommand):
     def __init__(self,
                  device=None,
                  adb='adb',
+                 adb_host=None,
+                 adb_port=None,
                  test_root='',
                  logger_name='adb',
                  timeout=300,
@@ -485,6 +520,8 @@ class ADBDevice(ADBCommand):
             device attached, ValueError is raised. If no device is
             attached the constructor will block until a device is
             attached or the timeout is reached.
+        :param adb_host: host of the adb server to connect to.
+        :param adb_port: port of the adb server to connect to.
         :param logger_name: logging logger name. Defaults to 'adb'.
         :param device_ready_retry_wait: number of seconds to wait
             between attempts to check if the device is ready after a
@@ -498,7 +535,8 @@ class ADBDevice(ADBCommand):
 
 
         """
-        ADBCommand.__init__(self, adb=adb, logger_name=logger_name,
+        ADBCommand.__init__(self, adb=adb, adb_host=adb_host,
+                            adb_port=adb_port, logger_name=logger_name,
                             timeout=timeout, verbose=verbose)
         self._device_serial = self._get_device_serial(device)
         self._initial_test_root = test_root
@@ -555,7 +593,8 @@ class ADBDevice(ADBCommand):
 
     def _get_device_serial(self, device):
         if device is None:
-            devices = ADBHost().devices()
+            devices = ADBHost(adb=self._adb_path, adb_host=self._adb_host,
+                              adb_port=self._adb_port).devices()
             if len(devices) > 1:
                 raise ValueError("ADBDevice called with multiple devices "
                                  "attached and no device specified")
@@ -644,11 +683,31 @@ class ADBDevice(ADBCommand):
 
     @property
     def test_root(self):
-        """Set up the test root and cache its value
+        """
+        The test_root property returns the directory on the device where
+        temporary test files are stored.
+
+        The first time test_root it is called it determines and caches a value
+        for the test root on the device. It determines the appropriate test
+        root by attempting to create a 'dummy' directory on each of a list of
+        directories and returning the first successful directory as the
+        test_root value.
+
+        The default list of directories checked by test_root are:
+
+        - /storage/sdcard0/tests
+        - /storage/sdcard1/tests
+        - /sdcard/tests
+        - /mnt/sdcard/tests
+        - /data/local/tests
+
+        You may override the default list by providing a test_root argument to
+        the :class:`ADBDevice` constructor which will then be used when
+        attempting to create the 'dummy' directory.
+
         :raises: * ADBTimeoutError
                  * ADBRootError
                  * ADBError
-
         """
         if self._test_root is not None:
             return self._test_root
@@ -926,10 +985,13 @@ class ADBDevice(ADBCommand):
         cmd += "; echo rc=$?"
 
         args = [self._adb_path]
+        if self._adb_host:
+            args.extend(['-H', self._adb_host])
+        if self._adb_port:
+            args.extend(['-P', str(self._adb_port)])
         if self._device_serial:
             args.extend(['-s', self._device_serial])
         args.extend(["wait-for-device", "shell", cmd])
-
         adb_process = ADBProcess(args)
 
         if timeout is None:

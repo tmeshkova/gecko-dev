@@ -194,7 +194,7 @@ class GlyphObserver : public gfxFont::GlyphChangeObserver {
 public:
   GlyphObserver(gfxFont* aFont, nsTextFrame* aFrame)
     : gfxFont::GlyphChangeObserver(aFont), mFrame(aFrame) {}
-  virtual void NotifyGlyphsChanged() MOZ_OVERRIDE;
+  virtual void NotifyGlyphsChanged() override;
 private:
   nsTextFrame* mFrame;
 };
@@ -407,7 +407,7 @@ DestroyUserData(void* aUserData)
 {
   TextRunUserData* userData = static_cast<TextRunUserData*>(aUserData);
   if (userData) {
-    nsMemory::Free(userData);
+    free(userData);
   }
 }
 
@@ -547,7 +547,7 @@ static FrameTextRunCache *gTextRuns = nullptr;
 /*
  * Cache textruns and expire them after 3*10 seconds of no use.
  */
-class FrameTextRunCache MOZ_FINAL : public nsExpirationTracker<gfxTextRun,3> {
+class FrameTextRunCache final : public nsExpirationTracker<gfxTextRun,3> {
 public:
   enum { TIMEOUT_SECONDS = 10 };
   FrameTextRunCache()
@@ -676,8 +676,9 @@ static bool IsSpaceCombiningSequenceTail(const nsTextFragment* aFrag, uint32_t a
 }
 
 // Check whether aPos is a space for CSS 'word-spacing' purposes
-static bool IsCSSWordSpacingSpace(const nsTextFragment* aFrag,
-                                    uint32_t aPos, const nsStyleText* aStyleText)
+static bool
+IsCSSWordSpacingSpace(const nsTextFragment* aFrag, uint32_t aPos,
+                      nsIFrame* aFrame, const nsStyleText* aStyleText)
 {
   NS_ASSERTION(aPos < aFrag->GetLength(), "No text for IsSpace!");
 
@@ -688,7 +689,7 @@ static bool IsCSSWordSpacingSpace(const nsTextFragment* aFrag,
     return !IsSpaceCombiningSequenceTail(aFrag, aPos + 1);
   case '\r':
   case '\t': return !aStyleText->WhiteSpaceIsSignificant();
-  case '\n': return !aStyleText->NewlineIsSignificant();
+  case '\n': return !aStyleText->NewlineIsSignificant(aFrame);
   default: return false;
   }
 }
@@ -720,7 +721,7 @@ static bool IsTrimmableSpace(const nsTextFragment* aFrag, uint32_t aPos,
   switch (aFrag->CharAt(aPos)) {
   case ' ': return !aStyleText->WhiteSpaceIsSignificant() &&
                    !IsSpaceCombiningSequenceTail(aFrag, aPos + 1);
-  case '\n': return !aStyleText->NewlineIsSignificant() &&
+  case '\n': return !aStyleText->NewlineIsSignificantStyle() &&
                     aStyleText->mWhiteSpace != NS_STYLE_WHITESPACE_PRE_SPACE;
   case '\t':
   case '\r':
@@ -960,7 +961,7 @@ public:
     }
   };
 
-  class BreakSink MOZ_FINAL : public nsILineBreakSink {
+  class BreakSink final : public nsILineBreakSink {
   public:
     BreakSink(gfxTextRun* aTextRun, gfxContext* aContext, uint32_t aOffsetIntoTextRun,
               bool aExistingTextRun) :
@@ -969,7 +970,7 @@ public:
                 mChangedBreaks(false), mExistingTextRun(aExistingTextRun) {}
 
     virtual void SetBreaks(uint32_t aOffset, uint32_t aLength,
-                           uint8_t* aBreakBefore) MOZ_OVERRIDE {
+                           uint8_t* aBreakBefore) override {
       if (mTextRun->SetPotentialLineBreaks(aOffset + mOffsetIntoTextRun, aLength,
                                            aBreakBefore, mContext)) {
         mChangedBreaks = true;
@@ -979,7 +980,7 @@ public:
     }
     
     virtual void SetCapitalization(uint32_t aOffset, uint32_t aLength,
-                                   bool* aCapitalize) MOZ_OVERRIDE {
+                                   bool* aCapitalize) override {
       MOZ_ASSERT(mTextRun->GetFlags() & nsTextFrameUtils::TEXT_IS_TRANSFORMED,
                  "Text run should be transformed!");
       if (mTextRun->GetFlags() & nsTextFrameUtils::TEXT_IS_TRANSFORMED) {
@@ -1637,7 +1638,7 @@ BuildTextRunsScanner::ContinueTextRunAcrossFrames(nsTextFrame* aFrame1, nsTextFr
   // even if it has newlines in it, so typically we won't see trailing newlines
   // until after reflow has broken up the frame into one (or more) frames per
   // line. That's OK though.
-  if (textStyle1->NewlineIsSignificant() && HasTerminalNewline(aFrame1))
+  if (textStyle1->NewlineIsSignificant(aFrame1) && HasTerminalNewline(aFrame1))
     return false;
 
   if (aFrame1->GetContent() == aFrame2->GetContent() &&
@@ -1837,15 +1838,29 @@ PR_STATIC_ASSERT(NS_STYLE_WHITESPACE_PRE_WRAP == 3);
 PR_STATIC_ASSERT(NS_STYLE_WHITESPACE_PRE_LINE == 4);
 PR_STATIC_ASSERT(NS_STYLE_WHITESPACE_PRE_SPACE == 5);
 
-static const nsTextFrameUtils::CompressionMode CSSWhitespaceToCompressionMode[] =
+static nsTextFrameUtils::CompressionMode
+GetCSSWhitespaceToCompressionMode(nsTextFrame* aFrame,
+                                  const nsStyleText* aStyleText)
 {
-  nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE,     // normal
-  nsTextFrameUtils::COMPRESS_NONE,                   // pre
-  nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE,     // nowrap
-  nsTextFrameUtils::COMPRESS_NONE,                   // pre-wrap
-  nsTextFrameUtils::COMPRESS_WHITESPACE,             // pre-line
-  nsTextFrameUtils::COMPRESS_NONE_TRANSFORM_TO_SPACE // -moz-pre-space
-};
+  static const nsTextFrameUtils::CompressionMode sModes[] =
+  {
+    nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE,     // normal
+    nsTextFrameUtils::COMPRESS_NONE,                   // pre
+    nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE,     // nowrap
+    nsTextFrameUtils::COMPRESS_NONE,                   // pre-wrap
+    nsTextFrameUtils::COMPRESS_WHITESPACE,             // pre-line
+    nsTextFrameUtils::COMPRESS_NONE_TRANSFORM_TO_SPACE // -moz-pre-space
+  };
+
+  auto compression = sModes[aStyleText->mWhiteSpace];
+  if (compression == nsTextFrameUtils::COMPRESS_NONE &&
+      !aStyleText->NewlineIsSignificant(aFrame)) {
+    // If newline is set to be preserved, but then suppressed,
+    // transform newline to space.
+    compression = nsTextFrameUtils::COMPRESS_NONE_TRANSFORM_TO_SPACE;
+  }
+  return compression;
+}
 
 gfxTextRun*
 BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
@@ -1881,7 +1896,7 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
     dummyData.mMappedFlows = &dummyMappedFlow;
   } else {
     userData = static_cast<TextRunUserData*>
-      (nsMemory::Alloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
+      (moz_xmalloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
     userDataToDestroy = userData;
     userData->mMappedFlows = reinterpret_cast<TextRunMappedFlow*>(userData + 1);
   }
@@ -1926,8 +1941,8 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
     textFlags |= GetSpacingFlags(LetterSpacing(f));
     textFlags |= GetSpacingFlags(WordSpacing(f));
     nsTextFrameUtils::CompressionMode compression =
-      CSSWhitespaceToCompressionMode[textStyle->mWhiteSpace];
-    if ((enabledJustification || f->StyleContext()->IsInlineDescendantOfRuby()) &&
+      GetCSSWhitespaceToCompressionMode(f, textStyle);
+    if ((enabledJustification || f->StyleContext()->ShouldSuppressLineBreak()) &&
         !textStyle->WhiteSpaceIsSignificant() && !isSVG) {
       textFlags |= gfxTextRunFactory::TEXT_ENABLE_SPACING;
     }
@@ -2275,7 +2290,7 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
     dummyData.mMappedFlows = &dummyMappedFlow;
   } else {
     userData = static_cast<TextRunUserData*>
-      (nsMemory::Alloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
+      (moz_xmalloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
     userDataToDestroy = userData;
     userData->mMappedFlows = reinterpret_cast<TextRunMappedFlow*>(userData + 1);
   }
@@ -2292,7 +2307,7 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
 
     textStyle = f->StyleText();
     nsTextFrameUtils::CompressionMode compression =
-      CSSWhitespaceToCompressionMode[textStyle->mWhiteSpace];
+      GetCSSWhitespaceToCompressionMode(f, textStyle);
 
     // Figure out what content is included in this flow.
     nsIContent* content = f->GetContent();
@@ -2803,7 +2818,7 @@ static int32_t FindChar(const nsTextFragment* frag,
 
 static bool IsChineseOrJapanese(nsIFrame* aFrame)
 {
-  if (aFrame->StyleContext()->IsInlineDescendantOfRuby()) {
+  if (aFrame->StyleContext()->ShouldSuppressLineBreak()) {
     // Always treat ruby as CJ language so that those characters can
     // be expanded properly even when surrounded by other language.
     return true;
@@ -3155,7 +3170,7 @@ PropertyProvider::GetSpacingInternal(uint32_t aStart, uint32_t aLength,
           aSpacing[runOffsetInSubstring + i].mAfter += mLetterSpacing;
         }
         if (IsCSSWordSpacingSpace(mFrag, i + run.GetOriginalOffset(),
-                                  mTextStyle)) {
+                                  mFrame, mTextStyle)) {
           // It kinda sucks, but space characters can be part of clusters,
           // and even still be whitespace (I think!)
           iter.SetSkippedOffset(run.GetSkippedOffset() + i);
@@ -4014,14 +4029,14 @@ public:
 
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
-                    nsIFrame*         aPrevInFlow) MOZ_OVERRIDE;
+                    nsIFrame*         aPrevInFlow) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) MOZ_OVERRIDE;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
 
-  virtual nsIFrame* GetPrevContinuation() const MOZ_OVERRIDE {
+  virtual nsIFrame* GetPrevContinuation() const override {
     return mPrevContinuation;
   }
-  virtual void SetPrevContinuation(nsIFrame* aPrevContinuation) MOZ_OVERRIDE {
+  virtual void SetPrevContinuation(nsIFrame* aPrevContinuation) override {
     NS_ASSERTION (!aPrevContinuation || GetType() == aPrevContinuation->GetType(),
                   "setting a prev continuation with incorrect type!");
     NS_ASSERTION (!nsSplittableFrame::IsInPrevContinuationChain(aPrevContinuation, this),
@@ -4029,13 +4044,13 @@ public:
     mPrevContinuation = aPrevContinuation;
     RemoveStateBits(NS_FRAME_IS_FLUID_CONTINUATION);
   }
-  virtual nsIFrame* GetPrevInFlowVirtual() const MOZ_OVERRIDE {
+  virtual nsIFrame* GetPrevInFlowVirtual() const override {
     return GetPrevInFlow();
   }
   nsIFrame* GetPrevInFlow() const {
     return (GetStateBits() & NS_FRAME_IS_FLUID_CONTINUATION) ? mPrevContinuation : nullptr;
   }
-  virtual void SetPrevInFlow(nsIFrame* aPrevInFlow) MOZ_OVERRIDE {
+  virtual void SetPrevInFlow(nsIFrame* aPrevInFlow) override {
     NS_ASSERTION (!aPrevInFlow || GetType() == aPrevInFlow->GetType(),
                   "setting a prev in flow with incorrect type!");
     NS_ASSERTION (!nsSplittableFrame::IsInPrevContinuationChain(aPrevInFlow, this),
@@ -4043,19 +4058,19 @@ public:
     mPrevContinuation = aPrevInFlow;
     AddStateBits(NS_FRAME_IS_FLUID_CONTINUATION);
   }
-  virtual nsIFrame* FirstInFlow() const MOZ_OVERRIDE;
-  virtual nsIFrame* FirstContinuation() const MOZ_OVERRIDE;
+  virtual nsIFrame* FirstInFlow() const override;
+  virtual nsIFrame* FirstContinuation() const override;
 
   virtual void AddInlineMinISize(nsRenderingContext *aRenderingContext,
-                                 InlineMinISizeData *aData) MOZ_OVERRIDE;
+                                 InlineMinISizeData *aData) override;
   virtual void AddInlinePrefISize(nsRenderingContext *aRenderingContext,
-                                  InlinePrefISizeData *aData) MOZ_OVERRIDE;
+                                  InlinePrefISizeData *aData) override;
   
   virtual nsresult GetRenderedText(nsAString* aString = nullptr,
                                    gfxSkipChars* aSkipChars = nullptr,
                                    gfxSkipCharsIterator* aSkipIter = nullptr,
                                    uint32_t aSkippedStartOffset = 0,
-                                   uint32_t aSkippedMaxLength = UINT32_MAX) MOZ_OVERRIDE
+                                   uint32_t aSkippedMaxLength = UINT32_MAX) override
   { return NS_ERROR_NOT_IMPLEMENTED; } // Call on a primary text frame only
 
 protected:
@@ -4571,7 +4586,7 @@ public:
 #endif
 
   virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
-                           bool* aSnap) MOZ_OVERRIDE {
+                           bool* aSnap) override {
     *aSnap = false;
     nsRect temp = mFrame->GetVisualOverflowRectRelativeToSelf() + ToReferenceFrame();
     // Bug 748228
@@ -4580,29 +4595,29 @@ public:
   }
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                        HitTestState* aState,
-                       nsTArray<nsIFrame*> *aOutFrames) MOZ_OVERRIDE {
+                       nsTArray<nsIFrame*> *aOutFrames) override {
     if (nsRect(ToReferenceFrame(), mFrame->GetSize()).Intersects(aRect)) {
       aOutFrames->AppendElement(mFrame);
     }
   }
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
+                     nsRenderingContext* aCtx) override;
   NS_DISPLAY_DECL_NAME("Text", TYPE_TEXT)
 
-  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE
+  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) override
   {
     bool snap;
     return GetBounds(aBuilder, &snap);
   }
 
-  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE
+  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override
   {
     return new nsDisplayTextGeometry(this, aBuilder);
   }
 
   virtual void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                          const nsDisplayItemGeometry* aGeometry,
-                                         nsRegion *aInvalidRegion) MOZ_OVERRIDE
+                                         nsRegion *aInvalidRegion) override
   {
     const nsDisplayTextGeometry* geometry = static_cast<const nsDisplayTextGeometry*>(aGeometry);
     nsTextFrame* f = static_cast<nsTextFrame*>(mFrame);
@@ -4622,7 +4637,7 @@ public:
     }
   }
   
-  virtual void DisableComponentAlpha() MOZ_OVERRIDE {
+  virtual void DisableComponentAlpha() override {
     mDisableSubpixelAA = true;
   }
 
@@ -6107,8 +6122,9 @@ nsTextFrame::PaintText(nsRenderingContext* aRenderingContext, nsPoint aPt,
     return;
 
   PropertyProvider provider(this, iter, nsTextFrame::eInflated);
-  // Trim trailing whitespace
-  provider.InitializeForDisplay(true);
+  // Trim trailing whitespace, unless we're painting a selection highlight,
+  // which should include trailing spaces if present (bug 1146754).
+  provider.InitializeForDisplay(!IsSelected());
 
   gfxContext* ctx = aRenderingContext->ThebesContext();
   const bool rtl = mTextRun->IsRightToLeft();
@@ -6928,7 +6944,7 @@ nsTextFrame::PeekOffsetCharacter(bool aForward, int32_t* aOffset,
     iter.SetOriginalOffset(startOffset);
     if (startOffset <= trimmed.GetEnd() &&
         !(startOffset < trimmed.GetEnd() &&
-          StyleText()->NewlineIsSignificant() &&
+          StyleText()->NewlineIsSignificant(this) &&
           iter.GetSkippedOffset() < mTextRun->GetLength() &&
           mTextRun->CharIsNewline(iter.GetSkippedOffset()))) {
       for (int32_t i = startOffset + 1; i <= trimmed.GetEnd(); ++i) {
@@ -7399,7 +7415,7 @@ nsTextFrame::AddInlineMinISizeForFlow(nsRenderingContext *aRenderingContext,
                             iter, len, nullptr, 0, aTextRunType);
 
   bool collapseWhitespace = !textStyle->WhiteSpaceIsSignificant();
-  bool preformatNewlines = textStyle->NewlineIsSignificant();
+  bool preformatNewlines = textStyle->NewlineIsSignificant(this);
   bool preformatTabs = textStyle->WhiteSpaceIsSignificant();
   gfxFloat tabWidth = -1;
   uint32_t start =
@@ -7560,7 +7576,7 @@ nsTextFrame::AddInlinePrefISizeForFlow(nsRenderingContext *aRenderingContext,
                             iter, INT32_MAX, nullptr, 0, aTextRunType);
 
   bool collapseWhitespace = !textStyle->WhiteSpaceIsSignificant();
-  bool preformatNewlines = textStyle->NewlineIsSignificant();
+  bool preformatNewlines = textStyle->NewlineIsSignificant(this);
   bool preformatTabs = textStyle->TabIsSignificant();
   gfxFloat tabWidth = -1;
   uint32_t start =
@@ -7988,6 +8004,7 @@ nsTextFrame::Reflow(nsPresContext*           aPresContext,
                     const nsHTMLReflowState& aReflowState,
                     nsReflowStatus&          aStatus)
 {
+  MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTextFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowState, aMetrics, aStatus);
 
@@ -8101,7 +8118,7 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   int32_t contentNewLineOffset = -1;
   // Pointer to the nsGkAtoms::newline set on this frame's element
   NewlineProperty* cachedNewlineOffset = nullptr;
-  if (textStyle->NewlineIsSignificant()) {
+  if (textStyle->NewlineIsSignificant(this)) {
     cachedNewlineOffset =
       static_cast<NewlineProperty*>(mContent->GetProperty(nsGkAtoms::newline));
     if (cachedNewlineOffset && cachedNewlineOffset->mStartOffset <= offset &&
@@ -8291,11 +8308,9 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   gfxFloat availWidth = aAvailableWidth;
   bool canTrimTrailingWhitespace = !textStyle->WhiteSpaceIsSignificant() ||
                                    (GetStateBits() & TEXT_IS_IN_TOKEN_MATHML);
-  int32_t unusedOffset;
-  gfxBreakPriority breakPriority;
-  aLineLayout.GetLastOptionalBreakPosition(&unusedOffset, &breakPriority);
+  gfxBreakPriority breakPriority = aLineLayout.LastOptionalBreakPriority();
   gfxTextRun::SuppressBreak suppressBreak = gfxTextRun::eNoSuppressBreak;
-  if (StyleContext()->IsInlineDescendantOfRuby()) {
+  if (StyleContext()->ShouldSuppressLineBreak()) {
     suppressBreak = gfxTextRun::eSuppressAllBreaks;
   } else if (!aLineLayout.LineIsBreakable()) {
     suppressBreak = gfxTextRun::eSuppressInitialBreak;
@@ -8506,7 +8521,7 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   bool emptyTextAtStartOfLine = atStartOfLine && length == 0;
   if (!breakAfter && charsFit == length && !emptyTextAtStartOfLine &&
       transformedOffset + transformedLength == mTextRun->GetLength() &&
-      !StyleContext()->IsInlineDescendantOfRuby() &&
+      !StyleContext()->ShouldSuppressLineBreak() &&
       (mTextRun->GetFlags() & nsTextFrameUtils::TEXT_HAS_TRAILING_BREAK)) {
     // We placed all the text in the textrun and we have a break opportunity at
     // the end of the textrun. We need to record it because the following
@@ -8545,7 +8560,7 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
 
   // Updated the cached NewlineProperty, or delete it.
   if (contentLength < maxContentLength &&
-      textStyle->NewlineIsSignificant() &&
+      textStyle->NewlineIsSignificant(this) &&
       (contentNewLineOffset < 0 ||
        mContentOffset + contentLength <= contentNewLineOffset)) {
     if (!cachedNewlineOffset) {
@@ -8568,7 +8583,7 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   if (!textStyle->WhiteSpaceIsSignificant() &&
       (lineContainer->StyleText()->mTextAlign == NS_STYLE_TEXT_ALIGN_JUSTIFY ||
        lineContainer->StyleText()->mTextAlignLast == NS_STYLE_TEXT_ALIGN_JUSTIFY ||
-       StyleContext()->IsInlineDescendantOfRuby()) &&
+       StyleContext()->ShouldSuppressLineBreak()) &&
       !lineContainer->IsSVGText()) {
     AddStateBits(TEXT_JUSTIFICATION_ENABLED);
     provider.ComputeJustification(offset, charsFit);
@@ -8682,7 +8697,8 @@ nsTextFrame::RecomputeOverflow(nsIFrame* aBlockFrame)
     return result;
 
   PropertyProvider provider(this, iter, nsTextFrame::eInflated);
-  provider.InitializeForDisplay(true);
+  // Don't trim trailing space, in case we need to paint it as selected.
+  provider.InitializeForDisplay(false);
 
   gfxTextRun::Metrics textMetrics =
     mTextRun->MeasureText(provider.GetStart().GetSkippedOffset(),
@@ -8705,11 +8721,12 @@ nsTextFrame::RecomputeOverflow(nsIFrame* aBlockFrame)
   return result;
 }
 
-static char16_t TransformChar(const nsStyleText* aStyle, gfxTextRun* aTextRun,
-                               uint32_t aSkippedOffset, char16_t aChar)
+static char16_t TransformChar(nsTextFrame* aFrame, const nsStyleText* aStyle,
+                              gfxTextRun* aTextRun, uint32_t aSkippedOffset,
+                              char16_t aChar)
 {
   if (aChar == '\n') {
-    return aStyle->NewlineIsSignificant() ? aChar : ' ';
+    return aStyle->NewlineIsSignificant(aFrame) ? aChar : ' ';
   }
   if (aChar == '\t') {
     return aStyle->TabIsSignificant() ? aChar : ' ';
@@ -8783,7 +8800,8 @@ nsresult nsTextFrame::GetRenderedText(nsAString* aAppendToString,
         skipChars.KeepChar();
         if (aAppendToString) {
           aAppendToString->Append(
-              TransformChar(textStyle, textFrame->mTextRun, iter.GetSkippedOffset(),
+              TransformChar(textFrame, textStyle, textFrame->mTextRun,
+                            iter.GetSkippedOffset(),
                             textFrag->CharAt(iter.GetOriginalOffset())));
         }
       }
@@ -8967,7 +8985,7 @@ nsTextFrame::AdjustOffsetsForBidi(int32_t aStart, int32_t aEnd)
 bool
 nsTextFrame::HasSignificantTerminalNewline() const
 {
-  return ::HasTerminalNewline(this) && StyleText()->NewlineIsSignificant();
+  return ::HasTerminalNewline(this) && StyleText()->NewlineIsSignificant(this);
 }
 
 bool

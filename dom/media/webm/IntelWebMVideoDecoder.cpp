@@ -112,10 +112,10 @@ IntelWebMVideoDecoder::Create(WebMReader* aReader)
 }
 
 bool
-IntelWebMVideoDecoder::IsSupportedVideoMimeType(const char* aMimeType)
+IntelWebMVideoDecoder::IsSupportedVideoMimeType(const nsACString& aMimeType)
 {
-  return (!strcmp(aMimeType, "video/webm; codecs=vp8") ||
-          !strcmp(aMimeType, "video/webm; codecs=vp9")) &&
+  return (aMimeType.EqualsLiteral("video/webm; codecs=vp8") ||
+          aMimeType.EqualsLiteral("video/webm; codecs=vp9")) &&
          mPlatform->SupportsVideoMimeType(aMimeType);
 }
 
@@ -353,7 +353,7 @@ IntelWebMVideoDecoder::DecodeVideoFrame(bool& aKeyframeSkip,
     NS_ENSURE_SUCCESS(rv, false);
   }
 
-  NS_ASSERTION(mReader->GetDecoder()->OnDecodeThread(), "Should be on decode thread.");
+  MOZ_ASSERT(mReader->OnTaskQueue());
   bool rv = Decode();
   {
     // Report the number of "decoded" frames as the difference in the

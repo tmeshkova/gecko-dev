@@ -39,12 +39,12 @@ public:
   }
 
 protected:
-  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) MOZ_OVERRIDE;
+  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) override;
 
   virtual PCompositorChild* AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess);
 
   // IPDL protocol impl
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
 private:
   void QuickExit();

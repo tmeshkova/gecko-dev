@@ -246,8 +246,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
         if (HasValidInnerSize()) {
           InitializeRootMetrics();
 
-          utils->SetResolution(mLastRootMetrics.GetPresShellResolution(),
-                               mLastRootMetrics.GetPresShellResolution());
+          utils->SetResolutionAndScaleTo(mLastRootMetrics.GetPresShellResolution());
           HandlePossibleViewportChange(mInnerSize);
           // Relay frame metrics to subscribed listeners
           mView->RelayFrameMetrics(mLastRootMetrics);
@@ -302,7 +301,7 @@ TabChildHelper::WebWidget()
 }
 
 bool
-TabChildHelper::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
+TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
   if (!InitTabChildGlobal())
     // This can happen if we're half-destroyed.  It's not a fatal

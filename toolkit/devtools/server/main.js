@@ -12,7 +12,8 @@
  */
 let { Ci, Cc, CC, Cu, Cr } = require("chrome");
 let Services = require("Services");
-let { ActorPool, RegisteredActorFactory, ObservedActorFactory } = require("devtools/server/actors/common");
+let { ActorPool, OriginalLocation, RegisteredActorFactory,
+      ObservedActorFactory } = require("devtools/server/actors/common");
 let { LocalDebuggerTransport, ChildDebuggerTransport } =
   require("devtools/toolkit/transport/transport");
 let DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
@@ -712,9 +713,9 @@ var DebuggerServer = {
       prefix: prefix
     });
 
-    function onDisconnect() {
-      Services.obs.removeObserver(onMessageManagerDisconnect, "message-manager-disconnect");
-      events.off(aConnection, "closed", onDisconnect);
+    function onClose() {
+      Services.obs.removeObserver(onMessageManagerClose, "message-manager-close");
+      events.off(aConnection, "closed", onClose);
       if (childTransport) {
         // If we have a child transport, the actor has already
         // been created. We need to stop using this message manager.
@@ -729,16 +730,16 @@ var DebuggerServer = {
       }
     }
 
-    let onMessageManagerDisconnect = DevToolsUtils.makeInfallible(function (subject, topic, data) {
+    let onMessageManagerClose = DevToolsUtils.makeInfallible(function (subject, topic, data) {
       if (subject == aMm) {
-        onDisconnect();
+        onClose();
         aConnection.send({ from: actor.actor, type: "tabDetached" });
       }
     }).bind(this);
-    Services.obs.addObserver(onMessageManagerDisconnect,
-                             "message-manager-disconnect", false);
+    Services.obs.addObserver(onMessageManagerClose,
+                             "message-manager-close", false);
 
-    events.on(aConnection, "closed", onDisconnect);
+    events.on(aConnection, "closed", onClose);
 
     return deferred.promise;
   },
@@ -881,9 +882,9 @@ var DebuggerServer = {
     }).bind(this);
     mm.addMessageListener("debug:actor", onActorCreated);
 
-    let onMessageManagerDisconnect = DevToolsUtils.makeInfallible(function (subject, topic, data) {
+    let onMessageManagerClose = DevToolsUtils.makeInfallible(function (subject, topic, data) {
       if (subject == mm) {
-        Services.obs.removeObserver(onMessageManagerDisconnect, topic);
+        Services.obs.removeObserver(onMessageManagerClose, topic);
 
         // provides hook to actor modules that need to exchange messages
         // between e10s parent and child processes
@@ -924,8 +925,8 @@ var DebuggerServer = {
         }
       }
     }).bind(this);
-    Services.obs.addObserver(onMessageManagerDisconnect,
-                             "message-manager-disconnect", false);
+    Services.obs.addObserver(onMessageManagerClose,
+                             "message-manager-close", false);
 
     events.once(aConnection, "closed", () => {
       if (childTransport) {
@@ -1135,9 +1136,14 @@ EventEmitter.decorate(DebuggerServer);
 
 if (this.exports) {
   exports.DebuggerServer = DebuggerServer;
+  exports.ActorPool = ActorPool;
+  exports.OriginalLocation = OriginalLocation;
 }
+
 // Needed on B2G (See header note)
 this.DebuggerServer = DebuggerServer;
+this.ActorPool = ActorPool;
+this.OriginalLocation = OriginalLocation;
 
 // When using DebuggerServer.addActors, some symbols are expected to be in
 // the scope of the added actor even before the corresponding modules are
@@ -1147,11 +1153,6 @@ let includes = ["Components", "Ci", "Cu", "require", "Services", "DebuggerServer
 includes.forEach(name => {
   DebuggerServer[name] = this[name];
 });
-
-// Export ActorPool for requirers of main.js
-if (this.exports) {
-  exports.ActorPool = ActorPool;
-}
 
 /**
  * Creates a DebuggerServerConnection.

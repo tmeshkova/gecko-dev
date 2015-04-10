@@ -30,8 +30,9 @@ EXTRA_SUPPORT_FILES = [
 ]
 
 ACCEPTABLE_ERRATA_KEYS = set([
-  'skip-if',
   'fail-if',
+  'skip-if',
+  'subsuite',
 ])
 
 GENERATED_HEADER = '''
@@ -251,7 +252,8 @@ def WriteWrappers(testWebPathList):
 
 def PathFromManifestDir(path):
     print('path: ' + path)
-    return os.path.join(FILE_PATH_PREFIX, path)
+    ret = os.path.join(FILE_PATH_PREFIX, path)
+    return ret.replace(os.sep, '/')
 
 
 def WriteManifest(wrapperManifestPathList, supportFilePathList):

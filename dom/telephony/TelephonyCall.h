@@ -9,6 +9,7 @@
 
 #include "mozilla/dom/DOMError.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/TelephonyCallBinding.h"
 #include "mozilla/dom/TelephonyCallId.h"
 #include "mozilla/dom/telephony/TelephonyCommon.h"
 
@@ -17,7 +18,7 @@ class nsPIDOMWindow;
 namespace mozilla {
 namespace dom {
 
-class TelephonyCall MOZ_FINAL : public DOMEventTargetHelper
+class TelephonyCall final : public DOMEventTargetHelper
 {
   nsRefPtr<Telephony> mTelephony;
   nsRefPtr<TelephonyCallGroup> mGroup;
@@ -29,6 +30,8 @@ class TelephonyCall MOZ_FINAL : public DOMEventTargetHelper
   nsString mState;
   bool mEmergency;
   nsRefPtr<DOMError> mError;
+  Nullable<TelephonyCallDisconnectedReason> mDisconnectedReason;
+
   bool mSwitchable;
   bool mMergeable;
 
@@ -51,7 +54,7 @@ public:
 
   // WrapperCache
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL
   already_AddRefed<TelephonyCallId>
@@ -86,6 +89,12 @@ public:
 
   already_AddRefed<DOMError>
   GetError() const;
+
+  Nullable<TelephonyCallDisconnectedReason>
+  GetDisconnectedReason() const
+  {
+    return mDisconnectedReason;
+  }
 
   already_AddRefed<TelephonyCallGroup>
   GetGroup() const;
@@ -164,6 +173,9 @@ public:
 
   void
   NotifyError(const nsAString& aError);
+
+  void
+  UpdateDisconnectedReason(const nsAString& aDisconnectedReason);
 
   void
   ChangeGroup(TelephonyCallGroup* aGroup);

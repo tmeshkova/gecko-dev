@@ -34,7 +34,7 @@ class FileManager;
 class FileManagerInfo;
 class IDBFactory;
 
-class IndexedDatabaseManager MOZ_FINAL : public nsIObserver
+class IndexedDatabaseManager final : public nsIObserver
 {
   typedef mozilla::dom::quota::PersistenceType PersistenceType;
 
@@ -109,7 +109,13 @@ public:
 #endif
 
   static bool
-  ExperimentalFeaturesEnabled(JSContext* aCx, JSObject* aGlobal);
+  ExperimentalFeaturesEnabled();
+
+  static bool
+  ExperimentalFeaturesEnabled(JSContext* /* aCx */, JSObject* /* aGlobal */)
+  {
+    return ExperimentalFeaturesEnabled();
+  }
 
   already_AddRefed<FileManager>
   GetFileManager(PersistenceType aPersistenceType,
@@ -158,9 +164,7 @@ public:
   }
 
   static nsresult
-  CommonPostHandleEvent(DOMEventTargetHelper* aEventTarget,
-                        IDBFactory* aFactory,
-                        EventChainPostVisitor& aVisitor);
+  CommonPostHandleEvent(EventChainPostVisitor& aVisitor, IDBFactory* aFactory);
 
   static bool
   TabContextMayAccessOrigin(const mozilla::dom::TabContext& aContext,

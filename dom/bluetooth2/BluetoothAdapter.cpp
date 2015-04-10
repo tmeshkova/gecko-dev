@@ -40,7 +40,7 @@ NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 NS_IMPL_ADDREF_INHERITED(BluetoothAdapter, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(BluetoothAdapter, DOMEventTargetHelper)
 
-class StartDiscoveryTask MOZ_FINAL : public BluetoothReplyRunnable
+class StartDiscoveryTask final : public BluetoothReplyRunnable
 {
 public:
   StartDiscoveryTask(BluetoothAdapter* aAdapter, Promise* aPromise)
@@ -78,7 +78,7 @@ public:
   }
 
   virtual void
-  ReleaseMembers() MOZ_OVERRIDE
+  ReleaseMembers() override
   {
     BluetoothReplyRunnable::ReleaseMembers();
     mAdapter = nullptr;
@@ -853,53 +853,44 @@ BluetoothAdapter::HandleDeviceFound(const BluetoothValue& aValue)
 void
 BluetoothAdapter::HandleDevicePaired(const BluetoothValue& aValue)
 {
-  MOZ_ASSERT(aValue.type() == BluetoothValue::TArrayOfBluetoothNamedValue);
-
-  if (mState != BluetoothAdapterState::Enabled) {
-    BT_WARNING("HandleDevicePaired() is called when adapter isn't enabled.");
+  if (NS_WARN_IF(mState != BluetoothAdapterState::Enabled)) {
     return;
   }
+
+  MOZ_ASSERT(aValue.type() == BluetoothValue::TArrayOfBluetoothNamedValue);
 
   const InfallibleTArray<BluetoothNamedValue>& arr =
     aValue.get_ArrayOfBluetoothNamedValue();
 
   MOZ_ASSERT(arr.Length() == 3 &&
              arr[0].value().type() == BluetoothValue::TnsString && // Address
-             arr[1].value().type() == BluetoothValue::Tbool &&     // Paired
-             arr[2].value().type() == BluetoothValue::TnsString);  // Name
+             arr[1].value().type() == BluetoothValue::TnsString && // Name
+             arr[2].value().type() == BluetoothValue::Tbool);      // Paired
   MOZ_ASSERT(!arr[0].value().get_nsString().IsEmpty() &&
-             arr[1].value().get_bool());
+             arr[2].value().get_bool());
 
-  nsString deviceAddress = arr[0].value().get_nsString();
-
-  nsRefPtr<BluetoothDevice> pairedDevice = nullptr;
-
-  // Check whether or not the address exists in mDevices.
-  size_t index = mDevices.IndexOf(deviceAddress);
+  // Append the paired device if it doesn't exist in adapter's devices array
+  size_t index = mDevices.IndexOf(arr[0].value().get_nsString());
   if (index == mDevices.NoIndex) {
-    // Create a new device and append it to adapter's device array
-    pairedDevice = BluetoothDevice::Create(GetOwner(), aValue);
-    mDevices.AppendElement(pairedDevice);
-  } else {
-    // Use existing device
-    pairedDevice = mDevices[index];
+    index = mDevices.Length(); // the new device's index
+    mDevices.AppendElement(
+      BluetoothDevice::Create(GetOwner(), aValue));
   }
 
   // Notify application of paired device
   BluetoothDeviceEventInit init;
-  init.mDevice = pairedDevice;
-  DispatchDeviceEvent(NS_LITERAL_STRING("devicepaired"), init);
+  init.mDevice = mDevices[index];
+  DispatchDeviceEvent(NS_LITERAL_STRING(DEVICE_PAIRED_ID), init);
 }
 
 void
 BluetoothAdapter::HandleDeviceUnpaired(const BluetoothValue& aValue)
 {
-  MOZ_ASSERT(aValue.type() == BluetoothValue::TArrayOfBluetoothNamedValue);
-
-  if (mState != BluetoothAdapterState::Enabled) {
-    BT_WARNING("HandleDeviceUnpaired() is called when adapter isn't enabled.");
+  if (NS_WARN_IF(mState != BluetoothAdapterState::Enabled)) {
     return;
   }
+
+  MOZ_ASSERT(aValue.type() == BluetoothValue::TArrayOfBluetoothNamedValue);
 
   const InfallibleTArray<BluetoothNamedValue>& arr =
     aValue.get_ArrayOfBluetoothNamedValue();
@@ -910,15 +901,14 @@ BluetoothAdapter::HandleDeviceUnpaired(const BluetoothValue& aValue)
   MOZ_ASSERT(!arr[0].value().get_nsString().IsEmpty() &&
              !arr[1].value().get_bool());
 
-  nsString deviceAddress = arr[0].value().get_nsString();
-
   // Remove the device with the same address
+  nsString deviceAddress = arr[0].value().get_nsString();
   mDevices.RemoveElement(deviceAddress);
 
   // Notify application of unpaired device
   BluetoothDeviceEventInit init;
   init.mAddress = deviceAddress;
-  DispatchDeviceEvent(NS_LITERAL_STRING("deviceunpaired"), init);
+  DispatchDeviceEvent(NS_LITERAL_STRING(DEVICE_UNPAIRED_ID), init);
 }
 
 void
@@ -1332,7 +1322,7 @@ BluetoothAdapter::SendMediaPlayStatus(const MediaPlayStatus& aMediaPlayStatus, E
 }
 
 JSObject*
-BluetoothAdapter::WrapObject(JSContext* aCx)
+BluetoothAdapter::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return BluetoothAdapterBinding::Wrap(aCx, this);
+  return BluetoothAdapterBinding::Wrap(aCx, this, aGivenProto);
 }

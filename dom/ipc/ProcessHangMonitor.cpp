@@ -69,7 +69,7 @@ class HangMonitorChild
   explicit HangMonitorChild(ProcessHangMonitor* aMonitor);
   virtual ~HangMonitorChild();
 
-  void Open(Transport* aTransport, ProcessHandle aHandle,
+  void Open(Transport* aTransport, ProcessId aOtherPid,
             MessageLoop* aIOLoop);
 
   typedef ProcessHangMonitor::SlowScriptAction SlowScriptAction;
@@ -87,11 +87,11 @@ class HangMonitorChild
 
   void ClearHang();
 
-  virtual bool RecvTerminateScript() MOZ_OVERRIDE;
-  virtual bool RecvBeginStartingDebugger() MOZ_OVERRIDE;
-  virtual bool RecvEndStartingDebugger() MOZ_OVERRIDE;
+  virtual bool RecvTerminateScript() override;
+  virtual bool RecvBeginStartingDebugger() override;
+  virtual bool RecvEndStartingDebugger() override;
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   void Shutdown();
 
@@ -126,7 +126,7 @@ HangMonitorChild* HangMonitorChild::sInstance;
 
 class HangMonitorParent;
 
-class HangMonitoredProcess MOZ_FINAL
+class HangMonitoredProcess final
   : public nsIHangReport
 {
 public:
@@ -136,20 +136,20 @@ public:
                        ContentParent* aContentParent)
     : mActor(aActor), mContentParent(aContentParent) {}
 
-  NS_IMETHOD GetHangType(uint32_t* aHangType) MOZ_OVERRIDE;
-  NS_IMETHOD GetScriptBrowser(nsIDOMElement** aBrowser) MOZ_OVERRIDE;
-  NS_IMETHOD GetScriptFileName(nsACString& aFileName) MOZ_OVERRIDE;
-  NS_IMETHOD GetScriptLineNo(uint32_t* aLineNo) MOZ_OVERRIDE;
+  NS_IMETHOD GetHangType(uint32_t* aHangType) override;
+  NS_IMETHOD GetScriptBrowser(nsIDOMElement** aBrowser) override;
+  NS_IMETHOD GetScriptFileName(nsACString& aFileName) override;
+  NS_IMETHOD GetScriptLineNo(uint32_t* aLineNo) override;
 
-  NS_IMETHOD GetPluginName(nsACString& aPluginName) MOZ_OVERRIDE;
+  NS_IMETHOD GetPluginName(nsACString& aPluginName) override;
 
-  NS_IMETHOD TerminateScript() MOZ_OVERRIDE;
-  NS_IMETHOD BeginStartingDebugger() MOZ_OVERRIDE;
-  NS_IMETHOD EndStartingDebugger() MOZ_OVERRIDE;
-  NS_IMETHOD TerminatePlugin() MOZ_OVERRIDE;
-  NS_IMETHOD TerminateProcess() MOZ_OVERRIDE;
+  NS_IMETHOD TerminateScript() override;
+  NS_IMETHOD BeginStartingDebugger() override;
+  NS_IMETHOD EndStartingDebugger() override;
+  NS_IMETHOD TerminatePlugin() override;
+  NS_IMETHOD TerminateProcess() override;
 
-  NS_IMETHOD IsReportForBrowser(nsIFrameLoader* aFrameLoader, bool* aResult) MOZ_OVERRIDE;
+  NS_IMETHOD IsReportForBrowser(nsIFrameLoader* aFrameLoader, bool* aResult) override;
 
   void Clear() { mContentParent = nullptr; mActor = nullptr; }
 
@@ -171,12 +171,11 @@ public:
   explicit HangMonitorParent(ProcessHangMonitor* aMonitor);
   virtual ~HangMonitorParent();
 
-  void Open(Transport* aTransport, ProcessHandle aHandle,
-            MessageLoop* aIOLoop);
+  void Open(Transport* aTransport, ProcessId aPid, MessageLoop* aIOLoop);
 
-  virtual bool RecvHangEvidence(const HangData& aHangData) MOZ_OVERRIDE;
+  virtual bool RecvHangEvidence(const HangData& aHangData) override;
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   void SetProcess(HangMonitoredProcess* aProcess) { mProcess = aProcess; }
 
@@ -312,7 +311,7 @@ HangMonitorChild::RecvEndStartingDebugger()
 }
 
 void
-HangMonitorChild::Open(Transport* aTransport, ProcessHandle aHandle,
+HangMonitorChild::Open(Transport* aTransport, ProcessId aPid,
                        MessageLoop* aIOLoop)
 {
   MOZ_RELEASE_ASSERT(MessageLoop::current() == MonitorLoop());
@@ -320,7 +319,7 @@ HangMonitorChild::Open(Transport* aTransport, ProcessHandle aHandle,
   MOZ_ASSERT(!sInstance);
   sInstance = this;
 
-  DebugOnly<bool> ok = PProcessHangMonitorChild::Open(aTransport, aHandle, aIOLoop);
+  DebugOnly<bool> ok = PProcessHangMonitorChild::Open(aTransport, aPid, aIOLoop);
   MOZ_ASSERT(ok);
 }
 
@@ -489,16 +488,16 @@ HangMonitorParent::ActorDestroy(ActorDestroyReason aWhy)
 }
 
 void
-HangMonitorParent::Open(Transport* aTransport, ProcessHandle aHandle,
+HangMonitorParent::Open(Transport* aTransport, ProcessId aPid,
                         MessageLoop* aIOLoop)
 {
   MOZ_RELEASE_ASSERT(MessageLoop::current() == MonitorLoop());
 
-  DebugOnly<bool> ok = PProcessHangMonitorParent::Open(aTransport, aHandle, aIOLoop);
+  DebugOnly<bool> ok = PProcessHangMonitorParent::Open(aTransport, aPid, aIOLoop);
   MOZ_ASSERT(ok);
 }
 
-class HangObserverNotifier MOZ_FINAL : public nsRunnable
+class HangObserverNotifier final : public nsRunnable
 {
 public:
   HangObserverNotifier(HangMonitoredProcess* aProcess, const HangData& aHangData)
@@ -883,7 +882,7 @@ ProcessHangMonitor::NotifyPluginHang(uint32_t aPluginId)
 PProcessHangMonitorParent*
 mozilla::CreateHangMonitorParent(ContentParent* aContentParent,
                                  mozilla::ipc::Transport* aTransport,
-                                 base::ProcessId aOtherProcess)
+                                 base::ProcessId aOtherPid)
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
@@ -893,39 +892,27 @@ mozilla::CreateHangMonitorParent(ContentParent* aContentParent,
   HangMonitoredProcess* process = new HangMonitoredProcess(parent, aContentParent);
   parent->SetProcess(process);
 
-  base::ProcessHandle handle;
-  if (!base::OpenProcessHandle(aOtherProcess, &handle)) {
-    // XXX need to kill |aOtherProcess|, it's boned
-    return nullptr;
-  }
-
   monitor->MonitorLoop()->PostTask(
     FROM_HERE,
     NewRunnableMethod(parent, &HangMonitorParent::Open,
-                      aTransport, handle, XRE_GetIOMessageLoop()));
+                      aTransport, aOtherPid, XRE_GetIOMessageLoop()));
 
   return parent;
 }
 
 PProcessHangMonitorChild*
 mozilla::CreateHangMonitorChild(mozilla::ipc::Transport* aTransport,
-                                base::ProcessId aOtherProcess)
+                                base::ProcessId aOtherPid)
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
   ProcessHangMonitor* monitor = ProcessHangMonitor::GetOrCreate();
   HangMonitorChild* child = new HangMonitorChild(monitor);
 
-  base::ProcessHandle handle;
-  if (!base::OpenProcessHandle(aOtherProcess, &handle)) {
-    // XXX need to kill |aOtherProcess|, it's boned
-    return nullptr;
-  }
-
   monitor->MonitorLoop()->PostTask(
     FROM_HERE,
     NewRunnableMethod(child, &HangMonitorChild::Open,
-                      aTransport, handle, XRE_GetIOMessageLoop()));
+                      aTransport, aOtherPid, XRE_GetIOMessageLoop()));
 
   return child;
 }

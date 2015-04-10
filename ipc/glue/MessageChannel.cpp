@@ -707,6 +707,33 @@ MessageChannel::OnMessageReceivedFromLink(const Message& aMsg)
     }
 }
 
+void
+MessageChannel::ProcessPendingRequests()
+{
+    // Loop until there aren't any more priority messages to process.
+    for (;;) {
+        mozilla::Vector<Message> toProcess;
+
+        for (MessageQueue::iterator it = mPending.begin(); it != mPending.end(); ) {
+            Message &msg = *it;
+            if (!ShouldDeferMessage(msg)) {
+                toProcess.append(Move(msg));
+                it = mPending.erase(it);
+                continue;
+            }
+            it++;
+        }
+
+        if (toProcess.empty())
+            break;
+
+        // Processing these messages could result in more messages, so we
+        // loop around to check for more afterwards.
+        for (auto it = toProcess.begin(); it != toProcess.end(); it++)
+            ProcessPendingRequest(*it);
+    }
+}
+
 bool
 MessageChannel::Send(Message* aMsg, Message* aReply)
 {
@@ -766,31 +793,12 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
     int32_t transaction = mCurrentTransaction;
     msg->set_transaction_id(transaction);
 
+    ProcessPendingRequests();
+
     mLink->SendMessage(msg.forget());
 
     while (true) {
-        // Loop until there aren't any more priority messages to process.
-        for (;;) {
-            mozilla::Vector<Message> toProcess;
-
-            for (MessageQueue::iterator it = mPending.begin(); it != mPending.end(); ) {
-                Message &msg = *it;
-                if (!ShouldDeferMessage(msg)) {
-                    toProcess.append(Move(msg));
-                    it = mPending.erase(it);
-                    continue;
-                }
-                it++;
-            }
-
-            if (toProcess.empty())
-                break;
-
-            // Processing these messages could result in more messages, so we
-            // loop around to check for more afterwards.
-            for (auto it = toProcess.begin(); it != toProcess.end(); it++)
-                ProcessPendingRequest(*it);
-        }
+        ProcessPendingRequests();
 
         // See if we've received a reply.
         if (mRecvdErrors) {
@@ -799,15 +807,7 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
         }
 
         if (mRecvd) {
-            MOZ_ASSERT(mRecvd->is_reply(), "expected reply");
-            MOZ_ASSERT(!mRecvd->is_reply_error());
-            MOZ_ASSERT(mRecvd->type() == replyType, "wrong reply type");
-            MOZ_ASSERT(mRecvd->seqno() == seqno);
-            MOZ_ASSERT(mRecvd->is_sync());
-
-            *aReply = Move(*mRecvd);
-            mRecvd = nullptr;
-            return true;
+            break;
         }
 
         MOZ_ASSERT(!mTimedOutMessageSeqno);
@@ -823,11 +823,32 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
         // if neither side has any other message Sends on the stack).
         bool canTimeOut = transaction == seqno;
         if (maybeTimedOut && canTimeOut && !ShouldContinueFromTimeout()) {
+            // We might have received a reply during WaitForSyncNotify or inside
+            // ShouldContinueFromTimeout (which drops the lock). We need to make
+            // sure not to set mTimedOutMessageSeqno if that happens, since then
+            // there would be no way to unset it.
+            if (mRecvdErrors) {
+                mRecvdErrors--;
+                return false;
+            }
+            if (mRecvd) {
+                break;
+            }
+
             mTimedOutMessageSeqno = seqno;
             return false;
         }
     }
 
+    MOZ_ASSERT(mRecvd);
+    MOZ_ASSERT(mRecvd->is_reply(), "expected reply");
+    MOZ_ASSERT(!mRecvd->is_reply_error());
+    MOZ_ASSERT(mRecvd->type() == replyType, "wrong reply type");
+    MOZ_ASSERT(mRecvd->seqno() == seqno);
+    MOZ_ASSERT(mRecvd->is_sync());
+
+    *aReply = Move(*mRecvd);
+    mRecvd = nullptr;
     return true;
 }
 

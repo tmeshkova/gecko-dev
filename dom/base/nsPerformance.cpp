@@ -24,6 +24,7 @@
 #include "mozilla/dom/PerformanceNavigationBinding.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/TimeStamp.h"
+#include "js/HeapAPI.h"
 
 #ifdef MOZ_WIDGET_GONK
 #define PERFLOG(msg, ...)  __android_log_print(ANDROID_LOG_INFO, "PerformanceTiming", msg, ##__VA_ARGS__)
@@ -361,9 +362,9 @@ nsPerformanceTiming::IsInitialized() const
 }
 
 JSObject*
-nsPerformanceTiming::WrapObject(JSContext *cx)
+nsPerformanceTiming::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PerformanceTimingBinding::Wrap(cx, this);
+  return PerformanceTimingBinding::Wrap(cx, this, aGivenProto);
 }
 
 
@@ -383,16 +384,33 @@ nsPerformanceNavigation::~nsPerformanceNavigation()
 }
 
 JSObject*
-nsPerformanceNavigation::WrapObject(JSContext *cx)
+nsPerformanceNavigation::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PerformanceNavigationBinding::Wrap(cx, this);
+  return PerformanceNavigationBinding::Wrap(cx, this, aGivenProto);
 }
 
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(nsPerformance, DOMEventTargetHelper,
-                                   mWindow, mTiming,
-                                   mNavigation, mEntries,
-                                   mParentPerformance)
+NS_IMPL_CYCLE_COLLECTION_CLASS(nsPerformance)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsPerformance, DOMEventTargetHelper)
+NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindow, mTiming,
+                                mNavigation, mEntries,
+                                mParentPerformance)
+  tmp->mMozMemory = nullptr;
+  mozilla::DropJSObjects(this);
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsPerformance, DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow, mTiming,
+                                    mNavigation, mEntries,
+                                    mParentPerformance)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(nsPerformance, DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mMozMemory)
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
 NS_IMPL_ADDREF_INHERITED(nsPerformance, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(nsPerformance, DOMEventTargetHelper)
 
@@ -412,6 +430,7 @@ nsPerformance::nsPerformance(nsPIDOMWindow* aWindow,
 
 nsPerformance::~nsPerformance()
 {
+  mozilla::DropJSObjects(this);
 }
 
 // QueryInterface implementation for nsPerformance
@@ -420,6 +439,18 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsPerformance)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
+void
+nsPerformance::GetMozMemory(JSContext *aCx, JS::MutableHandle<JSObject*> aObj)
+{
+  if (!mMozMemory) {
+    mMozMemory = js::gc::NewMemoryInfoObject(aCx);
+    if (mMozMemory) {
+      mozilla::HoldJSObjects(this);
+    }
+  }
+
+  aObj.set(mMozMemory);
+}
 
 nsPerformanceTiming*
 nsPerformance::Timing()
@@ -466,9 +497,9 @@ nsPerformance::Now()
 }
 
 JSObject*
-nsPerformance::WrapObject(JSContext *cx)
+nsPerformance::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PerformanceBinding::Wrap(cx, this);
+  return PerformanceBinding::Wrap(cx, this, aGivenProto);
 }
 
 void

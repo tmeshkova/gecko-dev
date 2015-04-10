@@ -24,8 +24,8 @@ class nsPIDOMWindow;
 namespace mozilla {
 namespace dom {
 
-class MMICall MOZ_FINAL : public nsISupports,
-                          public nsWrapperCache
+class MMICall final : public nsISupports,
+                      public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -37,7 +37,7 @@ public:
   GetParentObject() const;
 
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   void
   NotifyResult(JS::Handle<JS::Value> aResult);

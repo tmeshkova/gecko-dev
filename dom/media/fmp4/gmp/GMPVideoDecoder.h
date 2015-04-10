@@ -28,14 +28,14 @@ public:
   {}
 
   // GMPVideoDecoderCallbackProxy
-  virtual void Decoded(GMPVideoi420Frame* aDecodedFrame) MOZ_OVERRIDE;
-  virtual void ReceivedDecodedReferenceFrame(const uint64_t aPictureId) MOZ_OVERRIDE;
-  virtual void ReceivedDecodedFrame(const uint64_t aPictureId) MOZ_OVERRIDE;
-  virtual void InputDataExhausted() MOZ_OVERRIDE;
-  virtual void DrainComplete() MOZ_OVERRIDE;
-  virtual void ResetComplete() MOZ_OVERRIDE;
-  virtual void Error(GMPErr aErr) MOZ_OVERRIDE;
-  virtual void Terminated() MOZ_OVERRIDE;
+  virtual void Decoded(GMPVideoi420Frame* aDecodedFrame) override;
+  virtual void ReceivedDecodedReferenceFrame(const uint64_t aPictureId) override;
+  virtual void ReceivedDecodedFrame(const uint64_t aPictureId) override;
+  virtual void InputDataExhausted() override;
+  virtual void DrainComplete() override;
+  virtual void ResetComplete() override;
+  virtual void Error(GMPErr aErr) override;
+  virtual void Terminated() override;
 
   void SetLastStreamOffset(int64_t aStreamOffset) {
     mLastStreamOffset = aStreamOffset;
@@ -62,6 +62,7 @@ protected:
    , mGMP(nullptr)
    , mHost(nullptr)
    , mAdapter(aAdapter)
+   , mConvertNALUnitLengths(false)
   {
   }
 
@@ -71,19 +72,23 @@ public:
                   layers::ImageContainer* aImageContainer,
                   MediaTaskQueue* aTaskQueue,
                   MediaDataDecoderCallbackProxy* aCallback)
-   : GMPVideoDecoder(aConfig, aLayersBackend, aImageContainer, aTaskQueue, aCallback,
-                     new VideoCallbackAdapter(aCallback,
-                                              VideoInfo(aConfig.display_width,
-                                                        aConfig.display_height),
-                                              aImageContainer))
+   : mConfig(aConfig)
+   , mCallback(aCallback)
+   , mGMP(nullptr)
+   , mHost(nullptr)
+   , mAdapter(new VideoCallbackAdapter(aCallback,
+                                       VideoInfo(aConfig.display_width,
+                                                 aConfig.display_height),
+                                       aImageContainer))
+   , mConvertNALUnitLengths(false)
   {
   }
 
-  virtual nsresult Init() MOZ_OVERRIDE;
-  virtual nsresult Input(mp4_demuxer::MP4Sample* aSample) MOZ_OVERRIDE;
-  virtual nsresult Flush() MOZ_OVERRIDE;
-  virtual nsresult Drain() MOZ_OVERRIDE;
-  virtual nsresult Shutdown() MOZ_OVERRIDE;
+  virtual nsresult Init() override;
+  virtual nsresult Input(mp4_demuxer::MP4Sample* aSample) override;
+  virtual nsresult Flush() override;
+  virtual nsresult Drain() override;
+  virtual nsresult Shutdown() override;
 
 protected:
   virtual void InitTags(nsTArray<nsCString>& aTags);
@@ -91,14 +96,71 @@ protected:
   virtual GMPUnique<GMPVideoEncodedFrame>::Ptr CreateFrame(mp4_demuxer::MP4Sample* aSample);
 
 private:
+  class GMPInitDoneRunnable : public nsRunnable
+  {
+  public:
+    GMPInitDoneRunnable()
+      : mInitDone(false),
+        mThread(do_GetCurrentThread())
+    {
+    }
+
+    NS_IMETHOD Run()
+    {
+      mInitDone = true;
+      return NS_OK;
+    }
+
+    void Dispatch()
+    {
+      mThread->Dispatch(this, NS_DISPATCH_NORMAL);
+    }
+
+    bool IsDone()
+    {
+      MOZ_ASSERT(nsCOMPtr<nsIThread>(do_GetCurrentThread()) == mThread);
+      return mInitDone;
+    }
+
+  private:
+    bool mInitDone;
+    nsCOMPtr<nsIThread> mThread;
+  };
+
+  void GetGMPAPI(GMPInitDoneRunnable* aInitDone);
+
+  class GMPInitDoneCallback : public GetGMPVideoDecoderCallback
+  {
+  public:
+    GMPInitDoneCallback(GMPVideoDecoder* aDecoder,
+                        GMPInitDoneRunnable* aGMPInitDone)
+      : mDecoder(aDecoder)
+      , mGMPInitDone(aGMPInitDone)
+    {
+    }
+
+    virtual void Done(GMPVideoDecoderProxy* aGMP, GMPVideoHost* aHost)
+    {
+      if (aGMP) {
+        mDecoder->GMPInitDone(aGMP, aHost);
+      }
+      mGMPInitDone->Dispatch();
+    }
+
+  private:
+    nsRefPtr<GMPVideoDecoder> mDecoder;
+    nsRefPtr<GMPInitDoneRunnable> mGMPInitDone;
+  };
+  void GMPInitDone(GMPVideoDecoderProxy* aGMP, GMPVideoHost* aHost);
+
   const mp4_demuxer::VideoDecoderConfig& mConfig;
   MediaDataDecoderCallbackProxy* mCallback;
   nsCOMPtr<mozIGeckoMediaPluginService> mMPS;
   GMPVideoDecoderProxy* mGMP;
   GMPVideoHost* mHost;
   nsAutoPtr<VideoCallbackAdapter> mAdapter;
+  bool mConvertNALUnitLengths;
 };
-
 
 } // namespace mozilla
 

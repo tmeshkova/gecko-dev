@@ -13,8 +13,8 @@
 
 //-----------------------------------------------------------------------------
 
-class nsSyncStreamListener MOZ_FINAL : public nsISyncStreamListener
-                                     , public nsIInputStream
+class nsSyncStreamListener final : public nsISyncStreamListener
+                                 , public nsIInputStream
 {
 public:
     NS_DECL_ISUPPORTS

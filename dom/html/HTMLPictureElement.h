@@ -16,8 +16,8 @@
 namespace mozilla {
 namespace dom {
 
-class HTMLPictureElement MOZ_FINAL : public nsGenericHTMLElement,
-                                    public nsIDOMHTMLPictureElement
+class HTMLPictureElement final : public nsGenericHTMLElement,
+                                 public nsIDOMHTMLPictureElement
 {
 public:
   explicit HTMLPictureElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
@@ -28,15 +28,15 @@ public:
   // nsIDOMHTMLPictureElement
   NS_DECL_NSIDOMHTMLPICTUREELEMENT
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult) const MOZ_OVERRIDE;
-  virtual void RemoveChildAt(uint32_t aIndex, bool aNotify) MOZ_OVERRIDE;
+  virtual nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult) const override;
+  virtual void RemoveChildAt(uint32_t aIndex, bool aNotify) override;
 
   static bool IsPictureEnabled();
 
 protected:
   virtual ~HTMLPictureElement();
 
-  virtual JSObject* WrapNode(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 };
 
 } // namespace dom

@@ -52,7 +52,7 @@ private:
     virtual ~CancelableRunnable() {
     }
 
-    NS_IMETHOD Run() MOZ_OVERRIDE {
+    NS_IMETHOD Run() override {
       nsresult rv = NS_OK;
       if (!mCanceled) {
         rv = CancelableRun();
@@ -294,7 +294,7 @@ private:
 protected:
   bool AddRunnable(CancelableRunnable* aRunnable) {
     MutexAutoLock lock(mMutex);
-    if (mActorDestoryed)
+    if (mActorDestroyed)
       return false;
 
     mRunnables.AppendElement(aRunnable);
@@ -307,7 +307,7 @@ protected:
   }
 
   Mutex mMutex;
-  bool mActorDestoryed;
+  bool mActorDestroyed;
   nsTArray<nsRefPtr<CancelableRunnable> > mRunnables;
 };
 

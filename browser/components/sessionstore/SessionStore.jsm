@@ -45,7 +45,7 @@ const WINDOW_HIDEABLE_FEATURES = [
 ];
 
 // Messages that will be received via the Frame Message Manager.
-const FMM_MESSAGES = [
+const MESSAGES = [
   // The content script gives us a reference to an object that performs
   // synchronous collection of session data.
   "SessionStore:setupSyncHandler",
@@ -70,11 +70,15 @@ const FMM_MESSAGES = [
   // A tab that is being restored was reloaded. We call restoreTabContent to
   // finish restoring it right away.
   "SessionStore:reloadPendingTab",
+
+  // A crashed tab was revived by navigating to a different page. Remove its
+  // browser from the list of crashed browsers to stop ignoring its messages.
+  "SessionStore:crashedTabRevived",
 ];
 
 // The list of messages we accept from <xul:browser>s that have no tab
 // assigned. Those are for example the ones that preload about:newtab pages.
-const FMM_NOTAB_MESSAGES = new Set([
+const NOTAB_MESSAGES = new Set([
   // For a description see above.
   "SessionStore:setupSyncHandler",
 
@@ -82,15 +86,13 @@ const FMM_NOTAB_MESSAGES = new Set([
   "SessionStore:update",
 ]);
 
-// Messages that will be received via the Parent Process Message Manager.
-const PPMM_MESSAGES = [
-  // A tab is being revived from the crashed state. The sender of this
-  // message should actually be running in the parent process, since this
-  // will be the crashed tab interface. We use the Child and Parent Process
-  // Message Managers because the message is sent during framescript unload
-  // when the Frame Message Manager is not available.
-  "SessionStore:RemoteTabRevived",
-];
+// The list of messages we want to receive even during the short period after a
+// frame has been removed from the DOM and before its frame script has finished
+// unloading.
+const CLOSED_MESSAGES = new Set([
+  // For a description see above.
+  "SessionStore:crashedTabRevived",
+]);
 
 // These are tab events that we listen to.
 const TAB_EVENTS = [
@@ -124,6 +126,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "console",
 XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
   "resource:///modules/RecentWindow.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+  "resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "GlobalState",
   "resource:///modules/sessionstore/GlobalState.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PrivacyFilter",
@@ -423,8 +427,6 @@ let SessionStoreInternal = {
       Services.obs.addObserver(this, aTopic, true);
     }, this);
 
-    PPMM_MESSAGES.forEach(msg => ppmm.addMessageListener(msg, this));
-
     this._initPrefs();
     this._initialized = true;
   },
@@ -470,14 +472,9 @@ let SessionStoreInternal = {
 
             if (this._needsRestorePage(state, this._recentCrashes)) {
               // replace the crashed session with a restore-page-only session
-              let pageData = {
-                url: "about:sessionrestore",
-                formdata: {
-                  id: { "sessionData": state },
-                  xpath: {}
-                }
-              };
-              state = { windows: [{ tabs: [{ entries: [pageData] }] }] };
+              let url = "about:sessionrestore";
+              let formdata = {id: {sessionData: state}, url};
+              state = { windows: [{ tabs: [{ entries: [{url}], formdata }] }] };
             } else if (this._hasSingleTabWithURL(state.windows,
                                                  "about:welcomeback")) {
               // On a single about:welcomeback URL that crashed, replace about:welcomeback
@@ -554,8 +551,6 @@ let SessionStoreInternal = {
 
     // Make sure to cancel pending saves.
     SessionSaver.cancel();
-
-    PPMM_MESSAGES.forEach(msg => ppmm.removeMessageListener(msg, this));
   },
 
   /**
@@ -602,12 +597,6 @@ let SessionStoreInternal = {
    * and thus enables communication with OOP tabs.
    */
   receiveMessage(aMessage) {
-    // We'll deal with any Parent Process Message Manager messages first...
-    if (aMessage.name == "SessionStore:RemoteTabRevived") {
-      this._crashedBrowsers.delete(aMessage.objects.browser.permanentKey);
-      return;
-    }
-
     // If we got here, that means we're dealing with a frame message
     // manager message, so the target will be a <xul:browser>.
     var browser = aMessage.target;
@@ -616,7 +605,7 @@ let SessionStoreInternal = {
 
     // Ensure we receive only specific messages from <xul:browser>s that
     // have no tab assigned, e.g. the ones that preload about:newtab pages.
-    if (!tab && !FMM_NOTAB_MESSAGES.has(aMessage.name)) {
+    if (!tab && !NOTAB_MESSAGES.has(aMessage.name)) {
       throw new Error(`received unexpected message '${aMessage.name}' ` +
                       `from a browser that has no tab`);
     }
@@ -709,6 +698,9 @@ let SessionStoreInternal = {
           }
         }
         break;
+      case "SessionStore:crashedTabRevived":
+        this._crashedBrowsers.delete(browser.permanentKey);
+        break;
       default:
         throw new Error(`received unknown message '${aMessage.name}'`);
         break;
@@ -799,7 +791,10 @@ let SessionStoreInternal = {
     aWindow.__SSi = this._generateWindowID();
 
     let mm = aWindow.getGroupMessageManager("browsers");
-    FMM_MESSAGES.forEach(msg => mm.addMessageListener(msg, this));
+    MESSAGES.forEach(msg => {
+      let listenWhenClosed = CLOSED_MESSAGES.has(msg);
+      mm.addMessageListener(msg, this, listenWhenClosed);
+    });
 
     // Load the frame script after registering listeners.
     mm.loadFrameScript("chrome://browser/content/content-sessionStore.js", true);
@@ -840,7 +835,7 @@ let SessionStoreInternal = {
 
           let overwrite = this._isCmdLineEmpty(aWindow, aInitialState);
           let options = {firstWindow: true, overwriteTabs: overwrite};
-          this.restoreWindow(aWindow, aInitialState, options);
+          this.restoreWindows(aWindow, aInitialState, options);
         }
       }
       else {
@@ -855,7 +850,7 @@ let SessionStoreInternal = {
     else if (!this._isWindowLoaded(aWindow)) {
       let state = this._statesToRestore[aWindow.__SS_restoreID];
       let options = {overwriteTabs: true, isFollowUp: state.windows.length == 1};
-      this.restoreWindow(aWindow, state, options);
+      this.restoreWindow(aWindow, state.windows[0], options);
     }
     // The user opened another, non-private window after starting up with
     // a single private one. Let's restore the session we actually wanted to
@@ -869,7 +864,7 @@ let SessionStoreInternal = {
 
       this._restoreCount = this._deferredInitialState.windows ?
         this._deferredInitialState.windows.length : 0;
-      this.restoreWindow(aWindow, this._deferredInitialState, {firstWindow: true});
+      this.restoreWindows(aWindow, this._deferredInitialState, {firstWindow: true});
       this._deferredInitialState = null;
     }
     else if (this._restoreLastWindow && aWindow.toolbar.visible &&
@@ -890,9 +885,7 @@ let SessionStoreInternal = {
 
       if (closedWindowState) {
         let newWindowState;
-#ifndef XP_MACOSX
-        if (!this._doResumeSession()) {
-#endif
+        if (AppConstants.platform == "macosx" || !this._doResumeSession()) {
           // We want to split the window up into pinned tabs and unpinned tabs.
           // Pinned tabs should be restored. If there are any remaining tabs,
           // they should be added back to _closedWindows.
@@ -916,7 +909,6 @@ let SessionStoreInternal = {
             delete normalTabsState.windows[0].__lastSessionWindowID;
             this._closedWindows[closedWindowIndex] = normalTabsState.windows[0];
           }
-#ifndef XP_MACOSX
         }
         else {
           // If we're just restoring the window, make sure it gets removed from
@@ -925,13 +917,13 @@ let SessionStoreInternal = {
           newWindowState = closedWindowState;
           delete newWindowState.hidden;
         }
-#endif
+
         if (newWindowState) {
           // Ensure that the window state isn't hidden
           this._restoreCount = 1;
           let state = { windows: [newWindowState] };
           let options = {overwriteTabs: this._isCmdLineEmpty(aWindow, state)};
-          this.restoreWindow(aWindow, state, options);
+          this.restoreWindow(aWindow, newWindowState, options);
         }
       }
       // we actually restored the session just now.
@@ -1074,11 +1066,11 @@ let SessionStoreInternal = {
         SessionCookies.update([winData]);
       }
 
-#ifndef XP_MACOSX
-      // Until we decide otherwise elsewhere, this window is part of a series
-      // of closing windows to quit.
-      winData._shouldRestore = true;
-#endif
+      if (AppConstants.platform != "macosx") {
+        // Until we decide otherwise elsewhere, this window is part of a series
+        // of closing windows to quit.
+        winData._shouldRestore = true;
+      }
 
       // Store the window's close date to figure out when each individual tab
       // was closed. This timestamp should allow re-arranging data based on how
@@ -1128,7 +1120,7 @@ let SessionStoreInternal = {
     DyingWindowCache.set(aWindow, winData);
 
     let mm = aWindow.getGroupMessageManager("browsers");
-    FMM_MESSAGES.forEach(msg => mm.removeMessageListener(msg, this));
+    MESSAGES.forEach(msg => mm.removeMessageListener(msg, this));
 
     delete aWindow.__SSi;
   },
@@ -1577,7 +1569,7 @@ let SessionStoreInternal = {
     this._globalState.setFromState(state);
 
     // restore to the given state
-    this.restoreWindow(window, state, {overwriteTabs: true});
+    this.restoreWindows(window, state, {overwriteTabs: true});
   },
 
   getWindowState: function ssi_getWindowState(aWindow) {
@@ -1598,7 +1590,7 @@ let SessionStoreInternal = {
       throw Components.Exception("Window is not tracked", Cr.NS_ERROR_INVALID_ARG);
     }
 
-    this.restoreWindow(aWindow, aState, {overwriteTabs: aOverwrite});
+    this.restoreWindows(aWindow, aState, {overwriteTabs: aOverwrite});
   },
 
   getTabState: function ssi_getTabState(aTab) {
@@ -1969,7 +1961,7 @@ let SessionStoreInternal = {
         //        weirdness but we will still merge other extData.
         //        Bug 588217 should make this go away by merging the group data.
         let options = {overwriteTabs: canOverwriteTabs, isFollowUp: true};
-        this.restoreWindow(windowToUse, { windows: [winState] }, options);
+        this.restoreWindow(windowToUse, winState, options);
       }
       else {
         this._openWindowWithState({ windows: [winState] });
@@ -2182,21 +2174,21 @@ let SessionStoreInternal = {
     // shallow copy this._closedWindows to preserve current state
     let lastClosedWindowsCopy = this._closedWindows.slice();
 
-#ifndef XP_MACOSX
-    // If no non-popup browser window remains open, return the state of the last
-    // closed window(s). We only want to do this when we're actually "ending"
-    // the session.
-    //XXXzpao We should do this for _restoreLastWindow == true, but that has
-    //        its own check for popups. c.f. bug 597619
-    if (nonPopupCount == 0 && lastClosedWindowsCopy.length > 0 &&
-        RunState.isQuitting) {
-      // prepend the last non-popup browser window, so that if the user loads more tabs
-      // at startup we don't accidentally add them to a popup window
-      do {
-        total.unshift(lastClosedWindowsCopy.shift())
-      } while (total[0].isPopup && lastClosedWindowsCopy.length > 0)
+    if (AppConstants.platform != "macosx") {
+      // If no non-popup browser window remains open, return the state of the last
+      // closed window(s). We only want to do this when we're actually "ending"
+      // the session.
+      //XXXzpao We should do this for _restoreLastWindow == true, but that has
+      //        its own check for popups. c.f. bug 597619
+      if (nonPopupCount == 0 && lastClosedWindowsCopy.length > 0 &&
+          RunState.isQuitting) {
+        // prepend the last non-popup browser window, so that if the user loads more tabs
+        // at startup we don't accidentally add them to a popup window
+        do {
+          total.unshift(lastClosedWindowsCopy.shift())
+        } while (total[0].isPopup && lastClosedWindowsCopy.length > 0)
+      }
     }
-#endif
 
     if (activeWindow) {
       this.activeWindowSSiCache = activeWindow.__SSi || "";
@@ -2297,9 +2289,9 @@ let SessionStoreInternal = {
   /**
    * restore features to a single window
    * @param aWindow
-   *        Window reference
-   * @param aState
-   *        JS object or its eval'able source
+   *        Window reference to the window to use for restoration
+   * @param winData
+   *        JS object
    * @param aOptions
    *        {overwriteTabs: true} to overwrite existing tabs w/ new ones
    *        {isFollowUp: true} if this is not the restoration of the 1st window
@@ -2307,7 +2299,7 @@ let SessionStoreInternal = {
    *                            restoring in this session, that might open an
    *                            external link as well
    */
-  restoreWindow: function ssi_restoreWindow(aWindow, aState, aOptions = {}) {
+  restoreWindow: function ssi_restoreWindow(aWindow, winData, aOptions = {}) {
     let overwriteTabs = aOptions && aOptions.overwriteTabs;
     let isFollowUp = aOptions && aOptions.isFollowUp;
     let firstWindow = aOptions && aOptions.firstWindow;
@@ -2315,30 +2307,10 @@ let SessionStoreInternal = {
     if (isFollowUp) {
       this.windowToFocus = aWindow;
     }
+
     // initialize window if necessary
     if (aWindow && (!aWindow.__SSi || !this._windows[aWindow.__SSi]))
       this.onLoad(aWindow);
-
-    let root;
-    try {
-      root = (typeof aState == "string") ? JSON.parse(aState) : aState;
-    }
-    catch (ex) { // invalid state object - don't restore anything
-      debug(ex);
-      this._sendRestoreCompletedNotifications();
-      return;
-    }
-
-    // Restore closed windows if any.
-    if (root._closedWindows) {
-      this._closedWindows = root._closedWindows;
-    }
-
-    // We're done here if there are no windows.
-    if (!root.windows || !root.windows.length) {
-      this._sendRestoreCompletedNotifications();
-      return;
-    }
 
     TelemetryStopwatch.start("FX_SESSION_RESTORE_RESTORE_WINDOW_MS");
 
@@ -2346,26 +2318,10 @@ let SessionStoreInternal = {
     // for this window, so make sure we send the SSWindowStateBusy event.
     this._setWindowStateBusy(aWindow);
 
-    var winData;
-    if (!root.selectedWindow || root.selectedWindow > root.windows.length) {
-      root.selectedWindow = 0;
-    }
-
-    // open new windows for all further window entries of a multi-window session
-    // (unless they don't contain any tab data)
-    for (var w = 1; w < root.windows.length; w++) {
-      winData = root.windows[w];
-      if (winData && winData.tabs && winData.tabs[0]) {
-        var window = this._openWindowWithState({ windows: [winData] });
-        if (w == root.selectedWindow - 1) {
-          this.windowToFocus = window;
-        }
-      }
-    }
-    winData = root.windows[0];
     if (!winData.tabs) {
       winData.tabs = [];
     }
+
     // don't restore a single blank tab when we've had an external
     // URL passed in for loading at startup (cf. bug 357419)
     else if (firstWindow && !overwriteTabs && winData.tabs.length == 1 &&
@@ -2500,10 +2456,6 @@ let SessionStoreInternal = {
         (overwriteTabs ? (parseInt(winData.selected || "1")) : 0));
     }
 
-    if (aState.scratchpads) {
-      ScratchpadManager.restoreSession(aState.scratchpads);
-    }
-
     // set smoothScroll back to the original value
     tabstrip.smoothScroll = smoothScroll;
 
@@ -2511,6 +2463,76 @@ let SessionStoreInternal = {
 
     this._setWindowStateReady(aWindow);
     this._sendRestoreCompletedNotifications();
+  },
+
+  /**
+   * Restore multiple windows using the provided state.
+   * @param aWindow
+   *        Window reference to the first window to use for restoration.
+   *        Additionally required windows will be opened.
+   * @param aState
+   *        JS object or JSON string
+   * @param aOptions
+   *        {overwriteTabs: true} to overwrite existing tabs w/ new ones
+   *        {isFollowUp: true} if this is not the restoration of the 1st window
+   *        {firstWindow: true} if this is the first non-private window we're
+   *                            restoring in this session, that might open an
+   *                            external link as well
+   */
+  restoreWindows: function ssi_restoreWindows(aWindow, aState, aOptions = {}) {
+    let isFollowUp = aOptions && aOptions.isFollowUp;
+
+    if (isFollowUp) {
+      this.windowToFocus = aWindow;
+    }
+
+    // initialize window if necessary
+    if (aWindow && (!aWindow.__SSi || !this._windows[aWindow.__SSi]))
+      this.onLoad(aWindow);
+
+    let root;
+    try {
+      root = (typeof aState == "string") ? JSON.parse(aState) : aState;
+    }
+    catch (ex) { // invalid state object - don't restore anything
+      debug(ex);
+      this._sendRestoreCompletedNotifications();
+      return;
+    }
+
+    // Restore closed windows if any.
+    if (root._closedWindows) {
+      this._closedWindows = root._closedWindows;
+    }
+
+    // We're done here if there are no windows.
+    if (!root.windows || !root.windows.length) {
+      this._sendRestoreCompletedNotifications();
+      return;
+    }
+
+    if (!root.selectedWindow || root.selectedWindow > root.windows.length) {
+      root.selectedWindow = 0;
+    }
+
+    // open new windows for all further window entries of a multi-window session
+    // (unless they don't contain any tab data)
+    let winData;
+    for (var w = 1; w < root.windows.length; w++) {
+      winData = root.windows[w];
+      if (winData && winData.tabs && winData.tabs[0]) {
+        var window = this._openWindowWithState({ windows: [winData] });
+        if (w == root.selectedWindow - 1) {
+          this.windowToFocus = window;
+        }
+      }
+    }
+
+    this.restoreWindow(aWindow, root.windows[0], aOptions);
+
+    if (aState.scratchpads) {
+      ScratchpadManager.restoreSession(aState.scratchpads);
+    }
   },
 
   /**
@@ -3429,15 +3451,15 @@ let SessionStoreInternal = {
     if (this._closedWindows.length <= this._max_windows_undo)
       return;
     let spliceTo = this._max_windows_undo;
-#ifndef XP_MACOSX
-    let normalWindowIndex = 0;
-    // try to find a non-popup window in this._closedWindows
-    while (normalWindowIndex < this._closedWindows.length &&
-           !!this._closedWindows[normalWindowIndex].isPopup)
-      normalWindowIndex++;
-    if (normalWindowIndex >= this._max_windows_undo)
-      spliceTo = normalWindowIndex + 1;
-#endif
+    if (AppConstants.platform != "macosx") {
+      let normalWindowIndex = 0;
+      // try to find a non-popup window in this._closedWindows
+      while (normalWindowIndex < this._closedWindows.length &&
+             !!this._closedWindows[normalWindowIndex].isPopup)
+        normalWindowIndex++;
+      if (normalWindowIndex >= this._max_windows_undo)
+        spliceTo = normalWindowIndex + 1;
+    }
     this._closedWindows.splice(spliceTo, this._closedWindows.length);
   },
 

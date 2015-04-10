@@ -50,8 +50,6 @@
 #include "nsThreadManager.h"
 #include "nsThreadPool.h"
 
-#include "nsCompartmentInfo.h"
-
 #include "xptinfo.h"
 #include "nsIInterfaceInfoManager.h"
 #include "xptiprivate.h"
@@ -242,8 +240,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsMemoryInfoDumper)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsStatusReporterManager, Init)
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsCompartmentInfo)
-
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsIOUtil)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSecurityConsoleMessage)
@@ -366,7 +362,7 @@ NS_InitXPCOM(nsIServiceManager** aResult,
   return NS_InitXPCOM2(aResult, aBinDirectory, nullptr);
 }
 
-class ICUReporter MOZ_FINAL
+class ICUReporter final
   : public nsIMemoryReporter
   , public CountingAllocatorBase<ICUReporter>
 {
@@ -391,7 +387,7 @@ public:
 private:
   NS_IMETHODIMP
   CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
-                 bool aAnonymize) MOZ_OVERRIDE
+                 bool aAnonymize) override
   {
     return MOZ_COLLECT_REPORT(
       "explicit/icu", KIND_HEAP, UNITS_BYTES, MemoryAllocated(),
@@ -406,7 +402,7 @@ NS_IMPL_ISUPPORTS(ICUReporter, nsIMemoryReporter)
 /* static */ template<> Atomic<size_t>
 CountingAllocatorBase<ICUReporter>::sAmount(0);
 
-class OggReporter MOZ_FINAL
+class OggReporter final
   : public nsIMemoryReporter
   , public CountingAllocatorBase<OggReporter>
 {
@@ -416,7 +412,7 @@ public:
 private:
   NS_IMETHODIMP
   CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
-                 bool aAnonymize) MOZ_OVERRIDE
+                 bool aAnonymize) override
   {
     return MOZ_COLLECT_REPORT(
       "explicit/media/libogg", KIND_HEAP, UNITS_BYTES, MemoryAllocated(),
@@ -432,7 +428,7 @@ NS_IMPL_ISUPPORTS(OggReporter, nsIMemoryReporter)
 CountingAllocatorBase<OggReporter>::sAmount(0);
 
 #ifdef MOZ_VPX
-class VPXReporter MOZ_FINAL
+class VPXReporter final
   : public nsIMemoryReporter
   , public CountingAllocatorBase<VPXReporter>
 {
@@ -442,7 +438,7 @@ public:
 private:
   NS_IMETHODIMP
   CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
-                 bool aAnonymize) MOZ_OVERRIDE
+                 bool aAnonymize) override
   {
     return MOZ_COLLECT_REPORT(
       "explicit/media/libvpx", KIND_HEAP, UNITS_BYTES, MemoryAllocated(),
@@ -459,7 +455,7 @@ CountingAllocatorBase<VPXReporter>::sAmount(0);
 #endif /* MOZ_VPX */
 
 #ifdef MOZ_WEBM
-class NesteggReporter MOZ_FINAL
+class NesteggReporter final
   : public nsIMemoryReporter
   , public CountingAllocatorBase<NesteggReporter>
 {
@@ -469,7 +465,7 @@ public:
 private:
   NS_IMETHODIMP
   CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
-                 bool aAnonymize) MOZ_OVERRIDE
+                 bool aAnonymize) override
   {
     return MOZ_COLLECT_REPORT(
       "explicit/media/libnestegg", KIND_HEAP, UNITS_BYTES, MemoryAllocated(),
@@ -535,8 +531,8 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
     sMessageLoop = new MessageLoopForUI(MessageLoop::TYPE_MOZILLA_UI);
     sMessageLoop->set_thread_name("Gecko");
     // Set experimental values for main thread hangs:
-    // 512ms for transient hangs and 8192ms for permanent hangs
-    sMessageLoop->set_hang_timeouts(512, 8192);
+    // 128ms for transient hangs and 8192ms for permanent hangs
+    sMessageLoop->set_hang_timeouts(128, 8192);
   }
 
   if (XRE_GetProcessType() == GeckoProcessType_Default &&

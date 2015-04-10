@@ -269,7 +269,7 @@ describe("loop.contacts", function() {
       it("should notify the end user from a succesful import", function() {
         sandbox.stub(notifications, "successL10n");
         navigator.mozLoop.startImport = function(opts, cb) {
-          cb(null, {total: 42});
+          cb(null, {success: 42});
         };
 
         listView.handleImportButtonClick();
@@ -277,7 +277,8 @@ describe("loop.contacts", function() {
         sinon.assert.calledWithExactly(
           notifications.successL10n,
           "import_contacts_success_message",
-          {total: 42});
+          // Num is for the plural selection.
+          {num: 42, total: 42});
       });
 
       it("should notify the end user from any encountered error", function() {

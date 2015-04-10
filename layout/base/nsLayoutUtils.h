@@ -588,8 +588,8 @@ public:
     SCROLLABLE_ONLY_ASYNC_SCROLLABLE = 0x04,
     /**
      * If the SCROLLABLE_ALWAYS_MATCH_ROOT flag is set, then return the
-     * root scrollable frame for the root content document if we don't hit
-     * anything else.
+     * root scrollable frame for the root document (in the current process)
+     * if we don't hit anything else.
      */
     SCROLLABLE_ALWAYS_MATCH_ROOT = 0x08,
   };
@@ -1086,14 +1086,14 @@ public:
 
     RectAccumulator();
 
-    virtual void AddRect(const nsRect& aRect) MOZ_OVERRIDE;
+    virtual void AddRect(const nsRect& aRect) override;
   };
 
   struct RectListBuilder : public RectCallback {
     DOMRectList* mRectList;
 
     explicit RectListBuilder(DOMRectList* aList);
-    virtual void AddRect(const nsRect& aRect) MOZ_OVERRIDE;
+    virtual void AddRect(const nsRect& aRect) override;
   };
 
   static nsIFrame* GetContainingBlockForClientRect(nsIFrame* aFrame);
@@ -1802,7 +1802,7 @@ public:
    * have less information about the frame tree.
    */
   static void ComputeSizeForDrawing(imgIContainer* aImage,
-                                    nsIntSize&     aImageSize,
+                                    mozilla::CSSIntSize& aImageSize,
                                     nsSize&        aIntrinsicRatio,
                                     bool&          aGotWidth,
                                     bool&          aGotHeight);
@@ -1815,8 +1815,9 @@ public:
    * after trying all these methods, no value is available for one or both
    * dimensions, the corresponding dimension of aFallbackSize is used instead.
    */
-  static nsIntSize ComputeSizeForDrawingWithFallback(imgIContainer* aImage,
-                                                     const nsSize&  aFallbackSize);
+  static mozilla::CSSIntSize
+  ComputeSizeForDrawingWithFallback(imgIContainer* aImage,
+                                    const nsSize&  aFallbackSize);
 
   /**
    * Given a source area of an image (in appunits) and a destination area
@@ -2416,6 +2417,25 @@ public:
   static void
   AssertTreeOnlyEmptyNextInFlows(nsIFrame *aSubtreeRoot);
 #endif
+
+  /**
+   * Helper method to get touch action behaviour from the frame
+   */
+  static uint32_t
+  GetTouchActionFromFrame(nsIFrame* aFrame);
+
+  /**
+   * Helper method to transform |aBounds| from aFrame to aAncestorFrame,
+   * and combine it with |aPreciseTargetDest| if it is axis-aligned, or
+   * combine it with |aImpreciseTargetDest| if not.
+   */
+  static void
+  TransformToAncestorAndCombineRegions(
+    const nsRect& aBounds,
+    nsIFrame* aFrame,
+    const nsIFrame* aAncestorFrame,
+    nsRegion* aPreciseTargetDest,
+    nsRegion* aImpreciseTargetDest);
 
   /**
    * Determine if aImageFrame (which is an nsImageFrame, nsImageControlFrame, or

@@ -183,7 +183,7 @@ public:
     explicit gfxOTSContext(gfxUserFontEntry* aUserFontEntry)
         : mUserFontEntry(aUserFontEntry) {}
 
-    virtual ots::TableAction GetTableAction(uint32_t aTag) MOZ_OVERRIDE {
+    virtual ots::TableAction GetTableAction(uint32_t aTag) override {
         // preserve Graphite, color glyph and SVG tables
         if (aTag == TRUETYPE_TAG('S', 'i', 'l', 'f') ||
             aTag == TRUETYPE_TAG('S', 'i', 'l', 'l') ||
@@ -199,7 +199,7 @@ public:
     }
 
     virtual void Message(int level, const char* format,
-                         ...) MSGFUNC_FMT_ATTR MOZ_OVERRIDE {
+                         ...) MSGFUNC_FMT_ATTR override {
         va_list va;
         va_start(va, format);
 
@@ -675,7 +675,7 @@ gfxUserFontEntry::LoadPlatformFont(const uint8_t* aFontData, uint32_t& aLength)
 
     // The downloaded data can now be discarded; the font entry is using the
     // sanitized copy
-    moz_free((void*)aFontData);
+    free((void*)aFontData);
 
     return fe != nullptr;
 }
@@ -690,7 +690,7 @@ gfxUserFontEntry::Load()
 
 // This is called when a font download finishes.
 // Ownership of aFontData passes in here, and the font set must
-// ensure that it is eventually deleted via moz_free().
+// ensure that it is eventually deleted via free().
 bool
 gfxUserFontEntry::FontDataDownloadComplete(const uint8_t* aFontData,
                                            uint32_t aLength,
@@ -718,7 +718,7 @@ gfxUserFontEntry::FontDataDownloadComplete(const uint8_t* aFontData,
     }
 
     if (aFontData) {
-        moz_free((void*)aFontData);
+        free((void*)aFontData);
     }
 
     // error occurred, load next src
@@ -740,11 +740,6 @@ gfxUserFontSet::gfxUserFontSet()
     if (fp) {
         fp->AddUserFontSet(this);
     }
-
-    // This is a one-time global switch for OTS. However, as long as we use
-    // a preference to control the availability of WOFF2 support, we will
-    // not actually pass any WOFF2 data to OTS unless the pref is on.
-    ots::EnableWOFF2();
 }
 
 gfxUserFontSet::~gfxUserFontSet()

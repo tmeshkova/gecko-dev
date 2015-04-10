@@ -257,10 +257,10 @@ public:
  * to an nsIChannel, which holds a reference to this listener.
  * We break the reference cycle in OnStartRequest by clearing mElement.
  */
-class HTMLMediaElement::MediaLoadListener MOZ_FINAL : public nsIStreamListener,
-                                                      public nsIChannelEventSink,
-                                                      public nsIInterfaceRequestor,
-                                                      public nsIObserver
+class HTMLMediaElement::MediaLoadListener final : public nsIStreamListener,
+                                                  public nsIChannelEventSink,
+                                                  public nsIInterfaceRequestor,
+                                                  public nsIObserver
 {
   ~MediaLoadListener() {}
 
@@ -640,6 +640,14 @@ void HTMLMediaElement::ShutdownDecoder()
 
 void HTMLMediaElement::AbortExistingLoads()
 {
+#ifdef MOZ_EME
+  // If there is no existing decoder then we don't have anything to
+  // report. This prevents reporting the initial load from an
+  // empty video element as a failed EME load.
+  if (mDecoder) {
+    ReportEMETelemetry();
+  }
+#endif
   // Abort any already-running instance of the resource selection algorithm.
   mLoadWaitStatus = NOT_WAITING;
 
@@ -686,6 +694,10 @@ void HTMLMediaElement::AbortExistingLoads()
   mSuspendedForPreloadNone = false;
   mDownloadSuspendedByCache = false;
   mMediaInfo = MediaInfo();
+  mIsEncrypted = false;
+#ifdef MOZ_EME
+  mPendingEncryptedInitData.mInitDatas.Clear();
+#endif // MOZ_EME
   mSourcePointer = nullptr;
   mLastNextFrameStatus = NEXT_FRAME_UNINITIALIZED;
 
@@ -1219,6 +1231,9 @@ nsresult HTMLMediaElement::LoadResource()
     mMediaSource = source.forget();
     nsRefPtr<MediaResource> resource =
       MediaSourceDecoder::CreateResource(mMediaSource->GetPrincipal());
+    if (IsAutoplayEnabled()) {
+      mJoinLatency.Start();
+    }
     return FinishDecoderSetup(decoder, resource, nullptr, nullptr);
   }
 
@@ -1850,7 +1865,8 @@ NS_IMETHODIMP HTMLMediaElement::SetMuted(bool aMuted)
 }
 
 already_AddRefed<DOMMediaStream>
-HTMLMediaElement::CaptureStreamInternal(bool aFinishWhenEnded)
+HTMLMediaElement::CaptureStreamInternal(bool aFinishWhenEnded,
+                                        MediaStreamGraph* aGraph)
 {
   nsIDOMWindow* window = OwnerDoc()->GetInnerWindow();
   if (!window) {
@@ -1862,7 +1878,7 @@ HTMLMediaElement::CaptureStreamInternal(bool aFinishWhenEnded)
   }
 #endif
   OutputMediaStream* out = mOutputStreams.AppendElement();
-  out->mStream = DOMMediaStream::CreateTrackUnionStream(window);
+  out->mStream = DOMMediaStream::CreateTrackUnionStream(window, aGraph);
   nsRefPtr<nsIPrincipal> principal = GetCurrentPrincipal();
   out->mStream->CombineWithPrincipal(principal);
   out->mStream->SetCORSMode(mCORSMode);
@@ -1874,8 +1890,8 @@ HTMLMediaElement::CaptureStreamInternal(bool aFinishWhenEnded)
   // back into the output stream.
   out->mStream->GetStream()->ChangeExplicitBlockerCount(1);
   if (mDecoder) {
-    mDecoder->AddOutputStream(
-        out->mStream->GetStream()->AsProcessedStream(), aFinishWhenEnded);
+    mDecoder->AddOutputStream(out->mStream->GetStream()->AsProcessedStream(),
+                              aFinishWhenEnded);
     if (mReadyState >= HAVE_METADATA) {
       // Expose the tracks to JS directly.
       if (HasAudio()) {
@@ -1893,9 +1909,10 @@ HTMLMediaElement::CaptureStreamInternal(bool aFinishWhenEnded)
 }
 
 already_AddRefed<DOMMediaStream>
-HTMLMediaElement::MozCaptureStream(ErrorResult& aRv)
+HTMLMediaElement::MozCaptureStream(ErrorResult& aRv,
+                                   MediaStreamGraph* aGraph)
 {
-  nsRefPtr<DOMMediaStream> stream = CaptureStreamInternal(false);
+  nsRefPtr<DOMMediaStream> stream = CaptureStreamInternal(false, aGraph);
   if (!stream) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
@@ -1905,9 +1922,10 @@ HTMLMediaElement::MozCaptureStream(ErrorResult& aRv)
 }
 
 already_AddRefed<DOMMediaStream>
-HTMLMediaElement::MozCaptureStreamUntilEnded(ErrorResult& aRv)
+HTMLMediaElement::MozCaptureStreamUntilEnded(ErrorResult& aRv,
+                                             MediaStreamGraph* aGraph)
 {
-  nsRefPtr<DOMMediaStream> stream = CaptureStreamInternal(true);
+  nsRefPtr<DOMMediaStream> stream = CaptureStreamInternal(true, aGraph);
   if (!stream) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
@@ -2538,6 +2556,20 @@ nsresult HTMLMediaElement::BindToTree(nsIDocument* aDocument, nsIContent* aParen
   return rv;
 }
 
+#ifdef MOZ_EME
+void
+HTMLMediaElement::ReportEMETelemetry()
+{
+  // Report telemetry for EME videos when a page is unloaded.
+  NS_ASSERTION(NS_IsMainThread(), "Should be on main thread.");
+  if (mIsEncrypted && Preferences::GetBool("media.eme.enabled")) {
+    Telemetry::Accumulate(Telemetry::VIDEO_EME_PLAY_SUCCESS, mLoadedDataFired);
+    LOG(PR_LOG_DEBUG, ("%p VIDEO_EME_PLAY_SUCCESS = %s",
+                       this, mLoadedDataFired ? "true" : "false"));
+  }
+}
+#endif
+
 void
 HTMLMediaElement::ReportMSETelemetry()
 {
@@ -2585,6 +2617,14 @@ HTMLMediaElement::ReportMSETelemetry()
 
   Telemetry::Accumulate(Telemetry::VIDEO_MSE_UNLOAD_STATE, state);
   LOG(PR_LOG_DEBUG, ("%p VIDEO_MSE_UNLOAD_STATE = %d", this, state));
+
+  Telemetry::Accumulate(Telemetry::VIDEO_MSE_PLAY_TIME_MS, SECONDS_TO_MS(mPlayTime.Total()));
+  LOG(PR_LOG_DEBUG, ("%p VIDEO_MSE_PLAY_TIME_MS = %f", this, mPlayTime.Total()));
+
+  double latency = mJoinLatency.Count() ? mJoinLatency.Total() / mJoinLatency.Count() : 0.0;
+  Telemetry::Accumulate(Telemetry::VIDEO_MSE_JOIN_LATENCY_MS, SECONDS_TO_MS(latency));
+  LOG(PR_LOG_DEBUG, ("%p VIDEO_MSE_JOIN_LATENCY = %f (%d ms) count=%d\n",
+                     this, latency, SECONDS_TO_MS(latency), mJoinLatency.Count()));
 }
 
 void HTMLMediaElement::UnbindFromTree(bool aDeep,
@@ -2757,7 +2797,7 @@ nsresult HTMLMediaElement::FinishDecoderSetup(MediaDecoder* aDecoder,
   for (uint32_t i = 0; i < mOutputStreams.Length(); ++i) {
     OutputMediaStream* ms = &mOutputStreams[i];
     aDecoder->AddOutputStream(ms->mStream->GetStream()->AsProcessedStream(),
-        ms->mFinishWhenEnded);
+                              ms->mFinishWhenEnded);
   }
 
   // Update decoder principal before we start decoding, since it
@@ -2866,7 +2906,7 @@ public:
 
   // These notifications run on the media graph thread so we need to
   // dispatch events to the main thread.
-  virtual void NotifyBlockingChanged(MediaStreamGraph* aGraph, Blocking aBlocked) MOZ_OVERRIDE
+  virtual void NotifyBlockingChanged(MediaStreamGraph* aGraph, Blocking aBlocked) override
   {
     nsCOMPtr<nsIRunnable> event;
     if (aBlocked == BLOCKED) {
@@ -2877,7 +2917,7 @@ public:
     aGraph->DispatchToMainThreadAfterStreamStateUpdate(event.forget());
   }
   virtual void NotifyEvent(MediaStreamGraph* aGraph,
-                           MediaStreamListener::MediaStreamGraphEvent event) MOZ_OVERRIDE
+                           MediaStreamListener::MediaStreamGraphEvent event) override
   {
     if (event == EVENT_FINISHED) {
       nsCOMPtr<nsIRunnable> event =
@@ -2885,7 +2925,7 @@ public:
       aGraph->DispatchToMainThreadAfterStreamStateUpdate(event.forget());
     }
   }
-  virtual void NotifyHasCurrentData(MediaStreamGraph* aGraph) MOZ_OVERRIDE
+  virtual void NotifyHasCurrentData(MediaStreamGraph* aGraph) override
   {
     MutexAutoLock lock(mMutex);
     nsCOMPtr<nsIRunnable> event =
@@ -2893,7 +2933,7 @@ public:
     aGraph->DispatchToMainThreadAfterStreamStateUpdate(event.forget());
   }
   virtual void NotifyOutput(MediaStreamGraph* aGraph,
-                            GraphTime aCurrentTime) MOZ_OVERRIDE
+                            GraphTime aCurrentTime) override
   {
     MutexAutoLock lock(mMutex);
     if (mPendingNotifyOutput)
@@ -3052,7 +3092,11 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
                                       nsAutoPtr<const MetadataTags> aTags)
 {
   mMediaInfo = *aInfo;
-  mIsEncrypted = aInfo->mIsEncrypted;
+  mIsEncrypted = aInfo->IsEncrypted()
+#ifdef MOZ_EME
+                 || mPendingEncryptedInitData.IsEncrypted()
+#endif // MOZ_EME
+                 ;
   mTags = aTags.forget();
   mLoadedDataFired = false;
   ChangeReadyState(nsIDOMHTMLMediaElement::HAVE_METADATA);
@@ -3071,6 +3115,20 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
   if (mDecoder && mDecoder->IsTransportSeekable() && mDecoder->IsMediaSeekable()) {
     ProcessMediaFragmentURI();
     mDecoder->SetFragmentEndTime(mFragmentEnd);
+  }
+  if (mIsEncrypted) {
+    if (!mMediaSource && Preferences::GetBool("media.eme.mse-only", true)) {
+      DecodeError();
+      return;
+    }
+
+#ifdef MOZ_EME
+    // Dispatch a distinct 'encrypted' event for each initData we have.
+    for (const auto& initData : mPendingEncryptedInitData.mInitDatas) {
+      DispatchEncrypted(initData.mInitData, initData.mType);
+    }
+    mPendingEncryptedInitData.mInitDatas.Clear();
+#endif // MOZ_EME
   }
 
   // Expose the tracks to JS directly.
@@ -3212,13 +3270,13 @@ void HTMLMediaElement::SeekStarted()
   if(mPlayingThroughTheAudioChannel) {
     mPlayingThroughTheAudioChannelBeforeSeek = true;
   }
-  FireTimeUpdate(false);
 }
 
 void HTMLMediaElement::SeekCompleted()
 {
   mPlayingBeforeSeek = false;
   SetPlayedOrSeeked(true);
+  FireTimeUpdate(false);
   DispatchAsyncEvent(NS_LITERAL_STRING("seeked"));
   // We changed whether we're seeking so we need to AddRemoveSelfReference
   AddRemoveSelfReference();
@@ -3664,6 +3722,22 @@ nsresult HTMLMediaElement::DispatchAsyncEvent(const nsAString& aName)
 
   nsCOMPtr<nsIRunnable> event = new nsAsyncEventRunner(aName, this);
   NS_DispatchToMainThread(event);
+
+  // Only collect rebuffer and stall rate stats for MSE video.
+  if (!mMediaSource) {
+    return NS_OK;
+  }
+
+  if ((aName.EqualsLiteral("play") || aName.EqualsLiteral("playing"))) {
+    mPlayTime.Start();
+    mJoinLatency.Pause();
+  } else if (aName.EqualsLiteral("waiting")) {
+    mPlayTime.Pause();
+    Telemetry::Accumulate(Telemetry::VIDEO_MSE_BUFFERING_COUNT, 1);
+  } else if (aName.EqualsLiteral("pause")) {
+    mPlayTime.Pause();
+  }
+
   return NS_OK;
 }
 
@@ -3744,6 +3818,9 @@ void HTMLMediaElement::SuspendOrResumeElement(bool aPauseElement, bool aSuspendE
     if (aPauseElement) {
       if (mMediaSource) {
         ReportMSETelemetry();
+#ifdef MOZ_EME
+        ReportEMETelemetry();
+#endif
       }
 
 #ifdef MOZ_EME
@@ -4414,6 +4491,13 @@ void
 HTMLMediaElement::DispatchEncrypted(const nsTArray<uint8_t>& aInitData,
                                     const nsAString& aInitDataType)
 {
+  if (mReadyState == nsIDOMHTMLMediaElement::HAVE_NOTHING) {
+    // Ready state not HAVE_METADATA (yet), don't dispatch encrypted now.
+    // Queueing for later dispatch in MetadataLoaded.
+    mPendingEncryptedInitData.AddInitData(aInitDataType, aInitData);
+    return;
+  }
+
   nsRefPtr<MediaEncryptedEvent> event;
   if (IsCORSSameOrigin()) {
     event = MediaEncryptedEvent::Constructor(this, aInitDataType, aInitData);

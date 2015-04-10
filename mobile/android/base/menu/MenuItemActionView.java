@@ -40,16 +40,6 @@ public class MenuItemActionView extends LinearLayout
     public MenuItemActionView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs);
 
-        // Set these explicitly, since setting a style isn't supported for LinearLayouts until V11.
-        if (Versions.feature11Plus) {
-            setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
-            setDividerDrawable(getResources().getDrawable(R.drawable.divider_vertical));
-        }
-
-        if (Versions.feature14Plus) {
-            setDividerPadding(0);
-        }
-
         LayoutInflater.from(context).inflate(R.layout.menu_item_action_view, this);
         mMenuItem = (MenuItemDefault) findViewById(R.id.menu_item);
         mMenuButton = (MenuItemActionBar) findViewById(R.id.menu_item_button);
@@ -58,10 +48,15 @@ public class MenuItemActionView extends LinearLayout
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-        View parent = (View) getParent();
-        final int padding = getPaddingLeft() + getPaddingRight();
+        final int width = right - left;
+
+        final View parent = (View) getParent();
         final int parentPadding = parent.getPaddingLeft() + parent.getPaddingRight();
-        if ((right - left - padding) < (parent.getMeasuredWidth() - parentPadding) || mActionButtons.size() != 0) {
+        final int horizontalSpaceAvailableInParent = parent.getMeasuredWidth() - parentPadding;
+
+        // Check if there is another View sharing horizontal
+        // space with this View in the parent.
+        if (width < horizontalSpaceAvailableInParent || mActionButtons.size() != 0) {
             // Use the icon.
             mMenuItem.setVisibility(View.GONE);
             mMenuButton.setVisibility(View.VISIBLE);
@@ -158,6 +153,10 @@ public class MenuItemActionView extends LinearLayout
             mActionButtons.add(button);
             addView(button, count);
         }
+    }
+
+    protected int getActionButtonCount() {
+        return mActionButtons.size();
     }
 
     @Override

@@ -330,7 +330,7 @@ AudioNode::Disconnect(uint32_t aOutput, ErrorResult& aRv)
     explicit RunnableRelease(already_AddRefed<AudioNode> aNode)
       : mNode(aNode) {}
 
-    NS_IMETHODIMP Run() MOZ_OVERRIDE
+    NS_IMETHODIMP Run() override
     {
       mNode = nullptr;
       return NS_OK;
@@ -351,7 +351,7 @@ AudioNode::Disconnect(uint32_t aOutput, ErrorResult& aRv)
         // Remove one instance of 'dest' from mOutputNodes. There could be
         // others, and it's not correct to remove them all since some of them
         // could be for different output ports.
-        nsRefPtr<nsIRunnable> runnable =
+        nsCOMPtr<nsIRunnable> runnable =
           new RunnableRelease(mOutputNodes[i].forget());
         mOutputNodes.RemoveElementAt(i);
         mStream->RunAfterPendingUpdates(runnable.forget());

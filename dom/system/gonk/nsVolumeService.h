@@ -31,8 +31,8 @@ class Volume;
 * classes.
 */
 
-class nsVolumeService MOZ_FINAL : public nsIVolumeService,
-                                  public nsIDOMMozWakeLockListener
+class nsVolumeService final : public nsIVolumeService,
+                              public nsIDOMMozWakeLockListener
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS

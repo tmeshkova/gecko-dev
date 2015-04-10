@@ -21,9 +21,9 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/Attributes.h"
 
-class nsDNSService MOZ_FINAL : public nsPIDNSService
-                             , public nsIObserver
-                             , public nsIMemoryReporter
+class nsDNSService final : public nsPIDNSService
+                         , public nsIObserver
+                         , public nsIMemoryReporter
 {
 public:
     NS_DECL_THREADSAFE_ISUPPORTS

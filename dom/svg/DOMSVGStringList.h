@@ -43,8 +43,8 @@ class SVGStringList;
  * them so it can return the same objects each time. It simply returns a new
  * string each time any given item is requested.
  */
-class DOMSVGStringList MOZ_FINAL : public nsISupports
-                                 , public nsWrapperCache
+class DOMSVGStringList final : public nsISupports
+                             , public nsWrapperCache
 {
   friend class AutoChangeStringListNotifier;
 
@@ -56,7 +56,7 @@ public:
   {
     return mElement;
   }
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   uint32_t NumberOfItems() const;
   uint32_t Length() const;

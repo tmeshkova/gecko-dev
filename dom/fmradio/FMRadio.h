@@ -20,12 +20,12 @@ BEGIN_FMRADIO_NAMESPACE
 
 class DOMRequest;
 
-class FMRadio MOZ_FINAL : public DOMEventTargetHelper
-                        , public hal::SwitchObserver
-                        , public FMRadioEventObserver
-                        , public nsSupportsWeakReference
-                        , public nsIAudioChannelAgentCallback
-                        , public nsIDOMEventListener
+class FMRadio final : public DOMEventTargetHelper
+                    , public hal::SwitchObserver
+                    , public FMRadioEventObserver
+                    , public nsSupportsWeakReference
+                    , public nsIAudioChannelAgentCallback
+                    , public nsIDOMEventListener
 
 {
   friend class FMRadioRequest;
@@ -42,16 +42,16 @@ public:
   void Shutdown();
 
   /* hal::SwitchObserver */
-  virtual void Notify(const hal::SwitchEvent& aEvent) MOZ_OVERRIDE;
+  virtual void Notify(const hal::SwitchEvent& aEvent) override;
   /* FMRadioEventObserver */
-  virtual void Notify(const FMRadioEventType& aType) MOZ_OVERRIDE;
+  virtual void Notify(const FMRadioEventType& aType) override;
 
   nsPIDOMWindow* GetParentObject() const
   {
     return GetOwner();
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   static bool Enabled();
 

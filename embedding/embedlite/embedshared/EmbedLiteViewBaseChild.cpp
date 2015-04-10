@@ -552,14 +552,13 @@ bool
 EmbedLiteViewBaseChild::RecvLoadFrameScript(const nsString& uri)
 {
   if (mHelper) {
-    return mHelper->DoLoadFrameScript(uri, true);
+    return mHelper->DoLoadMessageManagerScript(uri, true);
   }
   return false;
 }
 
 bool
-EmbedLiteViewBaseChild::RecvAsyncMessage(const nsString& aMessage,
-                                           const nsString& aData)
+EmbedLiteViewBaseChild::RecvAsyncMessage(const nsString& aMessage, const nsString& aData)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
   EmbedLiteAppService::AppService()->HandleAsyncMessage(NS_ConvertUTF16toUTF8(aMessage).get(), aData);
@@ -569,11 +568,10 @@ EmbedLiteViewBaseChild::RecvAsyncMessage(const nsString& aMessage,
 
 
 void
-EmbedLiteViewBaseChild::RecvAsyncMessage(const nsAString& aMessage,
-                                           const nsAString& aData)
+EmbedLiteViewBaseChild::RecvAsyncMessage(const nsString& aMessage, const mozilla::dom::ClonedMessageData& aData, InfallibleTArray<mozilla::jsipc::CpowEntry>&& aCpows, const IPC::Principal& aPrincipal)
 {
-  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
-  mHelper->DispatchMessageManagerMessage(aMessage, aData);
+//  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
+//  mHelper->DispatchMessageManagerMessage(aMessage, aData);
 }
 
 bool
@@ -960,7 +958,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid
       APZCCallbackHelper::DispatchWidgetEvent(localEvent);
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
-    if (innerWindow && innerWindow->HasTouchEventListeners()) {
+    if (innerWindow) { // TODO: Sync with upstream changes
       SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId, TouchManager::gPreventMouseEvents);
     }
     mPendingTouchPreventedBlockId = aInputBlockId;

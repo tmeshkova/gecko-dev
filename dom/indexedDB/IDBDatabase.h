@@ -32,7 +32,8 @@ namespace dom {
 class File;
 class DOMStringList;
 struct IDBObjectStoreParameters;
-template <typename> class Sequence;
+template <class> class Optional;
+class StringOrStringSequence;
 
 namespace indexedDB {
 
@@ -46,7 +47,7 @@ class IDBRequest;
 class IDBTransaction;
 class PBackgroundIDBDatabaseFileChild;
 
-class IDBDatabase MOZ_FINAL
+class IDBDatabase final
   : public IDBWrapperCache
 {
   typedef mozilla::dom::StorageType StorageType;
@@ -213,15 +214,17 @@ public:
   void
   DeleteObjectStore(const nsAString& name, ErrorResult& aRv);
 
+  // This will be called from the DOM.
   already_AddRefed<IDBTransaction>
-  Transaction(const nsAString& aStoreName,
+  Transaction(const StringOrStringSequence& aStoreNames,
               IDBTransactionMode aMode,
               ErrorResult& aRv);
 
-  already_AddRefed<IDBTransaction>
-  Transaction(const Sequence<nsString>& aStoreNames,
+  // This can be called from C++ to avoid JS exception.
+  nsresult
+  Transaction(const StringOrStringSequence& aStoreNames,
               IDBTransactionMode aMode,
-              ErrorResult& aRv);
+              IDBTransaction** aTransaction);
 
   StorageType
   Storage() const;
@@ -262,14 +265,14 @@ public:
 
   // nsIDOMEventTarget
   virtual void
-  LastRelease() MOZ_OVERRIDE;
+  LastRelease() override;
 
   virtual nsresult
-  PostHandleEvent(EventChainPostVisitor& aVisitor) MOZ_OVERRIDE;
+  PostHandleEvent(EventChainPostVisitor& aVisitor) override;
 
   // nsWrapperCache
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
 private:
   IDBDatabase(IDBWrapperCache* aOwnerCache,

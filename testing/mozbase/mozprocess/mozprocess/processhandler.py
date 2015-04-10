@@ -716,19 +716,15 @@ falling back to not using job objects for managing child processes"""
         :param sig: Signal used to kill the process, defaults to SIGKILL
                     (has no effect on Windows)
         """
-        try:
-            self.proc.kill(sig=sig)
+        if not hasattr(self, 'proc'):
+            raise RuntimeError("Calling kill() on a non started process is not"
+                               " allowed.")
+        self.proc.kill(sig=sig)
 
-            # When we kill the the managed process we also have to wait for the
-            # reader thread to be finished. Otherwise consumers would have to assume
-            # that it still has not completely shutdown.
-            return self.wait()
-        except AttributeError:
-            # Try to print a relevant error message.
-            if not hasattr(self, 'proc'):
-                print >> sys.stderr, "Unable to kill Process because call to ProcessHandler constructor failed."
-            else:
-                raise
+        # When we kill the the managed process we also have to wait for the
+        # reader thread to be finished. Otherwise consumers would have to assume
+        # that it still has not completely shutdown.
+        return self.wait()
 
     def poll(self):
         """Check if child process has terminated
@@ -742,7 +738,10 @@ falling back to not using job objects for managing child processes"""
         # Ensure that we first check for the reader status. Otherwise
         # we might mark the process as finished while output is still getting
         # processed.
-        if self.reader.is_alive():
+        if not hasattr(self, 'proc'):
+            raise RuntimeError("Calling poll() on a non started process is not"
+                               " allowed.")
+        elif self.reader.is_alive():
             return None
         elif hasattr(self.proc, "returncode"):
             return self.proc.returncode
@@ -958,10 +957,13 @@ class ProcessHandler(ProcessHandlerMixin):
     """
     Convenience class for handling processes with default output handlers.
 
-    If no processOutputLine keyword argument is specified, write all
-    output to stdout.  Otherwise, the function or the list of functions
-    specified by this argument will be called for each line of output;
-    the output will not be written to stdout automatically.
+    By default, all output is sent to stdout. This can be disabled by setting
+    the *stream* argument to None.
+
+    If processOutputLine keyword argument is specified the function or the
+    list of functions specified by this argument will be called for each line
+    of output; the output will not be written to stdout automatically then
+    if stream is True (the default).
 
     If storeOutput==True, the output produced by the process will be saved
     as self.output.
@@ -970,7 +972,8 @@ class ProcessHandler(ProcessHandlerMixin):
     appended to the given file.
     """
 
-    def __init__(self, cmd, logfile=None, stream=None, storeOutput=True, **kwargs):
+    def __init__(self, cmd, logfile=None, stream=True, storeOutput=True,
+                 **kwargs):
         kwargs.setdefault('processOutputLine', [])
         if callable(kwargs['processOutputLine']):
             kwargs['processOutputLine'] = [kwargs['processOutputLine']]
@@ -979,13 +982,13 @@ class ProcessHandler(ProcessHandlerMixin):
             logoutput = LogOutput(logfile)
             kwargs['processOutputLine'].append(logoutput)
 
-        if stream:
+        if stream is True:
+            # Print to standard output only if no outputline provided
+            if not kwargs['processOutputLine']:
+                kwargs['processOutputLine'].append(StreamOutput(sys.stdout))
+        elif stream:
             streamoutput = StreamOutput(stream)
             kwargs['processOutputLine'].append(streamoutput)
-
-        # Print to standard output only if no outputline provided
-        if not kwargs['processOutputLine']:
-            kwargs['processOutputLine'].append(StreamOutput(sys.stdout))
 
         self.output = None
         if storeOutput:

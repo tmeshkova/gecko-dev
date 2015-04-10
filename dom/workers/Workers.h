@@ -212,14 +212,14 @@ struct WorkerLoadInfo
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsILoadGroup> mLoadGroup;
 
-  class InterfaceRequestor MOZ_FINAL : public nsIInterfaceRequestor
+  class InterfaceRequestor final : public nsIInterfaceRequestor
   {
     NS_DECL_ISUPPORTS
 
   public:
     InterfaceRequestor(nsIPrincipal* aPrincipal, nsILoadGroup* aLoadGroup);
     void MaybeAddTabChild(nsILoadGroup* aLoadGroup);
-    NS_IMETHOD GetInterface(const nsIID& aIID, void** aSink) MOZ_OVERRIDE;
+    NS_IMETHOD GetInterface(const nsIID& aIID, void** aSink) override;
 
   private:
     ~InterfaceRequestor() { }
@@ -227,6 +227,7 @@ struct WorkerLoadInfo
     already_AddRefed<nsITabChild> GetAnyLiveTabChild();
 
     nsCOMPtr<nsILoadContext> mLoadContext;
+    nsCOMPtr<nsIInterfaceRequestor> mOuterRequestor;
 
     // Array of weak references to nsITabChild.  We do not want to keep TabChild
     // actors alive for long after their ActorDestroy() methods are called.
@@ -262,10 +263,10 @@ void
 CancelWorkersForWindow(nsPIDOMWindow* aWindow);
 
 void
-SuspendWorkersForWindow(nsPIDOMWindow* aWindow);
+FreezeWorkersForWindow(nsPIDOMWindow* aWindow);
 
 void
-ResumeWorkersForWindow(nsPIDOMWindow* aWindow);
+ThawWorkersForWindow(nsPIDOMWindow* aWindow);
 
 class WorkerTask
 {
@@ -337,6 +338,9 @@ IsWorkerGlobal(JSObject* global);
 
 bool
 IsDebuggerGlobal(JSObject* global);
+
+bool
+IsDebuggerSandbox(JSObject* object);
 
 // Throws the JSMSG_GETTER_ONLY exception.  This shouldn't be used going
 // forward -- getter-only properties should just use JS_PSG for the setter

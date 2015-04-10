@@ -19,8 +19,8 @@
 
 //-----------------------------------------------------------------------------
 
-class FetchObserver MOZ_FINAL : public nsIRequestObserver
-                              , public nsIProgressEventSink
+class FetchObserver final : public nsIRequestObserver
+                          , public nsIProgressEventSink
 {
   ~FetchObserver() {}
 public:

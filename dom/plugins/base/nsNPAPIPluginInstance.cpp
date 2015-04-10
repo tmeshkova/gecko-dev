@@ -98,7 +98,7 @@ static bool EnsureGLContext()
   return sPluginContext != nullptr;
 }
 
-class SharedPluginTexture MOZ_FINAL {
+class SharedPluginTexture final {
 public:
   NS_INLINE_DECL_REFCOUNTING(SharedPluginTexture)
 
@@ -1293,7 +1293,7 @@ nsNPAPIPluginInstance::GetFormValue(nsAString& aValue)
 
   // NPPVformValue allocates with NPN_MemAlloc(), which uses
   // nsMemory.
-  nsMemory::Free(value);
+  free(value);
 
   return NS_OK;
 }

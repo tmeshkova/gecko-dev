@@ -173,7 +173,7 @@ public:
     ~ClassInfoData()
     {
         if (mMustFreeName)
-            nsMemory::Free(mName);
+            free(mName);
     }
 
     uint32_t GetFlags()
@@ -749,12 +749,31 @@ nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
     NS_ENSURE_SUCCESS(rv, rv);
     if (hasFlags) {
         if (aFlags & nsIScriptSecurityManager::ALLOW_CHROME) {
+
+            // For now, don't change behavior for resource:// or moz-icon:// and
+            // just allow them.
             if (!targetScheme.EqualsLiteral("chrome")) {
-                // for now don't change behavior for resource: or moz-icon:
                 return NS_OK;
             }
 
-            // allow load only if chrome package is whitelisted
+            // Allow a URI_IS_UI_RESOURCE source to link to a URI_IS_UI_RESOURCE
+            // target if ALLOW_CHROME is set.
+            //
+            // ALLOW_CHROME is a flag that we pass on all loads _except_ docshell
+            // loads (since docshell loads run the loaded content with its origin
+            // principal). So we're effectively allowing resource://, chrome://,
+            // and moz-icon:// source URIs to load resource://, chrome://, and
+            // moz-icon:// files, so long as they're not loading it as a document.
+            bool sourceIsUIResource;
+            rv = NS_URIChainHasFlags(sourceBaseURI,
+                                     nsIProtocolHandler::URI_IS_UI_RESOURCE,
+                                     &sourceIsUIResource);
+            NS_ENSURE_SUCCESS(rv, rv);
+            if (sourceIsUIResource) {
+                return NS_OK;
+            }
+
+            // Allow the load only if the chrome package is whitelisted.
             nsCOMPtr<nsIXULChromeRegistry> reg(do_GetService(
                                                  NS_CHROMEREGISTRY_CONTRACTID));
             if (reg) {
@@ -766,17 +785,14 @@ nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
             }
         }
 
-        // resource: and chrome: are equivalent, securitywise
-        // That's bogus!!  Fix this.  But watch out for
-        // the view-source stylesheet?
-        bool sourceIsChrome;
-        rv = NS_URIChainHasFlags(sourceBaseURI,
-                                 nsIProtocolHandler::URI_IS_UI_RESOURCE,
-                                 &sourceIsChrome);
-        NS_ENSURE_SUCCESS(rv, rv);
-        if (sourceIsChrome) {
+        // Special-case the hidden window: it's allowed to load
+        // URI_IS_UI_RESOURCE no matter what.  Bug 1145470 tracks removing this.
+        nsAutoCString sourceSpec;
+        if (NS_SUCCEEDED(sourceBaseURI->GetSpec(sourceSpec)) &&
+            sourceSpec.EqualsLiteral("resource://gre-resources/hiddenWindow.html")) {
             return NS_OK;
         }
+
         if (reportErrors) {
             ReportError(nullptr, errorTag, sourceURI, aTargetURI);
         }
@@ -977,7 +993,8 @@ nsScriptSecurityManager::CreateCodebasePrincipal(nsIURI* aURI, uint32_t aAppId,
         nsCOMPtr<nsIPrincipal> principal;
         uriPrinc->GetPrincipal(getter_AddRefs(principal));
         if (!principal) {
-            return CallCreateInstance(NS_NULLPRINCIPAL_CONTRACTID, result);
+            principal = nsNullPrincipal::Create();
+            NS_ENSURE_TRUE(principal, NS_ERROR_FAILURE);
         }
 
         principal.forget(result);
@@ -1072,15 +1089,16 @@ nsScriptSecurityManager::GetCodebasePrincipalInternal(nsIURI *aURI,
         NS_URIChainHasFlags(aURI,
                             nsIProtocolHandler::URI_INHERITS_SECURITY_CONTEXT,
                             &inheritsPrincipal);
-    if (NS_FAILED(rv) || inheritsPrincipal) {
-        return CallCreateInstance(NS_NULLPRINCIPAL_CONTRACTID, result);
-    }
-
     nsCOMPtr<nsIPrincipal> principal;
-    rv = CreateCodebasePrincipal(aURI, aAppId, aInMozBrowser,
-                                 getter_AddRefs(principal));
-    NS_ENSURE_SUCCESS(rv, rv);
-    NS_IF_ADDREF(*result = principal);
+    if (NS_FAILED(rv) || inheritsPrincipal) {
+        principal = nsNullPrincipal::Create();
+        NS_ENSURE_TRUE(principal, NS_ERROR_FAILURE);
+    } else {
+        rv = CreateCodebasePrincipal(aURI, aAppId, aInMozBrowser,
+                                     getter_AddRefs(principal));
+        NS_ENSURE_SUCCESS(rv, rv);
+    }
+    principal.forget(result);
 
     return NS_OK;
 }
@@ -1294,9 +1312,14 @@ static StaticRefPtr<nsScriptSecurityManager> gScriptSecMan;
 nsScriptSecurityManager::~nsScriptSecurityManager(void)
 {
     Preferences::RemoveObservers(this, kObservedPrefs);
-    if (mDomainPolicy)
+    if (mDomainPolicy) {
         mDomainPolicy->Deactivate();
-    MOZ_ASSERT(!mDomainPolicy);
+    }
+    // ContentChild might hold a reference to the domain policy,
+    // and it might release it only after the security manager is
+    // gone. But we can still assert this for the main process.
+    MOZ_ASSERT_IF(XRE_GetProcessType() == GeckoProcessType_Default,
+                  !mDomainPolicy);
 }
 
 void
@@ -1512,6 +1535,16 @@ nsScriptSecurityManager::GetDomainPolicyActive(bool *aRv)
 NS_IMETHODIMP
 nsScriptSecurityManager::ActivateDomainPolicy(nsIDomainPolicy** aRv)
 {
+    if (XRE_GetProcessType() != GeckoProcessType_Default) {
+        return NS_ERROR_SERVICE_NOT_AVAILABLE;
+    }
+
+    return ActivateDomainPolicyInternal(aRv);
+}
+
+NS_IMETHODIMP
+nsScriptSecurityManager::ActivateDomainPolicyInternal(nsIDomainPolicy** aRv)
+{
     // We only allow one domain policy at a time. The holder of the previous
     // policy must explicitly deactivate it first.
     if (mDomainPolicy) {
@@ -1530,6 +1563,17 @@ void
 nsScriptSecurityManager::DeactivateDomainPolicy()
 {
     mDomainPolicy = nullptr;
+}
+
+void
+nsScriptSecurityManager::CloneDomainPolicy(DomainPolicyClone* aClone)
+{
+    MOZ_ASSERT(aClone);
+    if (mDomainPolicy) {
+        mDomainPolicy->CloneDomainPolicy(aClone);
+    } else {
+        aClone->active() = false;
+    }
 }
 
 NS_IMETHODIMP

@@ -42,6 +42,7 @@
 #include "SVGTextPathElement.h"
 #include "nsLayoutUtils.h"
 #include "nsFrameSelection.h"
+#include "nsStyleStructInlines.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -2523,7 +2524,8 @@ CharIterator::IsOriginalCharTrimmed() const
   return !((index >= mTrimmedOffset &&
             index < mTrimmedOffset + mTrimmedLength) ||
            (index >= mTrimmedOffset + mTrimmedLength &&
-            mFrameForTrimCheck->StyleText()->NewlineIsSignificant() &&
+            mFrameForTrimCheck->StyleText()->
+              NewlineIsSignificant(mFrameForTrimCheck) &&
             mFrameForTrimCheck->GetContent()->GetText()->CharAt(index) == '\n'));
 }
 
@@ -2717,12 +2719,12 @@ public:
 
   void NotifySelectionBackgroundNeedsFill(const Rect& aBackgroundRect,
                                           nscolor aColor,
-                                          DrawTarget& aDrawTarget) MOZ_OVERRIDE;
-  void PaintDecorationLine(Rect aPath, nscolor aColor) MOZ_OVERRIDE;
-  void PaintSelectionDecorationLine(Rect aPath, nscolor aColor) MOZ_OVERRIDE;
-  void NotifyBeforeText(nscolor aColor) MOZ_OVERRIDE;
-  void NotifyGlyphPathEmitted() MOZ_OVERRIDE;
-  void NotifyAfterText() MOZ_OVERRIDE;
+                                          DrawTarget& aDrawTarget) override;
+  void PaintDecorationLine(Rect aPath, nscolor aColor) override;
+  void PaintSelectionDecorationLine(Rect aPath, nscolor aColor) override;
+  void NotifyBeforeText(nscolor aColor) override;
+  void NotifyGlyphPathEmitted() override;
+  void NotifyAfterText() override;
 
 private:
   void SetupContext();
@@ -3104,15 +3106,15 @@ public:
 
   NS_DISPLAY_DECL_NAME("nsDisplaySVGText", TYPE_SVG_TEXT)
 
-  virtual void DisableComponentAlpha() MOZ_OVERRIDE {
+  virtual void DisableComponentAlpha() override {
     mDisableSubpixelAA = true;
   }
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                        HitTestState* aState,
-                       nsTArray<nsIFrame*> *aOutFrames) MOZ_OVERRIDE;
+                       nsTArray<nsIFrame*> *aOutFrames) override;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
-  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE {
+                     nsRenderingContext* aCtx) override;
+  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) override {
     bool snap;
     return GetBounds(aBuilder, &snap);
   }
@@ -4424,7 +4426,7 @@ SVGTextFrame::ResolvePositions(nsIContent* aContent,
 
     // Get x, y, dx, dy.
     SVGUserUnitList x, y, dx, dy;
-    element->GetAnimatedLengthListValues(&x, &y, &dx, &dy);
+    element->GetAnimatedLengthListValues(&x, &y, &dx, &dy, nullptr);
 
     // Get rotate.
     const SVGNumberList* rotate = nullptr;
@@ -5261,7 +5263,6 @@ SVGTextFrame::DoReflow()
                "style system should ensure that :-moz-svg-text "
                "does not get styled");
 
-  kid->WillReflow(presContext);
   kid->Reflow(presContext, desiredSize, reflowState, status);
   kid->DidReflow(presContext, &reflowState, nsDidReflowStatus::FINISHED);
   kid->SetSize(wm, desiredSize.Size(wm));

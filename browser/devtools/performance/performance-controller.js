@@ -17,6 +17,8 @@ devtools.lazyRequireGetter(this, "EventEmitter",
 devtools.lazyRequireGetter(this, "DevToolsUtils",
   "devtools/toolkit/DevToolsUtils");
 
+devtools.lazyRequireGetter(this, "TreeWidget",
+  "devtools/shared/widgets/TreeWidget", true);
 devtools.lazyRequireGetter(this, "TIMELINE_BLUEPRINT",
   "devtools/shared/timeline/global", true);
 devtools.lazyRequireGetter(this, "L10N",
@@ -39,6 +41,8 @@ devtools.lazyRequireGetter(this, "ThreadNode",
   "devtools/shared/profiler/tree-model", true);
 devtools.lazyRequireGetter(this, "FrameNode",
   "devtools/shared/profiler/tree-model", true);
+devtools.lazyRequireGetter(this, "JITOptimizations",
+  "devtools/shared/profiler/jit", true);
 devtools.lazyRequireGetter(this, "OptionsView",
   "devtools/shared/options-view", true);
 
@@ -59,6 +63,9 @@ const BRANCH_NAME = "devtools.performance.ui.";
 const EVENTS = {
   // Fired by the PerformanceController and OptionsView when a pref changes.
   PREF_CHANGED: "Performance:PrefChanged",
+
+  // Fired by the PerformanceController when the devtools theme changes.
+  THEME_CHANGED: "Performance:ThemeChanged",
 
   // Emitted by the PerformanceView when the state (display mode) changes,
   // for example when switching between "empty", "recording" or "recorded".
@@ -96,6 +103,11 @@ const EVENTS = {
 
   // When the PerformanceController has new recording data
   TIMELINE_DATA: "Performance:TimelineData",
+
+  // Emitted by the JITOptimizationsView when it renders new optimization
+  // data and clears the optimization data
+  OPTIMIZATIONS_RESET: "Performance:UI:OptimizationsReset",
+  OPTIMIZATIONS_RENDERED: "Performance:UI:OptimizationsRendered",
 
   // Emitted by the OverviewView when more data has been rendered
   OVERVIEW_RENDERED: "Performance:UI:OverviewRendered",
@@ -177,12 +189,15 @@ let PerformanceController = {
     this._onTimelineData = this._onTimelineData.bind(this);
     this._onRecordingSelectFromView = this._onRecordingSelectFromView.bind(this);
     this._onPrefChanged = this._onPrefChanged.bind(this);
+    this._onThemeChanged = this._onThemeChanged.bind(this);
 
     // All boolean prefs should be handled via the OptionsView in the
     // ToolbarView, so that they may be accessible via the "gear" menu.
     // Every other pref should be registered here.
     this._nonBooleanPrefs = new ViewHelpers.Prefs("devtools.performance", {
-      "hidden-markers": ["Json", "timeline.hidden-markers"]
+      "hidden-markers": ["Json", "timeline.hidden-markers"],
+      "memory-sample-probability": ["Float", "memory.sample-probability"],
+      "memory-max-log-length": ["Int", "memory.max-log-length"]
     });
 
     this._nonBooleanPrefs.registerObserver();
@@ -196,6 +211,7 @@ let PerformanceController = {
     RecordingsView.on(EVENTS.UI_EXPORT_RECORDING, this.exportRecording);
     RecordingsView.on(EVENTS.RECORDING_SELECTED, this._onRecordingSelectFromView);
 
+    gDevTools.on("pref-changed", this._onThemeChanged);
     gFront.on("markers", this._onTimelineData); // timeline markers
     gFront.on("frames", this._onTimelineData); // stack frames
     gFront.on("memory", this._onTimelineData); // memory measurements
@@ -218,11 +234,19 @@ let PerformanceController = {
     RecordingsView.off(EVENTS.UI_EXPORT_RECORDING, this.exportRecording);
     RecordingsView.off(EVENTS.RECORDING_SELECTED, this._onRecordingSelectFromView);
 
+    gDevTools.off("pref-changed", this._onThemeChanged);
     gFront.off("markers", this._onTimelineData);
     gFront.off("frames", this._onTimelineData);
     gFront.off("memory", this._onTimelineData);
     gFront.off("ticks", this._onTimelineData);
     gFront.off("allocations", this._onTimelineData);
+  },
+
+  /**
+   * Returns the current devtools theme.
+   */
+  getTheme: function () {
+    return Services.prefs.getCharPref("devtools.theme");
   },
 
   /**
@@ -259,14 +283,16 @@ let PerformanceController = {
    * when the front has started to record.
    */
   startRecording: Task.async(function *() {
-    let withMemory = this.getOption("enable-memory");
-    let withTicks = this.getOption("enable-framerate");
-    let withAllocations = this.getOption("enable-memory");
-
-    let recording = this._createRecording({ withMemory, withTicks, withAllocations });
+    let recording = this._createRecording({
+      withMemory: this.getOption("enable-memory"),
+      withTicks: this.getOption("enable-framerate"),
+      withAllocations: this.getOption("enable-memory"),
+      allocationsSampleProbability: this.getPref("memory-sample-probability"),
+      allocationsMaxLogLength: this.getPref("memory-max-log-length")
+    });
 
     this.emit(EVENTS.RECORDING_WILL_START, recording);
-    yield recording.startRecording({ withTicks, withMemory, withAllocations });
+    yield recording.startRecording();
     this.emit(EVENTS.RECORDING_STARTED, recording);
 
     this.setCurrentRecording(recording);
@@ -338,12 +364,10 @@ let PerformanceController = {
    *         The newly created recording model.
    */
   _createRecording: function (options={}) {
-    let { withMemory, withTicks, withAllocations } = options;
-    let front = gFront;
-
-    let recording = new RecordingModel(
-      { front, performance, withMemory, withTicks, withAllocations });
-
+    let recording = new RecordingModel(Heritage.extend(options, {
+      front: gFront,
+      performance: window.performance
+    }));
     this._recordings.push(recording);
     return recording;
   },
@@ -410,6 +434,19 @@ let PerformanceController = {
    */
   _onPrefChanged: function (_, prefName, prefValue) {
     this.emit(EVENTS.PREF_CHANGED, prefName, prefValue);
+  },
+
+  /*
+   * Called when the developer tools theme changes.
+   */
+  _onThemeChanged: function (_, data) {
+    // Right now, gDevTools only emits `pref-changed` for the theme,
+    // but this could change in the future.
+    if (data.pref !== "devtools.theme") {
+      return;
+    }
+
+    this.emit(EVENTS.THEME_CHANGED, data.newValue);
   },
 
   toString: () => "[object PerformanceController]"

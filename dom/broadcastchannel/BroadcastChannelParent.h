@@ -17,30 +17,33 @@ namespace dom {
 
 class BroadcastChannelService;
 
-class BroadcastChannelParent MOZ_FINAL : public PBroadcastChannelParent
+class BroadcastChannelParent final : public PBroadcastChannelParent
 {
   friend class mozilla::ipc::BackgroundParentImpl;
 
 public:
   void CheckAndDeliver(const ClonedMessageData& aData,
                        const nsString& aOrigin,
-                       const nsString& aChannel);
+                       const nsString& aChannel,
+                       bool aPrivateBrowsing);
 
 private:
   BroadcastChannelParent(const nsAString& aOrigin,
-                         const nsAString& aChannel);
+                         const nsAString& aChannel,
+                         bool aPrivateBrowsing);
   ~BroadcastChannelParent();
 
   virtual bool
-  RecvPostMessage(const ClonedMessageData& aData) MOZ_OVERRIDE;
+  RecvPostMessage(const ClonedMessageData& aData) override;
 
-  virtual bool RecvClose() MOZ_OVERRIDE;
+  virtual bool RecvClose() override;
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   nsRefPtr<BroadcastChannelService> mService;
   nsString mOrigin;
   nsString mChannel;
+  bool mPrivateBrowsing;
 };
 
 } // dom namespace

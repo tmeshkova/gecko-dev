@@ -86,13 +86,6 @@ public:
                    bool aHasVideo);
 #endif
 
-  // Called to shutdown the decoder module and cleanup state. The PDM
-  // is deleted immediately after Shutdown() is called. Shutdown() is
-  // called after Shutdown() has been called on all MediaDataDecoders
-  // created from this PlatformDecoderModule.
-  // This is called on the decode task queue.
-  virtual nsresult Shutdown() = 0;
-
   // Creates an H.264 decoder. The layers backend is passed in so that
   // decoders can determine whether hardware accelerated decoding can be used.
   // Asynchronous decoding of video should be done in runnables dispatched
@@ -129,11 +122,17 @@ public:
   // An audio decoder module must support AAC by default.
   // If more audio codec is to be supported, SupportsAudioMimeType will have
   // to be extended
-  virtual bool SupportsAudioMimeType(const char* aMimeType);
-  virtual bool SupportsVideoMimeType(const char* aMimeType);
+  virtual bool SupportsAudioMimeType(const nsACString& aMimeType);
+  virtual bool SupportsVideoMimeType(const nsACString& aMimeType);
 
   // Indicates if the video decoder requires AVCC format.
   virtual bool DecoderNeedsAVCC(const mp4_demuxer::VideoDecoderConfig& aConfig);
+
+  virtual void DisableHardwareAcceleration() {}
+
+  virtual bool SupportsSharedDecoders(const mp4_demuxer::VideoDecoderConfig& aConfig) const {
+    return true;
+  }
 
 protected:
   PlatformDecoderModule() {}
@@ -244,7 +243,6 @@ public:
   };
   virtual void AllocateMediaResources() {}
   virtual void ReleaseMediaResources() {}
-  virtual void ReleaseDecoder() {}
   virtual bool IsHardwareAccelerated() const { return false; }
 };
 

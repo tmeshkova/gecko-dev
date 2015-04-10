@@ -535,23 +535,28 @@ this.AppsUtils = {
     // Ensure that app name can't be updated
     aNewManifest.name = aApp.name;
 
+    let defaultShortName =
+      new ManifestHelper(aOldManifest, aApp.origin, aApp.manifestURL).short_name;
+    aNewManifest.short_name = defaultShortName;
+
     // Nor through localized names
-    if ('locales' in aNewManifest) {
-      let defaultName =
-        new ManifestHelper(aOldManifest, aApp.origin, aApp.manifestURL).name;
+    if ("locales" in aNewManifest) {
       for (let locale in aNewManifest.locales) {
-        let entry = aNewManifest.locales[locale];
-        if (!entry.name) {
-          continue;
+        let newLocaleEntry = aNewManifest.locales[locale];
+
+        let oldLocaleEntry = aOldManifest && "locales" in aOldManifest &&
+            locale in aOldManifest.locales && aOldManifest.locales[locale];
+
+        if (newLocaleEntry.name) {
+          // In case previous manifest didn't had a name,
+          // we use the default app name
+          newLocaleEntry.name =
+            (oldLocaleEntry && oldLocaleEntry.name) || aApp.name;
         }
-        // In case previous manifest didn't had a name,
-        // we use the default app name
-        let localizedName = defaultName;
-        if (aOldManifest && 'locales' in aOldManifest &&
-            locale in aOldManifest.locales) {
-          localizedName = aOldManifest.locales[locale].name;
+        if (newLocaleEntry.short_name) {
+          newLocaleEntry.short_name =
+            (oldLocaleEntry && oldLocaleEntry.short_name) || defaultShortName;
         }
-        entry.name = localizedName;
       }
     }
   },
@@ -780,7 +785,7 @@ this.AppsUtils = {
 /**
  * Helper object to access manifest information with locale support
  */
-this.ManifestHelper = function(aManifest, aOrigin, aManifestURL) {
+this.ManifestHelper = function(aManifest, aOrigin, aManifestURL, aLang) {
   // If the app is packaged, we resolve uris against the origin.
   // If it's not, against the manifest url.
 
@@ -796,10 +801,15 @@ this.ManifestHelper = function(aManifest, aOrigin, aManifestURL) {
   this._manifestURL = Services.io.newURI(aManifestURL, null, null);
 
   this._manifest = aManifest;
-  let chrome = Cc["@mozilla.org/chrome/chrome-registry;1"]
-                 .getService(Ci.nsIXULChromeRegistry)
-                 .QueryInterface(Ci.nsIToolkitChromeRegistry);
-  let locale = chrome.getSelectedLocale("global").toLowerCase();
+
+  let locale = aLang;
+  if (!locale) {
+    let chrome = Cc["@mozilla.org/chrome/chrome-registry;1"]
+                   .getService(Ci.nsIXULChromeRegistry)
+                   .QueryInterface(Ci.nsIToolkitChromeRegistry);
+    locale = chrome.getSelectedLocale("global").toLowerCase();
+  }
+
   this._localeRoot = this._manifest;
 
   if (this._manifest.locales && this._manifest.locales[locale]) {
@@ -822,6 +832,10 @@ ManifestHelper.prototype = {
 
   get name() {
     return this._localeProp("name");
+  },
+
+  get short_name() {
+    return this._localeProp("short_name");
   },
 
   get description() {
@@ -916,6 +930,10 @@ ManifestHelper.prototype = {
     // If no start point is specified, we use the root launch path.
     // In all error cases, we just return null.
     if ((aStartPoint || "") === "") {
+      // W3C start_url takes precedence over mozApps launch_path
+      if (this._localeProp("start_url")) {
+        return this._baseURI.resolve(this._localeProp("start_url") || "/");
+      }
       return this._baseURI.resolve(this._localeProp("launch_path") || "/");
     }
 

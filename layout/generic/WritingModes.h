@@ -105,7 +105,7 @@ enum LineRelativeDir {
 /**
  * LogicalSides represents a set of logical sides.
  */
-struct LogicalSides MOZ_FINAL {
+struct LogicalSides final {
   LogicalSides() : mBits(0) {}
   explicit LogicalSides(LogicalSideBits aSideBits)
   {
@@ -369,16 +369,16 @@ public:
   }
 
   /**
-   * Returns the physical side corresponding to the specified
+   * Returns the logical side corresponding to the specified
    * line-relative direction, given the current writing mode.
    */
-  mozilla::Side PhysicalSide(LineRelativeDir aDir) const
+  LogicalSide LogicalSideForLineRelativeDir(LineRelativeDir aDir) const
   {
-    LogicalSide side = static_cast<LogicalSide>(aDir);
-    if (IsLineInverted()) {
-      side = GetOppositeSide(side);
+    auto side = static_cast<LogicalSide>(aDir);
+    if (IsInline(side)) {
+      return IsBidiLTR() ? side : GetOppositeSide(side);
     }
-    return PhysicalSide(side);
+    return !IsLineInverted() ? side : GetOppositeSide(side);
   }
 
   /**
@@ -1472,6 +1472,30 @@ public:
   }
 
   /**
+   * Accessors for line-relative coordinates
+   */
+  nscoord LineLeft(WritingMode aWritingMode, nscoord aContainerWidth) const
+  {
+    CHECK_WRITING_MODE(aWritingMode);
+    if (aWritingMode.IsVertical()) {
+      return IStart(); // sideways-left will require aContainerHeight
+    } else {
+      return aWritingMode.IsBidiLTR() ? IStart()
+                                      : aContainerWidth - IEnd();
+    }
+  }
+  nscoord LineRight(WritingMode aWritingMode, nscoord aContainerWidth) const
+  {
+    CHECK_WRITING_MODE(aWritingMode);
+    if (aWritingMode.IsVertical()) {
+      return IEnd(); // sideways-left will require aContainerHeight
+    } else {
+      return aWritingMode.IsBidiLTR() ? IEnd()
+                                      : aContainerWidth - IStart();
+    }
+  }
+
+  /**
    * Physical coordinates of the rect.
    */
   nscoord X(WritingMode aWritingMode, nscoord aContainerWidth) const
@@ -1603,24 +1627,17 @@ public:
     return mRect.IsEqualEdges(aOther.mRect);
   }
 
-/* XXX are these correct?
-  nscoord ILeft(WritingMode aWritingMode) const
-  {
-    CHECK_WRITING_MODE(aWritingMode);
-    return aWritingMode.IsBidiLTR() ? IStart() : IEnd();
-  }
-  nscoord IRight(WritingMode aWritingMode) const
-  {
-    CHECK_WRITING_MODE(aWritingMode);
-    return aWritingMode.IsBidiLTR() ? IEnd() : IStart();
-  }
-*/
-
   LogicalPoint Origin(WritingMode aWritingMode) const
   {
     CHECK_WRITING_MODE(aWritingMode);
     return LogicalPoint(aWritingMode, IStart(), BStart());
   }
+  void SetOrigin(WritingMode aWritingMode, const LogicalPoint& aPoint)
+  {
+    IStart(aWritingMode) = aPoint.I(aWritingMode);
+    BStart(aWritingMode) = aPoint.B(aWritingMode);
+  }
+
   LogicalSize Size(WritingMode aWritingMode) const
   {
     CHECK_WRITING_MODE(aWritingMode);

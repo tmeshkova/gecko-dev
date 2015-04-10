@@ -71,6 +71,8 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MouseEvents.h"
 
+#include "nsPIWindowRoot.h"
+
 #ifdef XP_MACOSX
 #include "nsINativeMenuService.h"
 #define USE_NATIVE_MENUS
@@ -255,6 +257,15 @@ nsWebShellWindow::WindowMoved(nsIWidget* aWidget, int32_t x, int32_t y)
     nsCOMPtr<nsPIDOMWindow> window =
       mDocShell ? mDocShell->GetWindow() : nullptr;
     pm->AdjustPopupsOnWindowChange(window);
+  }
+
+  // Notify all tabs that the widget moved.
+  if (mDocShell && mDocShell->GetWindow()) {
+    nsCOMPtr<EventTarget> eventTarget = mDocShell->GetWindow()->GetTopWindowRoot();
+    nsContentUtils::DispatchChromeEvent(mDocShell->GetDocument(),
+                                        eventTarget,
+                                        NS_LITERAL_STRING("MozUpdateWindowPos"),
+                                        false, false, nullptr);
   }
 
   // Persist position, but not immediately, in case this OS is firing
@@ -445,7 +456,7 @@ static void LoadNativeMenus(nsIDOMDocument *aDOMDoc, nsIWidget *aParentWindow)
 
 namespace mozilla {
 
-class WebShellWindowTimerCallback MOZ_FINAL : public nsITimerCallback
+class WebShellWindowTimerCallback final : public nsITimerCallback
 {
 public:
   explicit WebShellWindowTimerCallback(nsWebShellWindow* aWindow)
@@ -454,7 +465,7 @@ public:
 
   NS_DECL_THREADSAFE_ISUPPORTS
 
-  NS_IMETHOD Notify(nsITimer* aTimer) MOZ_OVERRIDE
+  NS_IMETHOD Notify(nsITimer* aTimer) override
   {
     // Although this object participates in a refcount cycle (this -> mWindow
     // -> mSPTimer -> this), mSPTimer is a one-shot timer and releases this
@@ -662,7 +673,7 @@ void nsWebShellWindow::LoadContentAreas() {
                           nullptr,
                           nullptr,
                           nullptr);
-            nsMemory::Free(urlChar);
+            free(urlChar);
           }
         }
       }

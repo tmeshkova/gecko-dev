@@ -166,7 +166,9 @@ enum class DeviceResetReason
   REMOVED,
   RESET,
   DRIVER_ERROR,
-  INVALID_CALL
+  INVALID_CALL,
+  OUT_OF_MEMORY,
+  UNKNOWN
 };
 
 class gfxPlatform {
@@ -295,6 +297,7 @@ public:
       aObj.DefineProperty("AzureFallbackCanvasBackend", GetBackendName(mFallbackCanvasBackend));
       aObj.DefineProperty("AzureContentBackend", GetBackendName(mContentBackend));
     }
+    void GetApzSupportInfo(mozilla::widget::InfoObject& aObj);
 
     mozilla::gfx::BackendType GetContentBackend() {
       return mContentBackend;
@@ -494,7 +497,7 @@ public:
 
     static bool CanUseDirect3D9();
     static bool CanUseDirect3D11();
-    static bool CanUseDXVA();
+    static bool CanUseHardwareVideoDecoding();
 
     /**
      * Is it possible to use buffer rotation.  Note that these
@@ -615,6 +618,16 @@ public:
      */
     static bool IsInLayoutAsapMode();
 
+    /**
+     * Used to test which input types are handled via APZ.
+     */
+    virtual bool SupportsApzWheelInput() {
+      return false;
+    }
+    virtual bool SupportsApzTouchInput() {
+      return false;
+    }
+
 protected:
     gfxPlatform();
     virtual ~gfxPlatform();
@@ -729,6 +742,7 @@ private:
     int mTileHeight;
 
     mozilla::widget::GfxInfoCollector<gfxPlatform> mAzureCanvasBackendCollector;
+    mozilla::widget::GfxInfoCollector<gfxPlatform> mApzSupportCollector;
 
     mozilla::RefPtr<mozilla::gfx::DrawEventRecorder> mRecorder;
     mozilla::RefPtr<mozilla::gl::SkiaGLGlue> mSkiaGlue;

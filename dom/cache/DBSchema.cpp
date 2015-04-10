@@ -14,14 +14,131 @@
 #include "mozIStorageStatement.h"
 #include "nsCOMPtr.h"
 #include "nsTArray.h"
+#include "nsCRT.h"
+#include "nsHttp.h"
+#include "mozilla/dom/HeadersBinding.h"
+#include "mozilla/dom/RequestBinding.h"
+#include "mozilla/dom/ResponseBinding.h"
+#include "Types.h"
+#include "nsIContentPolicy.h"
 
 namespace mozilla {
 namespace dom {
 namespace cache {
 
-
-const int32_t DBSchema::kLatestSchemaVersion = 1;
+const int32_t DBSchema::kMaxWipeSchemaVersion = 5;
+const int32_t DBSchema::kLatestSchemaVersion = 5;
 const int32_t DBSchema::kMaxEntriesPerStatement = 255;
+
+// If any of the static_asserts below fail, it means that you have changed
+// the corresponding WebIDL enum in a way that may be incompatible with the
+// existing data stored in the DOM Cache.  You would need to update the Cache
+// database schema accordingly and adjust the failing static_assert.
+static_assert(int(HeadersGuardEnum::None) == 0 &&
+              int(HeadersGuardEnum::Request) == 1 &&
+              int(HeadersGuardEnum::Request_no_cors) == 2 &&
+              int(HeadersGuardEnum::Response) == 3 &&
+              int(HeadersGuardEnum::Immutable) == 4 &&
+              int(HeadersGuardEnum::EndGuard_) == 5,
+              "HeadersGuardEnum values are as expected");
+static_assert(int(RequestMode::Same_origin) == 0 &&
+              int(RequestMode::No_cors) == 1 &&
+              int(RequestMode::Cors) == 2 &&
+              int(RequestMode::Cors_with_forced_preflight) == 3 &&
+              int(RequestMode::EndGuard_) == 4,
+              "RequestMode values are as expected");
+static_assert(int(RequestCredentials::Omit) == 0 &&
+              int(RequestCredentials::Same_origin) == 1 &&
+              int(RequestCredentials::Include) == 2 &&
+              int(RequestCredentials::EndGuard_) == 3,
+              "RequestCredentials values are as expected");
+static_assert(int(RequestContext::Audio) == 0 &&
+              int(RequestContext::Beacon) == 1 &&
+              int(RequestContext::Cspreport) == 2 &&
+              int(RequestContext::Download) == 3 &&
+              int(RequestContext::Embed) == 4 &&
+              int(RequestContext::Eventsource) == 5 &&
+              int(RequestContext::Favicon) == 6 &&
+              int(RequestContext::Fetch) == 7 &&
+              int(RequestContext::Font) == 8 &&
+              int(RequestContext::Form) == 9 &&
+              int(RequestContext::Frame) == 10 &&
+              int(RequestContext::Hyperlink) == 11 &&
+              int(RequestContext::Iframe) == 12 &&
+              int(RequestContext::Image) == 13 &&
+              int(RequestContext::Imageset) == 14 &&
+              int(RequestContext::Import) == 15 &&
+              int(RequestContext::Internal) == 16 &&
+              int(RequestContext::Location) == 17 &&
+              int(RequestContext::Manifest) == 18 &&
+              int(RequestContext::Object) == 19 &&
+              int(RequestContext::Ping) == 20 &&
+              int(RequestContext::Plugin) == 21 &&
+              int(RequestContext::Prefetch) == 22 &&
+              int(RequestContext::Script) == 23 &&
+              int(RequestContext::Serviceworker) == 24 &&
+              int(RequestContext::Sharedworker) == 25 &&
+              int(RequestContext::Subresource) == 26 &&
+              int(RequestContext::Style) == 27 &&
+              int(RequestContext::Track) == 28 &&
+              int(RequestContext::Video) == 29 &&
+              int(RequestContext::Worker) == 30 &&
+              int(RequestContext::Xmlhttprequest) == 31 &&
+              int(RequestContext::Xslt) == 32,
+              "RequestContext values are as expected");
+static_assert(int(RequestCache::Default) == 0 &&
+              int(RequestCache::No_store) == 1 &&
+              int(RequestCache::Reload) == 2 &&
+              int(RequestCache::No_cache) == 3 &&
+              int(RequestCache::Force_cache) == 4 &&
+              int(RequestCache::Only_if_cached) == 5 &&
+              int(RequestCache::EndGuard_) == 6,
+              "RequestCache values are as expected");
+static_assert(int(ResponseType::Basic) == 0 &&
+              int(ResponseType::Cors) == 1 &&
+              int(ResponseType::Default) == 2 &&
+              int(ResponseType::Error) == 3 &&
+              int(ResponseType::Opaque) == 4 &&
+              int(ResponseType::EndGuard_) == 5,
+              "ResponseType values are as expected");
+
+// If the static_asserts below fails, it means that you have changed the
+// Namespace enum in a way that may be incompatible with the existing data
+// stored in the DOM Cache.  You would need to update the Cache database schema
+// accordingly and adjust the failing static_assert.
+static_assert(DEFAULT_NAMESPACE == 0 &&
+              CHROME_ONLY_NAMESPACE == 1 &&
+              NUMBER_OF_NAMESPACES == 2,
+              "Namespace values are as expected");
+
+// If the static_asserts below fails, it means that you have changed the
+// nsContentPolicy enum in a way that may be incompatible with the existing data
+// stored in the DOM Cache.  You would need to update the Cache database schema
+// accordingly and adjust the failing static_assert.
+static_assert(nsIContentPolicy::TYPE_INVALID == 0 &&
+              nsIContentPolicy::TYPE_OTHER == 1 &&
+              nsIContentPolicy::TYPE_SCRIPT == 2 &&
+              nsIContentPolicy::TYPE_IMAGE == 3 &&
+              nsIContentPolicy::TYPE_STYLESHEET == 4 &&
+              nsIContentPolicy::TYPE_OBJECT == 5 &&
+              nsIContentPolicy::TYPE_DOCUMENT == 6 &&
+              nsIContentPolicy::TYPE_SUBDOCUMENT == 7 &&
+              nsIContentPolicy::TYPE_REFRESH == 8 &&
+              nsIContentPolicy::TYPE_XBL == 9 &&
+              nsIContentPolicy::TYPE_PING == 10 &&
+              nsIContentPolicy::TYPE_XMLHTTPREQUEST == 11 &&
+              nsIContentPolicy::TYPE_DATAREQUEST == 11 &&
+              nsIContentPolicy::TYPE_OBJECT_SUBREQUEST == 12 &&
+              nsIContentPolicy::TYPE_DTD == 13 &&
+              nsIContentPolicy::TYPE_FONT == 14 &&
+              nsIContentPolicy::TYPE_MEDIA == 15 &&
+              nsIContentPolicy::TYPE_WEBSOCKET == 16 &&
+              nsIContentPolicy::TYPE_CSP_REPORT == 17 &&
+              nsIContentPolicy::TYPE_XSLT == 18 &&
+              nsIContentPolicy::TYPE_BEACON == 19 &&
+              nsIContentPolicy::TYPE_FETCH == 20 &&
+              nsIContentPolicy::TYPE_IMAGESET == 21,
+              "nsContentPolicytType values are as expected");
 
 using mozilla::void_t;
 
@@ -33,18 +150,9 @@ DBSchema::CreateSchema(mozIStorageConnection* aConn)
   MOZ_ASSERT(aConn);
 
   nsAutoCString pragmas(
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GONK)
-    // Switch the journaling mode to TRUNCATE to avoid changing the directory
-    // structure at the conclusion of every transaction for devices with slower
-    // file systems.
-    "PRAGMA journal_mode = TRUNCATE; "
-#endif
-    "PRAGMA foreign_keys = ON; "
-
-    // Note, the default encoding of UTF-8 is preferred.  mozStorage does all
-    // the work necessary to convert UTF-16 nsString values for us.  We don't
-    // need ordering and the binary equality operations are correct.  So, do
-    // NOT set PRAGMA encoding to UTF-16.
+    // Enable auto-vaccum but in incremental mode in order to avoid doing a lot
+    // of work at the end of each transaction.
+    "PRAGMA auto_vacuum = INCREMENTAL; "
   );
 
   nsresult rv = aConn->ExecuteSimpleSQL(pragmas);
@@ -55,6 +163,12 @@ DBSchema::CreateSchema(mozIStorageConnection* aConn)
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
   if (schemaVersion == kLatestSchemaVersion) {
+    // We already have the correct schema, so just do an incremental vaccum and
+    // get started.
+    rv = aConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
+      "PRAGMA incremental_vacuum;"));
+    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
     return rv;
   }
 
@@ -89,6 +203,9 @@ DBSchema::CreateSchema(mozIStorageConnection* aConn)
         "request_headers_guard INTEGER NOT NULL, "
         "request_mode INTEGER NOT NULL, "
         "request_credentials INTEGER NOT NULL, "
+        "request_contentpolicytype INTEGER NOT NULL, "
+        "request_context INTEGER NOT NULL, "
+        "request_cache INTEGER NOT NULL, "
         "request_body_id TEXT NULL, "
         "response_type INTEGER NOT NULL, "
         "response_url TEXT NOT NULL, "
@@ -96,6 +213,7 @@ DBSchema::CreateSchema(mozIStorageConnection* aConn)
         "response_status_text TEXT NOT NULL, "
         "response_headers_guard INTEGER NOT NULL, "
         "response_body_id TEXT NULL, "
+        "response_security_info BLOB NULL, "
         "cache_id INTEGER NOT NULL REFERENCES caches(id) ON DELETE CASCADE"
       ");"
     ));
@@ -162,6 +280,37 @@ DBSchema::CreateSchema(mozIStorageConnection* aConn)
   }
 
   return rv;
+}
+
+// static
+nsresult
+DBSchema::InitializeConnection(mozIStorageConnection* aConn)
+{
+  MOZ_ASSERT(!NS_IsMainThread());
+  MOZ_ASSERT(aConn);
+
+  // This function needs to perform per-connection initialization tasks that
+  // need to happen regardless of the schema.
+
+  nsAutoCString pragmas(
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GONK)
+    // Switch the journaling mode to TRUNCATE to avoid changing the directory
+    // structure at the conclusion of every transaction for devices with slower
+    // file systems.
+    "PRAGMA journal_mode = TRUNCATE; "
+#endif
+    "PRAGMA foreign_keys = ON; "
+
+    // Note, the default encoding of UTF-8 is preferred.  mozStorage does all
+    // the work necessary to convert UTF-16 nsString values for us.  We don't
+    // need ordering and the binary equality operations are correct.  So, do
+    // NOT set PRAGMA encoding to UTF-16.
+  );
+
+  nsresult rv = aConn->ExecuteSimpleSQL(pragmas);
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  return NS_OK;
 }
 
 // static
@@ -764,8 +913,6 @@ DBSchema::MatchByVaryHeader(mozIStorageConnection* aConn,
 
   nsRefPtr<InternalHeaders> cachedHeaders = new InternalHeaders(HeadersGuardEnum::None);
 
-  ErrorResult errorResult;
-
   while (NS_SUCCEEDED(state->ExecuteStep(&hasMoreData)) && hasMoreData) {
     nsAutoCString name;
     nsAutoCString value;
@@ -773,6 +920,8 @@ DBSchema::MatchByVaryHeader(mozIStorageConnection* aConn,
     if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
     rv = state->GetUTF8String(1, value);
     if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+    ErrorResult errorResult;
 
     cachedHeaders->Append(name, value, errorResult);
     if (errorResult.Failed()) { return errorResult.ErrorCode(); };
@@ -785,20 +934,41 @@ DBSchema::MatchByVaryHeader(mozIStorageConnection* aConn,
   bool varyHeadersMatch = true;
 
   for (uint32_t i = 0; i < varyValues.Length(); ++i) {
-    if (varyValues[i].EqualsLiteral("*")) {
-      continue;
+    // Extract the header names inside the Vary header value.
+    nsAutoCString varyValue(varyValues[i]);
+    char* rawBuffer = varyValue.BeginWriting();
+    char* token = nsCRT::strtok(rawBuffer, NS_HTTP_HEADER_SEPS, &rawBuffer);
+    bool bailOut = false;
+    for (; token;
+         token = nsCRT::strtok(rawBuffer, NS_HTTP_HEADER_SEPS, &rawBuffer)) {
+      nsDependentCString header(token);
+      if (header.EqualsLiteral("*")) {
+        continue;
+      }
+
+      ErrorResult errorResult;
+      nsAutoCString queryValue;
+      queryHeaders->Get(header, queryValue, errorResult);
+      if (errorResult.Failed()) {
+        errorResult.ClearMessage();
+        MOZ_ASSERT(queryValue.IsEmpty());
+      }
+
+      nsAutoCString cachedValue;
+      cachedHeaders->Get(header, cachedValue, errorResult);
+      if (errorResult.Failed()) {
+        errorResult.ClearMessage();
+        MOZ_ASSERT(cachedValue.IsEmpty());
+      }
+
+      if (queryValue != cachedValue) {
+        varyHeadersMatch = false;
+        bailOut = true;
+        break;
+      }
     }
 
-    nsAutoCString queryValue;
-    queryHeaders->Get(varyValues[i], queryValue, errorResult);
-    if (errorResult.Failed()) { return errorResult.ErrorCode(); };
-
-    nsAutoCString cachedValue;
-    cachedHeaders->Get(varyValues[i], cachedValue, errorResult);
-    if (errorResult.Failed()) { return errorResult.ErrorCode(); };
-
-    if (queryValue != cachedValue) {
-      varyHeadersMatch = false;
+    if (bailOut) {
       break;
     }
   }
@@ -917,6 +1087,9 @@ DBSchema::InsertEntry(mozIStorageConnection* aConn, CacheId aCacheId,
       "request_headers_guard, "
       "request_mode, "
       "request_credentials, "
+      "request_contentpolicytype, "
+      "request_context, "
+      "request_cache, "
       "request_body_id, "
       "response_type, "
       "response_url, "
@@ -924,8 +1097,9 @@ DBSchema::InsertEntry(mozIStorageConnection* aConn, CacheId aCacheId,
       "response_status_text, "
       "response_headers_guard, "
       "response_body_id, "
+      "response_security_info, "
       "cache_id "
-    ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"
+    ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)"
   ), getter_AddRefs(state));
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
@@ -952,29 +1126,46 @@ DBSchema::InsertEntry(mozIStorageConnection* aConn, CacheId aCacheId,
     static_cast<int32_t>(aRequest.credentials()));
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = BindId(state, 7, aRequestBodyId);
+  rv = state->BindInt32Parameter(7,
+    static_cast<int32_t>(aRequest.contentPolicyType()));
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = state->BindInt32Parameter(8, static_cast<int32_t>(aResponse.type()));
+  rv = state->BindInt32Parameter(8,
+    static_cast<int32_t>(aRequest.context()));
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = state->BindStringParameter(9, aResponse.url());
+  rv = state->BindInt32Parameter(9,
+    static_cast<int32_t>(aRequest.requestCache()));
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = state->BindInt32Parameter(10, aResponse.status());
+  rv = BindId(state, 10, aRequestBodyId);
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = state->BindUTF8StringParameter(11, aResponse.statusText());
+  rv = state->BindInt32Parameter(11, static_cast<int32_t>(aResponse.type()));
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = state->BindInt32Parameter(12,
+  rv = state->BindStringParameter(12, aResponse.url());
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = state->BindInt32Parameter(13, aResponse.status());
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = state->BindUTF8StringParameter(14, aResponse.statusText());
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = state->BindInt32Parameter(15,
     static_cast<int32_t>(aResponse.headersGuard()));
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = BindId(state, 13, aResponseBodyId);
+  rv = BindId(state, 16, aResponseBodyId);
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
-  rv = state->BindInt32Parameter(14, aCacheId);
+  rv = state->BindBlobParameter(17, reinterpret_cast<const uint8_t*>
+                                  (aResponse.securityInfo().get()),
+                                aResponse.securityInfo().Length());
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = state->BindInt32Parameter(18, aCacheId);
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
   rv = state->Execute();
@@ -1061,7 +1252,8 @@ DBSchema::ReadResponse(mozIStorageConnection* aConn, EntryId aEntryId,
       "response_status, "
       "response_status_text, "
       "response_headers_guard, "
-      "response_body_id "
+      "response_body_id, "
+      "response_security_info "
     "FROM entries "
     "WHERE id=?1;"
   ), getter_AddRefs(state));
@@ -1105,6 +1297,13 @@ DBSchema::ReadResponse(mozIStorageConnection* aConn, EntryId aEntryId,
     rv = ExtractId(state, 5, &aSavedResponseOut->mBodyId);
     if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
   }
+
+  uint8_t* data = nullptr;
+  uint32_t dataLength = 0;
+  rv = state->GetBlob(6, &dataLength, &data);
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  aSavedResponseOut->mValue.securityInfo().Adopt(
+    reinterpret_cast<char*>(data), dataLength);
 
   rv = aConn->CreateStatement(NS_LITERAL_CSTRING(
     "SELECT "
@@ -1152,6 +1351,9 @@ DBSchema::ReadRequest(mozIStorageConnection* aConn, EntryId aEntryId,
       "request_headers_guard, "
       "request_mode, "
       "request_credentials, "
+      "request_contentpolicytype, "
+      "request_context, "
+      "request_cache, "
       "request_body_id "
     "FROM entries "
     "WHERE id=?1;"
@@ -1194,13 +1396,31 @@ DBSchema::ReadRequest(mozIStorageConnection* aConn, EntryId aEntryId,
   aSavedRequestOut->mValue.credentials() =
     static_cast<RequestCredentials>(credentials);
 
+  int32_t requestContentPolicyType;
+  rv = state->GetInt32(7, &requestContentPolicyType);
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  aSavedRequestOut->mValue.contentPolicyType() =
+    static_cast<nsContentPolicyType>(requestContentPolicyType);
+
+  int32_t requestContext;
+  rv = state->GetInt32(8, &requestContext);
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  aSavedRequestOut->mValue.context() =
+    static_cast<RequestContext>(requestContext);
+
+  int32_t requestCache;
+  rv = state->GetInt32(9, &requestCache);
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+  aSavedRequestOut->mValue.requestCache() =
+    static_cast<RequestCache>(requestCache);
+
   bool nullBody = false;
-  rv = state->GetIsNull(7, &nullBody);
+  rv = state->GetIsNull(10, &nullBody);
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
   aSavedRequestOut->mHasBodyId = !nullBody;
 
   if (aSavedRequestOut->mHasBodyId) {
-    rv = ExtractId(state, 7, &aSavedRequestOut->mBodyId);
+    rv = ExtractId(state, 10, &aSavedRequestOut->mBodyId);
     if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
   }
 

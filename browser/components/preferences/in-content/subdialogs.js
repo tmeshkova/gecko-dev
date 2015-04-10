@@ -21,6 +21,7 @@ let gSubDialog = {
     this._frame = document.getElementById("dialogFrame");
     this._overlay = document.getElementById("dialogOverlay");
     this._box = document.getElementById("dialogBox");
+    this._closeButton = document.getElementById("dialogClose");
   },
 
   updateTitle: function(aEvent) {
@@ -49,6 +50,7 @@ let gSubDialog = {
 
     this._closingEvent = null;
     this._isClosing = false;
+    this._openedURL = aURL;
 
     features = features.replace(/,/g, "&");
     let featureParams = new URLSearchParams(features.toLowerCase());
@@ -111,13 +113,19 @@ let gSubDialog = {
       case "unload":
         this._onUnload(aEvent);
         break;
+      case "keydown":
+        this._onKeyDown(aEvent);
+        break;
+      case "focus":
+        this._onParentWinFocus(aEvent);
+        break;
     }
   },
 
   /* Private methods */
 
   _onUnload: function(aEvent) {
-    if (aEvent.target.location.href != "about:blank") {
+    if (aEvent.target.location.href == this._openedURL) {
       this.close(this._closingEvent);
     }
   },
@@ -204,8 +212,9 @@ let gSubDialog = {
                                "px + " + frameWidth + ")";
 
     this._overlay.style.visibility = "visible";
-    this._frame.focus();
     this._overlay.style.opacity = ""; // XXX: focus hack continued from _onContentLoaded
+
+    this._trapFocus();
   },
 
   _onDialogClosing: function(aEvent) {
@@ -213,16 +222,58 @@ let gSubDialog = {
     this._closingEvent = aEvent;
   },
 
+  _onKeyDown: function(aEvent) {
+    if (aEvent.currentTarget == window && aEvent.keyCode == aEvent.DOM_VK_ESCAPE &&
+        !aEvent.defaultPrevented) {
+      this.close(aEvent);
+      return;
+    }
+    if (aEvent.keyCode != aEvent.DOM_VK_TAB ||
+        aEvent.ctrlKey || aEvent.altKey || aEvent.metaKey) {
+      return;
+    }
+
+    let fm = Services.focus;
+
+    function isLastFocusableElement(el) {
+      //XXXgijs unfortunately there is no way to get the last focusable element without asking
+      // the focus manager to move focus to it.
+      let rv = el == fm.moveFocus(gSubDialog._frame.contentWindow, null, fm.MOVEFOCUS_LAST, 0);
+      fm.setFocus(el, 0);
+      return rv;
+    }
+
+    let forward = !aEvent.shiftKey;
+    // check if focus is leaving the frame (incl. the close button):
+    if ((aEvent.target == this._closeButton && !forward) ||
+        (isLastFocusableElement(aEvent.originalTarget) && forward)) {
+      aEvent.preventDefault();
+      aEvent.stopImmediatePropagation();
+      let parentWin = this._getBrowser().ownerDocument.defaultView;
+      if (forward) {
+        fm.moveFocus(parentWin, null, fm.MOVEFOCUS_FIRST, fm.FLAG_BYKEY);
+      } else {
+        // Somehow, moving back 'past' the opening doc is not trivial. Cheat by doing it in 2 steps:
+        fm.moveFocus(window, null, fm.MOVEFOCUS_ROOT, fm.FLAG_BYKEY);
+        fm.moveFocus(parentWin, null, fm.MOVEFOCUS_BACKWARD, fm.FLAG_BYKEY);
+      }
+    }
+  },
+
+  _onParentWinFocus: function(aEvent) {
+    // Explicitly check for the focus target of |window| to avoid triggering this when the window
+    // is refocused
+    if (aEvent.target != this._closeButton && aEvent.target != window) {
+      this._closeButton.focus();
+    }
+  },
+
   _addDialogEventListeners: function() {
     // Make the close button work.
-    let dialogClose = document.getElementById("dialogClose");
-    dialogClose.addEventListener("command", this);
+    this._closeButton.addEventListener("command", this);
 
     // DOMTitleChanged isn't fired on the frame, only on the chromeEventHandler
-    let chromeBrowser = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIWebNavigation)
-                              .QueryInterface(Ci.nsIDocShell)
-                              .chromeEventHandler;
+    let chromeBrowser = this._getBrowser();
     chromeBrowser.addEventListener("DOMTitleChanged", this, true);
 
     // Similarly DOMFrameContentLoaded only fires on the top window
@@ -233,21 +284,45 @@ let gSubDialog = {
     this._frame.addEventListener("load", this);
 
     chromeBrowser.addEventListener("unload", this, true);
+    // Ensure we get <esc> keypresses even if nothing in the subdialog is focusable
+    // (happens on OS X when only text inputs and lists are focusable, and
+    //  the subdialog only has checkboxes/radiobuttons/buttons)
+    window.addEventListener("keydown", this, true);
   },
 
   _removeDialogEventListeners: function() {
-    let chromeBrowser = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIWebNavigation)
-                              .QueryInterface(Ci.nsIDocShell)
-                              .chromeEventHandler;
+    let chromeBrowser = this._getBrowser();
     chromeBrowser.removeEventListener("DOMTitleChanged", this, true);
     chromeBrowser.removeEventListener("unload", this, true);
 
-    let dialogClose = document.getElementById("dialogClose");
-    dialogClose.removeEventListener("command", this);
+    this._closeButton.removeEventListener("command", this);
 
     window.removeEventListener("DOMFrameContentLoaded", this, true);
     this._frame.removeEventListener("load", this);
     this._frame.contentWindow.removeEventListener("dialogclosing", this);
-  }
+    window.removeEventListener("keydown", this, true);
+    this._untrapFocus();
+  },
+
+  _trapFocus: function() {
+    let fm = Services.focus;
+    fm.moveFocus(this._frame.contentWindow, null, fm.MOVEFOCUS_FIRST, 0);
+    this._frame.contentDocument.addEventListener("keydown", this, true);
+    this._closeButton.addEventListener("keydown", this);
+
+    window.addEventListener("focus", this, true);
+  },
+
+  _untrapFocus: function() {
+    this._frame.contentDocument.removeEventListener("keydown", this, true);
+    this._closeButton.removeEventListener("keydown", this);
+    window.removeEventListener("focus", this);
+  },
+
+  _getBrowser: function() {
+    return window.QueryInterface(Ci.nsIInterfaceRequestor)
+                 .getInterface(Ci.nsIWebNavigation)
+                 .QueryInterface(Ci.nsIDocShell)
+                 .chromeEventHandler;
+  },
 };

@@ -1,6 +1,7 @@
 ---
 $inherits:
   from: 'tasks/test.yml'
+reruns: 2
 task:
   metadata:
     name: '[TC] Mulet Gaia JS Integration Test'
@@ -16,7 +17,9 @@ task:
         --no-read-buildbot-config
         --config-file b2g/gaia_integration_config.py
         --config-file ./mozharness_configs/gaia_integration_override.py
+        --config-file ./mozharness_configs/remove_executables.py
         --installer-url {{build_url}}
+        --no-pull
         --test-url {{tests_url}}
         --download-symbols ondemand
         --total-chunk {{total_chunks}}
@@ -30,6 +33,8 @@ task:
         expires: '{{#from_now}}1 year{{/from_now}}'
 
   extra:
+    chunks:
+      total: 20
     treeherder:
       groupName: Gaia JS Integration Test
       groupSymbol: tc-Gij

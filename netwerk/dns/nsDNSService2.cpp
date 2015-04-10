@@ -293,8 +293,8 @@ nsDNSRecord::ReportUnusable(uint16_t aPort)
 
 //-----------------------------------------------------------------------------
 
-class nsDNSAsyncRequest MOZ_FINAL : public nsResolveHostCallback
-                                  , public nsICancelable
+class nsDNSAsyncRequest final : public nsResolveHostCallback
+                              , public nsICancelable
 {
     ~nsDNSAsyncRequest() {}
 
@@ -315,13 +315,13 @@ public:
         , mAF(af)
         , mNetworkInterface(netInterface) {}
 
-    void OnLookupComplete(nsHostResolver *, nsHostRecord *, nsresult) MOZ_OVERRIDE;
+    void OnLookupComplete(nsHostResolver *, nsHostRecord *, nsresult) override;
     // Returns TRUE if the DNS listener arg is the same as the member listener
     // Used in Cancellations to remove DNS requests associated with a
     // particular hostname and nsIDNSListener
-    bool EqualsAsyncListener(nsIDNSListener *aListener) MOZ_OVERRIDE;
+    bool EqualsAsyncListener(nsIDNSListener *aListener) override;
 
-    size_t SizeOfIncludingThis(mozilla::MallocSizeOf) const MOZ_OVERRIDE;
+    size_t SizeOfIncludingThis(mozilla::MallocSizeOf) const override;
 
     nsRefPtr<nsHostResolver> mResolver;
     nsCString                mHost; // hostname we're resolving
@@ -603,15 +603,9 @@ nsDNSService::Init()
 
     nsDNSPrefetch::Initialize(this);
 
-    // Don't initialize the resolver if we're in offline mode.
-    // Later on, the IO service will reinitialize us when going online.
-    if (gIOService->IsOffline() && !gIOService->IsComingOnline())
-        return NS_OK;
-
     nsCOMPtr<nsIIDNService> idn = do_GetService(NS_IDNSERVICE_CONTRACTID);
 
-    nsCOMPtr<nsIObserverService> obs =
-        do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+    nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
 
     nsRefPtr<nsHostResolver> res;
     nsresult rv = nsHostResolver::Create(maxCacheEntries,
@@ -684,6 +678,7 @@ nsDNSService::SetOffline(bool offline)
 NS_IMETHODIMP
 nsDNSService::GetPrefetchEnabled(bool *outVal)
 {
+    MutexAutoLock lock(mLock);
     *outVal = !mDisablePrefetch;
     return NS_OK;
 }
@@ -691,6 +686,7 @@ nsDNSService::GetPrefetchEnabled(bool *outVal)
 NS_IMETHODIMP
 nsDNSService::SetPrefetchEnabled(bool inVal)
 {
+    MutexAutoLock lock(mLock);
     mDisablePrefetch = !inVal;
     return NS_OK;
 }

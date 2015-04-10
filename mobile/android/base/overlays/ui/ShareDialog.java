@@ -50,7 +50,29 @@ import android.widget.Toast;
  * A transparent activity that displays the share overlay.
  */
 public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabTargetSelectedListener {
+
+    private enum State {
+        DEFAULT,
+        DEVICES_ONLY // Only display the device list.
+    }
+
     private static final String LOGTAG = "GeckoShareDialog";
+
+    /** Flag to indicate that we should always show the device list; specific to this release channel. **/
+    public static final String INTENT_EXTRA_DEVICES_ONLY =
+            AppConstants.ANDROID_PACKAGE_NAME + ".intent.extra.DEVICES_ONLY";
+
+    /** The maximum number of devices we'll show in the dialog when in State.DEFAULT. **/
+    private static final int MAXIMUM_INLINE_DEVICES = 2;
+
+    private State state;
+
+    private SendTabList sendTabList;
+    private OverlayDialogButton readingListButton;
+    private OverlayDialogButton bookmarkButton;
+
+    // The reading list drawable set from XML - we need this to reset state.
+    private Drawable readingListButtonDrawable;
 
     private String url;
     private String title;
@@ -82,10 +104,42 @@ public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabT
     protected void handleSendTabUIEvent(Intent intent) {
         sendTabOverrideIntent = intent.getParcelableExtra(SendTab.OVERRIDE_INTENT);
 
-        SendTabList sendTabList = (SendTabList) findViewById(R.id.overlay_send_tab_btn);
-
         ParcelableClientRecord[] clientrecords = (ParcelableClientRecord[]) intent.getParcelableArrayExtra(SendTab.EXTRA_CLIENT_RECORDS);
+
+        // Escape hatch: we don't show the option to open this dialog in this state so this should
+        // never be run. However, due to potential inconsistencies in synced client state
+        // (e.g. bug 1122302 comment 47), we might fail.
+        if (state == State.DEVICES_ONLY &&
+                (clientrecords == null || clientrecords.length == 0)) {
+            Log.e(LOGTAG, "In state: " + State.DEVICES_ONLY + " and received 0 synced clients. Finishing...");
+            Toast.makeText(this, getResources().getText(R.string.overlay_no_synced_devices), Toast.LENGTH_SHORT)
+                 .show();
+            finish();
+            return;
+        }
+
         sendTabList.setSyncClients(clientrecords);
+
+        if (state == State.DEVICES_ONLY ||
+                clientrecords == null ||
+                clientrecords.length <= MAXIMUM_INLINE_DEVICES) {
+            // Show the list of devices in-line.
+            sendTabList.switchState(SendTabList.State.LIST);
+
+            // The first item in the list has a unique style. If there are no items
+            // in the list, the next button appears to be the first item in the list.
+            //
+            // Note: a more thorough implementation would add this
+            // (and other non-ListView buttons) into a custom ListView.
+            if (clientrecords == null || clientrecords.length == 0) {
+                readingListButton.setBackgroundResource(
+                        R.drawable.overlay_share_button_background_first);
+            }
+            return;
+        }
+
+        // Just show a button to launch the list of devices to choose from.
+        sendTabList.switchState(SendTabList.State.SHOW_DEVICES);
     }
 
     @Override
@@ -117,9 +171,69 @@ public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabT
         super.onCreate(savedInstanceState);
 
         getWindow().setWindowAnimations(0);
+        setContentView(R.layout.overlay_share_dialog);
 
-        Intent intent = getIntent();
+        LocalBroadcastManager.getInstance(this).registerReceiver(uiEventListener,
+                new IntentFilter(OverlayConstants.SHARE_METHOD_UI_EVENT));
+
+        // Send tab.
+        sendTabList = (SendTabList) findViewById(R.id.overlay_send_tab_btn);
+
+        // Register ourselves as both the listener and the context for the Adapter.
+        final SendTabDeviceListArrayAdapter adapter = new SendTabDeviceListArrayAdapter(this, this);
+        sendTabList.setAdapter(adapter);
+        sendTabList.setSendTabTargetSelectedListener(this);
+
+        bookmarkButton = (OverlayDialogButton) findViewById(R.id.overlay_share_bookmark_btn);
+        readingListButton = (OverlayDialogButton) findViewById(R.id.overlay_share_reading_list_btn);
+
+        readingListButtonDrawable = readingListButton.getBackground();
+
         final Resources resources = getResources();
+        final String bookmarkEnabledLabel = resources.getString(R.string.overlay_share_bookmark_btn_label);
+        final Drawable bookmarkEnabledIcon = resources.getDrawable(R.drawable.overlay_bookmark_icon);
+        bookmarkButton.setEnabledLabelAndIcon(bookmarkEnabledLabel, bookmarkEnabledIcon);
+
+        final String bookmarkDisabledLabel = resources.getString(R.string.overlay_share_bookmark_btn_label_already);
+        final Drawable bookmarkDisabledIcon = resources.getDrawable(R.drawable.overlay_bookmarked_already_icon);
+        bookmarkButton.setDisabledLabelAndIcon(bookmarkDisabledLabel, bookmarkDisabledIcon);
+
+        bookmarkButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                addBookmark();
+            }
+        });
+
+        final String readingListEnabledLabel = resources.getString(R.string.overlay_share_reading_list_btn_label);
+        final Drawable readingListEnabledIcon = resources.getDrawable(R.drawable.overlay_readinglist_icon);
+        readingListButton.setEnabledLabelAndIcon(readingListEnabledLabel, readingListEnabledIcon);
+
+        final String readingListDisabledLabel = resources.getString(R.string.overlay_share_reading_list_btn_label_already);
+        final Drawable readingListDisabledIcon = resources.getDrawable(R.drawable.overlay_readinglist_already_icon);
+        readingListButton.setDisabledLabelAndIcon(readingListDisabledLabel, readingListDisabledIcon);
+
+        readingListButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                addToReadingList();
+            }
+        });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        final Intent intent = getIntent();
+
+        state = intent.getBooleanExtra(INTENT_EXTRA_DEVICES_ONLY, false) ?
+                State.DEVICES_ONLY : State.DEFAULT;
+
+        // If the Activity is being reused, we need to reset the state. Ideally, we create a
+        // new instance for each call, but Android L breaks this (bug 1137928).
+        sendTabList.switchState(SendTabList.State.LOADING);
+        readingListButton.setBackgroundDrawable(readingListButtonDrawable);
 
         // The URL is usually hiding somewhere in the extra text. Extract it.
         final String extraText = ContextUtils.getStringExtra(intent, Intent.EXTRA_TEXT);
@@ -134,12 +248,6 @@ public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabT
             return;
         }
 
-        setContentView(R.layout.overlay_share_dialog);
-
-
-        LocalBroadcastManager.getInstance(this).registerReceiver(uiEventListener,
-                                                                  new IntentFilter(OverlayConstants.SHARE_METHOD_UI_EVENT));
-
         // Have the service start any initialisation work that's necessary for us to show the correct
         // UI. The results of such work will come in via the BroadcastListener.
         Intent serviceStartupIntent = new Intent(this, OverlayActionService.class);
@@ -150,9 +258,9 @@ public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabT
         // If not, we wing it with the URL.
 
         // TODO: Consider polling Fennec databases to find better information to display.
-        String subjectText = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+        final String subjectText = intent.getStringExtra(Intent.EXTRA_SUBJECT);
 
-        String telemetryExtras = "title=" + (subjectText != null);
+        final String telemetryExtras = "title=" + (subjectText != null);
         if (subjectText != null) {
             ((TextView) findViewById(R.id.title)).setText(subjectText);
         }
@@ -164,86 +272,59 @@ public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabT
 
         // Set the subtitle text on the view and cause it to marquee if it's too long (which it will
         // be, since it's a URL).
-        TextView subtitleView = (TextView) findViewById(R.id.subtitle);
+        final TextView subtitleView = (TextView) findViewById(R.id.subtitle);
         subtitleView.setText(pageUrl);
         subtitleView.setEllipsize(TextUtils.TruncateAt.MARQUEE);
         subtitleView.setSingleLine(true);
         subtitleView.setMarqueeRepeatLimit(5);
         subtitleView.setSelected(true);
 
-        // Start the slide-up animation.
-        Animation anim = AnimationUtils.loadAnimation(this, R.anim.overlay_slide_up);
-        findViewById(R.id.sharedialog).startAnimation(anim);
+        final View titleView = findViewById(R.id.title);
+
+        if (state == State.DEVICES_ONLY) {
+            bookmarkButton.setVisibility(View.GONE);
+            readingListButton.setVisibility(View.GONE);
+
+            titleView.setOnClickListener(null);
+            subtitleView.setOnClickListener(null);
+            return;
+        }
+
+        bookmarkButton.setVisibility(View.VISIBLE);
+        readingListButton.setVisibility(View.VISIBLE);
 
         // Configure buttons.
-        final ImageView foxIcon = (ImageView) findViewById(R.id.share_overlay_icon);
-        final LinearLayout topBar = (LinearLayout) findViewById(R.id.share_overlay_top_bar);
-        View.OnClickListener launchBrowser = new View.OnClickListener() {
+        final View.OnClickListener launchBrowser = new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 ShareDialog.this.launchBrowser();
             }
         };
 
-        foxIcon.setOnClickListener(launchBrowser);
-        topBar.setOnClickListener(launchBrowser);
+        titleView.setOnClickListener(launchBrowser);
+        subtitleView.setOnClickListener(launchBrowser);
 
-        final OverlayDialogButton bookmarkBtn = (OverlayDialogButton) findViewById(R.id.overlay_share_bookmark_btn);
+        final LocalBrowserDB browserDB = new LocalBrowserDB(getCurrentProfile());
+        setButtonState(url, browserDB);
 
-        final String bookmarkEnabledLabel = resources.getString(R.string.overlay_share_bookmark_btn_label);
-        final Drawable bookmarkEnabledIcon = resources.getDrawable(R.drawable.overlay_bookmark_icon);
-        bookmarkBtn.setEnabledLabelAndIcon(bookmarkEnabledLabel, bookmarkEnabledIcon);
-
-        final String bookmarkDisabledLabel = resources.getString(R.string.overlay_share_bookmark_btn_label_already);
-        final Drawable bookmarkDisabledIcon = resources.getDrawable(R.drawable.overlay_bookmarked_already_icon);
-        bookmarkBtn.setDisabledLabelAndIcon(bookmarkDisabledLabel, bookmarkDisabledIcon);
-
-        bookmarkBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                addBookmark();
-            }
-        });
-
-        // Send tab.
-        SendTabList sendTabList = (SendTabList) findViewById(R.id.overlay_send_tab_btn);
-
-        // Register ourselves as both the listener and the context for the Adapter.
-        SendTabDeviceListArrayAdapter adapter = new SendTabDeviceListArrayAdapter(this, this);
-        sendTabList.setAdapter(adapter);
-        sendTabList.setSendTabTargetSelectedListener(this);
-
-        final OverlayDialogButton readinglistBtn = (OverlayDialogButton) findViewById(R.id.overlay_share_reading_list_btn);
-
-        final String readingListEnabledLabel = resources.getString(R.string.overlay_share_reading_list_btn_label);
-        final Drawable readingListEnabledIcon = resources.getDrawable(R.drawable.overlay_readinglist_icon);
-        readinglistBtn.setEnabledLabelAndIcon(readingListEnabledLabel, readingListEnabledIcon);
-
-        final String readingListDisabledLabel = resources.getString(R.string.overlay_share_reading_list_btn_label_already);
-        final Drawable readingListDisabledIcon = resources.getDrawable(R.drawable.overlay_readinglist_already_icon);
-        readinglistBtn.setDisabledLabelAndIcon(readingListDisabledLabel, readingListDisabledIcon);
-
-        readinglistBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                addToReadingList();
-            }
-        });
+        // Start the slide-up animation.
+        final Animation anim = AnimationUtils.loadAnimation(this, R.anim.overlay_slide_up);
+        findViewById(R.id.sharedialog).startAnimation(anim);
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
+    protected void onNewIntent(final Intent intent) {
+        super.onNewIntent(intent);
 
-        LocalBrowserDB browserDB = new LocalBrowserDB(getCurrentProfile());
-        disableButtonsIfAlreadyAdded(url, browserDB);
+        // The intent returned by getIntent is not updated automatically.
+        setIntent(intent);
     }
 
     /**
-     * Disables the bookmark/reading list buttons if the given URL is already in the corresponding
-     * list.
+     * Sets the state of the bookmark/reading list buttons: they are disabled if the given URL is
+     * already in the corresponding list.
      */
-    private void disableButtonsIfAlreadyAdded(final String pageURL, final LocalBrowserDB browserDB) {
+    private void setButtonState(final String pageURL, final LocalBrowserDB browserDB) {
         new UIAsyncTask.WithoutParams<Void>(ThreadUtils.getBackgroundHandler()) {
             // Flags to hold the result
             boolean isBookmark;

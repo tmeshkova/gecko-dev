@@ -61,12 +61,12 @@ class nsIAutoCompleteController;
 
 // nsNavHistory
 
-class nsNavHistory MOZ_FINAL : public nsSupportsWeakReference
-                             , public nsINavHistoryService
-                             , public nsIObserver
-                             , public nsIBrowserHistory
-                             , public nsPIPlacesDatabase
-                             , public mozIStorageVacuumParticipant
+class nsNavHistory final : public nsSupportsWeakReference
+                         , public nsINavHistoryService
+                         , public nsIObserver
+                         , public nsIBrowserHistory
+                         , public nsPIPlacesDatabase
+                         , public mozIStorageVacuumParticipant
 {
   friend class PlacesSQLQueryBuilder;
 

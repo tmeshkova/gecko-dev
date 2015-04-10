@@ -42,9 +42,10 @@ WorkerDataStoreCursor::Constructor(GlobalObject& aGlobal, ErrorResult& aRv)
 
 bool
 WorkerDataStoreCursor::WrapObject(JSContext* aCx,
+                                  JS::Handle<JSObject*> aGivenProto,
                                   JS::MutableHandle<JSObject*> aReflector)
 {
-  return DataStoreCursorBinding_workers::Wrap(aCx, this, aReflector);
+  return DataStoreCursorBinding_workers::Wrap(aCx, this, aGivenProto, aReflector);
 }
 
 // A WorkerMainThreadRunnable which holds a reference to DataStoreCursor.
@@ -66,7 +67,7 @@ public:
 
 // A DataStoreCursorRunnable to run DataStoreCursor::Next(...) on the main
 // thread.
-class DataStoreCursorNextRunnable MOZ_FINAL : public DataStoreCursorRunnable
+class DataStoreCursorNextRunnable final : public DataStoreCursorRunnable
 {
   nsRefPtr<PromiseWorkerProxy> mPromiseWorkerProxy;
   ErrorResult& mRv;
@@ -100,7 +101,7 @@ public:
 
 protected:
   virtual bool
-  MainThreadRun() MOZ_OVERRIDE
+  MainThreadRun() override
   {
     AssertIsOnMainThread();
 
@@ -112,7 +113,7 @@ protected:
 
 // A DataStoreCursorRunnable to run DataStoreCursor::Close(...) on the main
 // thread.
-class DataStoreCursorCloseRunnable MOZ_FINAL : public DataStoreCursorRunnable
+class DataStoreCursorCloseRunnable final : public DataStoreCursorRunnable
 {
   ErrorResult& mRv;
 
@@ -129,7 +130,7 @@ public:
 
 protected:
   virtual bool
-  MainThreadRun() MOZ_OVERRIDE
+  MainThreadRun() override
   {
     AssertIsOnMainThread();
 

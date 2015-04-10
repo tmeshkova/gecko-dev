@@ -2,7 +2,7 @@
 metadata:
   name: 'Taskcluster decision task for {{project}}'
   description: |
-    Try push for {{owner}} with {{comment}}.
+    Try push for {{owner}}.
   owner: mozilla-taskcluster-maintenance@mozilla.com
   source: "{{{source}}}"
 
@@ -73,6 +73,7 @@ tasks:
             checkout-gecko workspace &&
             cd workspace/gecko &&
             ./mach taskcluster-graph
+            --pushlog-id='{{pushlog_id}}'
             --project='{{project}}'
             --message='{{comment}}'
             --owner='{{owner}}'
@@ -84,4 +85,3 @@ tasks:
       extra:
         treeherder:
           symbol: D
-

@@ -24,6 +24,7 @@
 #include "mozilla/FloatingPoint.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsCSSPropertySet.h"
 
 class nsIFrame;
 class nsPresContext;
@@ -33,6 +34,14 @@ namespace mozilla {
 
 class RestyleTracker;
 struct AnimationPlayerCollection;
+
+// Options to set when fetching animations to run on the compositor.
+enum class GetCompositorAnimationOptions {
+  // When fetching compositor animations, if there are any such animations,
+  // also let the ActiveLayerTracker know at the same time.
+  NotifyActiveLayerTracker = 1 << 0
+};
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(GetCompositorAnimationOptions)
 
 namespace css {
 
@@ -47,22 +56,29 @@ public:
   NS_DECL_ISUPPORTS
 
   // nsIStyleRuleProcessor (parts)
-  virtual nsRestyleHint HasStateDependentStyle(StateRuleProcessorData* aData) MOZ_OVERRIDE;
-  virtual nsRestyleHint HasStateDependentStyle(PseudoElementStateRuleProcessorData* aData) MOZ_OVERRIDE;
-  virtual bool HasDocumentStateDependentStyle(StateRuleProcessorData* aData) MOZ_OVERRIDE;
+  virtual nsRestyleHint HasStateDependentStyle(StateRuleProcessorData* aData) override;
+  virtual nsRestyleHint HasStateDependentStyle(PseudoElementStateRuleProcessorData* aData) override;
+  virtual bool HasDocumentStateDependentStyle(StateRuleProcessorData* aData) override;
   virtual nsRestyleHint
-    HasAttributeDependentStyle(AttributeRuleProcessorData* aData) MOZ_OVERRIDE;
-  virtual bool MediumFeaturesChanged(nsPresContext* aPresContext) MOZ_OVERRIDE;
-  virtual void RulesMatching(ElementRuleProcessorData* aData) MOZ_OVERRIDE;
-  virtual void RulesMatching(PseudoElementRuleProcessorData* aData) MOZ_OVERRIDE;
-  virtual void RulesMatching(AnonBoxRuleProcessorData* aData) MOZ_OVERRIDE;
+    HasAttributeDependentStyle(AttributeRuleProcessorData* aData) override;
+  virtual bool MediumFeaturesChanged(nsPresContext* aPresContext) override;
+  virtual void RulesMatching(ElementRuleProcessorData* aData) override;
+  virtual void RulesMatching(PseudoElementRuleProcessorData* aData) override;
+  virtual void RulesMatching(AnonBoxRuleProcessorData* aData) override;
 #ifdef MOZ_XUL
-  virtual void RulesMatching(XULTreeRuleProcessorData* aData) MOZ_OVERRIDE;
+  virtual void RulesMatching(XULTreeRuleProcessorData* aData) override;
 #endif
   virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf)
-    const MOZ_MUST_OVERRIDE MOZ_OVERRIDE;
+    const MOZ_MUST_OVERRIDE override;
   virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
-    const MOZ_MUST_OVERRIDE MOZ_OVERRIDE;
+    const MOZ_MUST_OVERRIDE override;
+
+#ifdef DEBUG
+  static void Initialize();
+#endif
+
+  // NOTE:  This can return null after Disconnect().
+  nsPresContext* PresContext() const { return mPresContext; }
 
   /**
    * Notify the manager that the pres context is going away.
@@ -75,9 +91,9 @@ public:
   void AddStyleUpdatesTo(mozilla::RestyleTracker& aTracker);
 
   AnimationPlayerCollection*
-  GetAnimationPlayers(dom::Element *aElement,
-                      nsCSSPseudoElements::Type aPseudoType,
-                      bool aCreateIfNeeded);
+  GetAnimations(dom::Element *aElement,
+                nsCSSPseudoElements::Type aPseudoType,
+                bool aCreateIfNeeded);
 
   // Returns true if aContent or any of its ancestors has an animation
   // or transition.
@@ -123,6 +139,12 @@ protected:
 public:
   static const LayerAnimationRecord sLayerAnimationInfo[kLayerRecords];
 
+  // Will return non-null for any property with the
+  // CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR flag; should only be called
+  // on such properties.
+  static const LayerAnimationRecord*
+    LayerAnimationRecordFor(nsCSSProperty aProperty);
+
 protected:
   virtual ~CommonAnimationManager();
 
@@ -144,12 +166,11 @@ protected:
     return false;
   }
 
-  // When this returns a value other than nullptr, it also,
-  // as a side-effect, notifies the ActiveLayerTracker.
   static AnimationPlayerCollection*
   GetAnimationsForCompositor(nsIContent* aContent,
                              nsIAtom* aElementProperty,
-                             nsCSSProperty aProperty);
+                             nsCSSProperty aProperty,
+                             GetCompositorAnimationOptions aFlags);
 
   PRCList mElementCollections;
   nsPresContext *mPresContext; // weak (non-null from ctor to Disconnect)
@@ -159,16 +180,16 @@ protected:
 /**
  * A style rule that maps property-StyleAnimationValue pairs.
  */
-class AnimValuesStyleRule MOZ_FINAL : public nsIStyleRule
+class AnimValuesStyleRule final : public nsIStyleRule
 {
 public:
   // nsISupports implementation
   NS_DECL_ISUPPORTS
 
   // nsIStyleRule implementation
-  virtual void MapRuleInfoInto(nsRuleData* aRuleData) MOZ_OVERRIDE;
+  virtual void MapRuleInfoInto(nsRuleData* aRuleData) override;
 #ifdef DEBUG
-  virtual void List(FILE* out = stdout, int32_t aIndent = 0) const MOZ_OVERRIDE;
+  virtual void List(FILE* out = stdout, int32_t aIndent = 0) const override;
 #endif
 
   void AddValue(nsCSSProperty aProperty,
@@ -190,6 +211,14 @@ public:
     nsCSSProperty mProperty;
     mozilla::StyleAnimationValue mValue;
   };
+
+  void AddPropertiesToSet(nsCSSPropertySet& aSet) const
+  {
+    for (size_t i = 0, i_end = mPropertyValuePairs.Length(); i < i_end; ++i) {
+      const PropertyValuePair &cv = mPropertyValuePairs[i];
+      aSet.AddProperty(cv.mProperty);
+    }
+  }
 
 private:
   ~AnimValuesStyleRule() {}
@@ -282,6 +311,9 @@ struct AnimationPlayerCollection : public PRCList
   // (This is useful for determining whether throttle the animation
   // (suppress main-thread style updates).)
   bool CanPerformOnCompositorThread(CanAnimateFlags aFlags) const;
+
+  void PostUpdateLayerAnimations();
+
   bool HasAnimationOfProperty(nsCSSProperty aProperty) const;
 
   bool IsForElement() const { // rather than for a pseudo-element
@@ -322,6 +354,19 @@ struct AnimationPlayerCollection : public PRCList
     MOZ_ASSERT(IsForAfterPseudo(),
                "::before & ::after should be the only pseudo-elements here");
     return NS_LITERAL_STRING("::after");
+  }
+
+  nsCSSPseudoElements::Type PseudoElementType() const
+  {
+    if (IsForElement()) {
+      return nsCSSPseudoElements::ePseudo_NotPseudoElement;
+    }
+    if (IsForBeforePseudo()) {
+      return nsCSSPseudoElements::ePseudo_before;
+    }
+    MOZ_ASSERT(IsForAfterPseudo(),
+               "::before & ::after should be the only pseudo-elements here");
+    return nsCSSPseudoElements::ePseudo_after;
   }
 
   mozilla::dom::Element* GetElementToRestyle() const;

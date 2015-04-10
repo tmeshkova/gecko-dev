@@ -23,6 +23,11 @@ XPCOMUtils.defineLazyGetter(this, "B2GTabList", function() {
   return B2GTabList;
 });
 
+// Load the discovery module eagerly, so that it can set a device name at
+// startup.  This does not cause discovery to start listening for packets, as
+// that only happens once DevTools is enabled.
+devtools.require("devtools/toolkit/discovery/discovery");
+
 let RemoteDebugger = {
   _listening: false,
 
@@ -59,7 +64,11 @@ let RemoteDebugger = {
       this._handleAllowResult = detail => {
         this._handleAllowResult = null;
         this._promptingForAllow = null;
-        if (detail.value) {
+        // Newer Gaia supplies |authResult|, which is one of the
+        // AuthenticationResult values.
+        if (detail.authResult) {
+          resolve(detail.authResult);
+        } else if (detail.value) {
           resolve(DebuggerServer.AuthenticationResult.ALLOW);
         } else {
           resolve(DebuggerServer.AuthenticationResult.DENY);

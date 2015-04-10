@@ -748,8 +748,8 @@ public:
   // using this state.
   nsFrameState              mAdditionalStateBits;
 
-  // When working with the -moz-transform property, we want to hook
-  // the abs-pos and fixed-pos lists together, since transformed
+  // When working with the transform and filter properties, we want to hook
+  // the abs-pos and fixed-pos lists together, since such
   // elements are fixed-pos containing blocks.  This flag determines
   // whether or not we want to wire the fixed-pos and abs-pos lists
   // together.
@@ -938,7 +938,7 @@ nsFrameConstructorState::nsFrameConstructorState(nsIPresShell*          aPresShe
     mAdditionalStateBits(nsFrameState(0)),
     // If the fixed-pos containing block is equal to the abs-pos containing
     // block, use the abs-pos containing block's abs-pos list for fixed-pos
-	// frames.
+    // frames.
     mFixedPosIsAbsPos(aFixedContainingBlock == aAbsoluteContainingBlock),
     mHavePendingPopupgroup(false),
     mCreatingExtraFrames(false),
@@ -972,7 +972,7 @@ nsFrameConstructorState::nsFrameConstructorState(nsIPresShell* aPresShell,
     mAdditionalStateBits(nsFrameState(0)),
     // If the fixed-pos containing block is equal to the abs-pos containing
     // block, use the abs-pos containing block's abs-pos list for fixed-pos
-	// frames.
+    // frames.
     mFixedPosIsAbsPos(aFixedContainingBlock == aAbsoluteContainingBlock),
     mHavePendingPopupgroup(false),
     mCreatingExtraFrames(false),
@@ -1059,8 +1059,7 @@ nsFrameConstructorState::PushAbsoluteContainingBlock(nsContainerFrame* aNewAbsol
    * we're a transformed element.
    */
   mFixedPosIsAbsPos = aPositionedFrame &&
-    (aPositionedFrame->StylePosition()->HasTransform(aPositionedFrame) ||
-     aPositionedFrame->StylePosition()->HasPerspectiveStyle());
+      aPositionedFrame->StyleDisplay()->IsFixedPosContainingBlock(aPositionedFrame);
 
   if (aNewAbsoluteContainingBlock) {
     aNewAbsoluteContainingBlock->MarkAsAbsoluteContainingBlock();
@@ -2033,7 +2032,7 @@ nsCSSFrameConstructor::ConstructTable(nsFrameConstructorState& aState,
 
   // Mark the table frame as an absolute container if needed
   newFrame->AddStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN);
-  if (display->IsPositioned(newFrame)) {
+  if (display->IsAbsPosContainingBlock(newFrame)) {
     aState.PushAbsoluteContainingBlock(newFrame, newFrame, absoluteSaveState);
   }
   NS_ASSERTION(aItem.mAnonChildren.IsEmpty(),
@@ -2076,7 +2075,7 @@ MakeTablePartAbsoluteContainingBlockIfNeeded(nsFrameConstructorState&     aState
   // However, in this case flag serves the additional purpose of indicating that
   // the frame was registered with its table frame. This allows us to avoid the
   // overhead of unregistering the frame in most cases.
-  if (aDisplay->IsPositioned(aFrame)) {
+  if (aDisplay->IsAbsPosContainingBlock(aFrame)) {
     aFrame->AddStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN);
     aState.PushAbsoluteContainingBlock(aFrame, aFrame, aAbsSaveState);
     nsTableFrame::RegisterPositionedTablePart(aFrame);
@@ -2608,7 +2607,7 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
                                             mDocElementContainingBlock),
                    mDocElementContainingBlock, styleContext,
                    &contentFrame, frameItems,
-                   display->IsPositioned(contentFrame) ? contentFrame : nullptr,
+                   display->IsAbsPosContainingBlock(contentFrame) ? contentFrame : nullptr,
                    nullptr);
     newFrame = frameItems.FirstChild();
     NS_ASSERTION(frameItems.OnlyChild(), "multiple root element frames");
@@ -3093,7 +3092,7 @@ nsCSSFrameConstructor::ConstructSelectFrame(nsFrameConstructorState& aState,
     // Notify combobox that it should use the listbox as it's popup
     comboBox->SetDropDown(listFrame);
 
-    NS_ASSERTION(!listFrame->IsPositioned(),
+    NS_ASSERTION(!listFrame->IsAbsPosContaininingBlock(),
                  "Ended up with positioned dropdown list somehow.");
     NS_ASSERTION(!listFrame->IsFloating(),
                  "Ended up with floating dropdown list somehow.");
@@ -3249,7 +3248,7 @@ nsCSSFrameConstructor::ConstructFieldSetFrame(nsFrameConstructorState& aState,
   nsFrameItems                childItems;
 
   blockFrame->AddStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN);
-  if (fieldsetFrame->IsPositioned()) {
+  if (fieldsetFrame->IsAbsPosContaininingBlock()) {
     aState.PushAbsoluteContainingBlock(blockFrame, fieldsetFrame, absoluteSaveState);
   }
 
@@ -3785,9 +3784,8 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
 
     // If we need to create a block formatting context to wrap our
     // kids, do it now.
-    const nsStylePosition* position = styleContext->StylePosition();
     const nsStyleDisplay* maybeAbsoluteContainingBlockDisplay = display;
-    const nsStylePosition* maybeAbsoluteContainingBlockPosition = position;
+    nsIFrame* maybeAbsoluteContainingBlockStyleFrame = primaryFrame;
     nsIFrame* maybeAbsoluteContainingBlock = newFrame;
     nsIFrame* possiblyLeafFrame = newFrame;
     if (bits & FCDATA_CREATE_BLOCK_WRAPPER_FOR_ALL_KIDS) {
@@ -3811,10 +3809,10 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
       // absolute container.  It should be the latter if it's
       // positioned, otherwise the former.
       const nsStyleDisplay* blockDisplay = blockContext->StyleDisplay();
-      if (blockDisplay->IsPositioned(blockFrame)) {
+      if (blockDisplay->IsAbsPosContainingBlock(blockFrame)) {
         maybeAbsoluteContainingBlockDisplay = blockDisplay;
-        maybeAbsoluteContainingBlockPosition = blockContext->StylePosition();
         maybeAbsoluteContainingBlock = blockFrame;
+        maybeAbsoluteContainingBlockStyleFrame = blockFrame;
       }
 
       // Our kids should go into the blockFrame
@@ -3846,19 +3844,18 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
       if (bits & FCDATA_FORCE_NULL_ABSPOS_CONTAINER) {
         aState.PushAbsoluteContainingBlock(nullptr, nullptr, absoluteSaveState);
       } else if (!(bits & FCDATA_SKIP_ABSPOS_PUSH)) {
-        nsIFrame* cb = maybeAbsoluteContainingBlock;
-        cb->AddStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN);
-        // This check is identical to nsStyleDisplay::IsPositioned except without
-        // the assertion that the style display and frame match. When constructing
-        // scroll frames we intentionally use the style display for the outer, but
-        // make the inner the containing block.
+        maybeAbsoluteContainingBlock->AddStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN);
+        // This check is identical to nsStyleDisplay::IsAbsPosContainingBlock
+        // except without the assertion that the style display and frame match.
+        // When constructing scroll frames we intentionally use the style
+        // display for the outer, but make the inner the containing block.
         if ((maybeAbsoluteContainingBlockDisplay->IsAbsolutelyPositionedStyle() ||
              maybeAbsoluteContainingBlockDisplay->IsRelativelyPositionedStyle() ||
-             (maybeAbsoluteContainingBlockPosition->HasTransformStyle() &&
-              cb->IsFrameOfType(nsIFrame::eSupportsCSSTransforms)) ||
-             maybeAbsoluteContainingBlockPosition->HasPerspectiveStyle()) &&
-            !cb->IsSVGText()) {
-          nsContainerFrame* cf = static_cast<nsContainerFrame*>(cb);
+             maybeAbsoluteContainingBlockDisplay->IsFixedPosContainingBlock(
+                 maybeAbsoluteContainingBlockStyleFrame)) &&
+            !maybeAbsoluteContainingBlockStyleFrame->IsSVGText()) {
+          nsContainerFrame* cf = static_cast<nsContainerFrame*>(
+              maybeAbsoluteContainingBlock);
           aState.PushAbsoluteContainingBlock(cf, cf, absoluteSaveState);
         }
       }
@@ -4697,7 +4694,7 @@ nsCSSFrameConstructor::ConstructScrollableBlock(nsFrameConstructorState& aState,
   ConstructBlock(aState, scrolledContentStyle->StyleDisplay(), content,
                  newFrame, newFrame, scrolledContentStyle,
                  &scrolledFrame, blockItem,
-                 aDisplay->IsPositioned(newFrame) ? newFrame : nullptr,
+                 aDisplay->IsAbsPosContainingBlock(newFrame) ? newFrame : nullptr,
                  aItem.mPendingBinding);
 
   NS_ASSERTION(blockItem.FirstChild() == scrolledFrame,
@@ -4740,7 +4737,7 @@ nsCSSFrameConstructor::ConstructNonScrollableBlock(nsFrameConstructorState& aSta
                  aState.GetGeometricParent(aDisplay, aParentFrame),
                  aParentFrame, styleContext, &newFrame,
                  aFrameItems,
-                 aDisplay->IsPositioned(newFrame) ? newFrame : nullptr,
+                 aDisplay->IsAbsPosContainingBlock(newFrame) ? newFrame : nullptr,
                  aItem.mPendingBinding);
   return newFrame;
 }
@@ -5981,10 +5978,9 @@ nsCSSFrameConstructor::GetAbsoluteContainingBlock(nsIFrame* aFrame,
     // the correct containing block (the scrolledframe) in that case.
     // If we're looking for a fixed-pos containing block and the frame is
     // not transformed, skip it.
-    if (!frame->IsPositioned() ||
+    if (!frame->IsAbsPosContaininingBlock() ||
         (aType == FIXED_POS &&
-         !frame->StylePosition()->HasTransform(frame) &&
-         !frame->StylePosition()->HasPerspectiveStyle())) {
+         !frame->StyleDisplay()->IsFixedPosContainingBlock(frame))) {
       continue;
     }
     nsIFrame* absPosCBCandidate = frame;
@@ -9897,9 +9893,8 @@ nsCSSFrameConstructor::CreateNeededPseudoInternalRubyBoxes(
     return;
   }
 
-  nsStyleContext* parentStyle = aParentFrame->StyleContext();
-  if (!parentStyle->GetPseudo()) {
-    // Normally, pseudo frames start from and end at some elements,
+  if (!IsRubyPseudo(aParentFrame)) {
+    // Normally, ruby pseudo frames start from and end at some elements,
     // which means they don't have leading and trailing whitespaces at
     // all.  But there are two cases where they do actually have leading
     // or trailing whitespaces:
@@ -9914,6 +9909,7 @@ nsCSSFrameConstructor::CreateNeededPseudoInternalRubyBoxes(
 
   FCItemIterator iter(aItems);
   nsIContent* parentContent = aParentFrame->GetContent();
+  nsStyleContext* parentStyle = aParentFrame->StyleContext();
   while (!iter.IsDone()) {
     if (!iter.SkipItemsWantingParentType(ourParentType)) {
       if (ourParentType == eTypeRuby) {
@@ -10158,18 +10154,26 @@ nsCSSFrameConstructor::WrapItemsInPseudoParent(nsIContent* aParentContent,
                               wrapperStyle,
                               true, nullptr);
 
+  const nsStyleDisplay* disp = newItem->mStyleContext->StyleDisplay();
   // Here we're cheating a tad... technically, table-internal items should be
   // inline if aParentFrame is inline, but they'll get wrapped in an
   // inline-table in the end, so it'll all work out.  In any case, arguably
   // we don't need to maintain this state at this point... but it's better
   // to, I guess.
   newItem->mIsAllInline = newItem->mHasInlineEnds =
-    newItem->mStyleContext->StyleDisplay()->IsInlineOutsideStyle();
+    disp->IsInlineOutsideStyle();
 
-  // Table pseudo frames always induce line boundaries around their
-  // contents.
-  newItem->mChildItems.SetLineBoundaryAtStart(true);
-  newItem->mChildItems.SetLineBoundaryAtEnd(true);
+  bool isRuby = disp->IsRubyDisplayType();
+  // All types of ruby frames need a block frame to provide line layout,
+  // hence they are always line participant.
+  newItem->mIsLineParticipant = isRuby;
+
+  if (!isRuby) {
+    // Table pseudo frames always induce line boundaries around their
+    // contents.
+    newItem->mChildItems.SetLineBoundaryAtStart(true);
+    newItem->mChildItems.SetLineBoundaryAtEnd(true);
+  }
   // The parent of the items in aItems is also the parent of the items
   // in mChildItems
   newItem->mChildItems.SetParentHasNoXBLChildren(

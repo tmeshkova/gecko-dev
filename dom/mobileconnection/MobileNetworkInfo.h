@@ -17,8 +17,8 @@ namespace dom {
 
 class GlobalObject;
 
-class MobileNetworkInfo MOZ_FINAL : public nsIMobileNetworkInfo
-                                  , public nsWrapperCache
+class MobileNetworkInfo final : public nsIMobileNetworkInfo
+                              , public nsWrapperCache
 {
 public:
   NS_DECL_NSIMOBILENETWORKINFO
@@ -41,7 +41,7 @@ public:
   }
 
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL interface
   Nullable<MobileNetworkState>

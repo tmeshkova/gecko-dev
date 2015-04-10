@@ -63,8 +63,8 @@ public:
   void StowJSVal(JS::Value& aVp);
 
   // WebIDL API
-  virtual JSObject* WrapObject(JSContext* cx)
-    MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto)
+    override;
 
   nsISupports* GetParentObject() const { return nullptr; }
 
@@ -133,11 +133,11 @@ public:
   NS_DECL_NSIDOMDOMEXCEPTION
 
   // nsIException overrides
-  NS_IMETHOD ToString(nsACString& aReturn) MOZ_OVERRIDE;
+  NS_IMETHOD ToString(nsACString& aReturn) override;
 
   // nsWrapperCache overrides
-  virtual JSObject* WrapObject(JSContext* aCx)
-    MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
+    override;
 
   static already_AddRefed<DOMException>
   Constructor(GlobalObject& /* unused */,

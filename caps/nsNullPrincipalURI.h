@@ -18,15 +18,17 @@
 #include "mozilla/Attributes.h"
 #include "nsIIPCSerializableURI.h"
 #include "mozilla/MemoryReporting.h"
+#include "nsNullPrincipal.h"
+#include "nsID.h"
 
 // {51fcd543-3b52-41f7-b91b-6b54102236e6}
 #define NS_NULLPRINCIPALURI_IMPLEMENTATION_CID \
   {0x51fcd543, 0x3b52, 0x41f7, \
     {0xb9, 0x1b, 0x6b, 0x54, 0x10, 0x22, 0x36, 0xe6} }
 
-class nsNullPrincipalURI MOZ_FINAL : public nsIURI
-                                   , public nsISizeOf
-                                   , public nsIIPCSerializableURI
+class nsNullPrincipalURI final : public nsIURI
+                               , public nsISizeOf
+                               , public nsIIPCSerializableURI
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -34,21 +36,25 @@ public:
   NS_DECL_NSIIPCSERIALIZABLEURI
 
   // nsISizeOf
-  virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
-  virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
+  virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const override;
+  virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const override;
 
-  explicit nsNullPrincipalURI(const nsCString &aSpec);
+  // NB: This constructor exists only for deserialization.  Everyone
+  // else should call Create.
+  nsNullPrincipalURI();
 
-  // NB: This constructor exists only for deserialization.
-  nsNullPrincipalURI() { }
+  // Returns null on failure.
+  static already_AddRefed<nsNullPrincipalURI> Create();
 
 private:
+  nsNullPrincipalURI(const nsNullPrincipalURI& aOther);
+
   ~nsNullPrincipalURI() {}
 
-  void InitializeFromSpec(const nsCString &aSpec);
+  nsresult Init();
 
-  nsCString mScheme;
-  nsCString mPath;
+  char mPathBytes[NSID_LENGTH];
+  nsFixedCString mPath;
 };
 
 #endif // __nsNullPrincipalURI_h__

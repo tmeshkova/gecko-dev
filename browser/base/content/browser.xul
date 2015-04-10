@@ -661,7 +661,7 @@
             setfocus="false"
             tooltip="tabbrowser-tab-tooltip"
             stopwatchid="FX_TAB_CLICK_MS">
-        <tab class="tabbrowser-tab" selected="true" fadein="true"/>
+        <tab class="tabbrowser-tab" selected="true" visuallyselected="true" fadein="true"/>
       </tabs>
 
       <toolbarbutton id="new-tab-button"
@@ -827,11 +827,14 @@
                        hidden="true"
                        tooltiptext="&pageReportIcon.tooltip;"
                        onclick="gPopupBlockerObserver.onReportButtonClick(event);"/>
-                <toolbarbutton id="reader-mode-button"
-                               class="tabbable"
-                               hidden="true"
-                               onclick="ReaderParent.handleReaderButtonEvent(event);"
-                               onkeypress="ReaderParent.handleReaderButtonEvent(event);"/>
+                <image id="readinglist-addremove-button"
+                       class="urlbar-icon"
+                       hidden="true"
+                       onclick="ReadingListUI.togglePageByBrowser(gBrowser.selectedBrowser);"/>
+                <image id="reader-mode-button"
+                       class="urlbar-icon"
+                       hidden="true"
+                       onclick="ReaderParent.toggleReaderMode(event);"/>
               </hbox>
               <toolbarbutton id="urlbar-go-button"
                              class="chromeclass-toolbar-additional"

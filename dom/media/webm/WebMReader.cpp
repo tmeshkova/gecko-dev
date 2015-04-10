@@ -329,7 +329,10 @@ void WebMReader::Cleanup()
 nsresult WebMReader::ReadMetadata(MediaInfo* aInfo,
                                   MetadataTags** aTags)
 {
-  NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
+  // We can't use OnTaskQueue() here because of the wacky initialization task
+  // queue that TrackBuffer uses. We should be able to fix this when we do
+  // bug 1148234.
+  MOZ_ASSERT(mDecoder->OnDecodeTaskQueue());
 
   nestegg_io io;
   io.read = webm_read;
@@ -583,7 +586,7 @@ bool WebMReader::InitOpusDecoder()
 
 bool WebMReader::DecodeAudioPacket(nestegg_packet* aPacket, int64_t aOffset)
 {
-  NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
+  MOZ_ASSERT(OnTaskQueue());
 
   int r = 0;
   unsigned int count = 0;
@@ -931,7 +934,7 @@ nsReturnRef<NesteggPacketHolder> WebMReader::NextPacket(TrackType aTrackType)
 
 bool WebMReader::DecodeAudioData()
 {
-  NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
+  MOZ_ASSERT(OnTaskQueue());
 
   nsAutoRef<NesteggPacketHolder> holder(NextPacket(AUDIO));
   if (!holder) {
@@ -941,8 +944,108 @@ bool WebMReader::DecodeAudioData()
   return DecodeAudioPacket(holder->mPacket, holder->mOffset);
 }
 
+bool WebMReader::FilterPacketByTime(int64_t aEndTime, WebMPacketQueue& aOutput)
+{
+  // Push the video frames to the aOutput which's timestamp is less
+  // than aEndTime.
+  while (true) {
+    nsAutoRef<NesteggPacketHolder> holder(NextPacket(VIDEO));
+    if (!holder) {
+      break;
+    }
+    uint64_t tstamp = 0;
+    int r = nestegg_packet_tstamp(holder->mPacket, &tstamp);
+    if (r == -1) {
+      break;
+    }
+    uint64_t tstamp_usecs = tstamp / NS_PER_USEC;
+    if (tstamp_usecs >= (uint64_t)aEndTime) {
+      PushVideoPacket(holder.disown());
+      return true;
+    } else {
+      aOutput.PushFront(holder.disown());
+    }
+  }
+
+  return false;
+}
+
+int64_t WebMReader::GetNextKeyframeTime(int64_t aTimeThreshold)
+{
+  WebMPacketQueue skipPacketQueue;
+  if (!FilterPacketByTime(aTimeThreshold, skipPacketQueue)) {
+    // Restore the packets before we return -1.
+    uint32_t size = skipPacketQueue.GetSize();
+    for (uint32_t i = 0; i < size; ++i) {
+      PushVideoPacket(skipPacketQueue.PopFront());
+    }
+    return -1;
+  }
+
+  // Find keyframe.
+  bool foundKeyframe = false;
+  int64_t keyframeTime = -1;
+  while (!foundKeyframe) {
+    nsAutoRef<NesteggPacketHolder> holder(NextPacket(VIDEO));
+    if (!holder) {
+      break;
+    }
+    unsigned int count = 0;
+    int r = nestegg_packet_count(holder->mPacket, &count);
+    if (r == -1) {
+      break;
+    }
+    uint64_t tstamp = 0;
+    r = nestegg_packet_tstamp(holder->mPacket, &tstamp);
+    if (r == -1) {
+      break;
+    }
+    uint64_t tstamp_usecs = tstamp / NS_PER_USEC;
+
+    for (uint32_t i = 0; i < count; ++i) {
+      unsigned char* data;
+      size_t length;
+      r = nestegg_packet_data(holder->mPacket, i, &data, &length);
+      if (r == -1) {
+        foundKeyframe = true;
+        break;
+      }
+      vpx_codec_stream_info_t si;
+      memset(&si, 0, sizeof(si));
+      si.sz = sizeof(si);
+      if (mVideoCodec == NESTEGG_CODEC_VP8) {
+        vpx_codec_peek_stream_info(vpx_codec_vp8_dx(), data, length, &si);
+      } else if (mVideoCodec == NESTEGG_CODEC_VP9) {
+        vpx_codec_peek_stream_info(vpx_codec_vp9_dx(), data, length, &si);
+      }
+      if (si.is_kf) {
+        foundKeyframe = true;
+        keyframeTime = tstamp_usecs;
+        break;
+      }
+    }
+    skipPacketQueue.PushFront(holder.disown());
+  }
+
+  uint32_t size = skipPacketQueue.GetSize();
+  for (uint32_t i = 0; i < size; ++i) {
+    PushVideoPacket(skipPacketQueue.PopFront());
+  }
+
+  return keyframeTime;
+}
+
+bool WebMReader::ShouldSkipVideoFrame(int64_t aTimeThreshold)
+{
+  return GetNextKeyframeTime(aTimeThreshold) != -1;
+}
+
 bool WebMReader::DecodeVideoFrame(bool &aKeyframeSkip, int64_t aTimeThreshold)
 {
+  if (!(aKeyframeSkip && ShouldSkipVideoFrame(aTimeThreshold))) {
+    LOG(PR_LOG_DEBUG, ("Reader [%p]: set the aKeyframeSkip to false.",this));
+    aKeyframeSkip = false;
+  }
   return mVideoDecoder->DecodeVideoFrame(aKeyframeSkip, aTimeThreshold);
 }
 
@@ -964,7 +1067,7 @@ WebMReader::Seek(int64_t aTarget, int64_t aEndTime)
 
 nsresult WebMReader::SeekInternal(int64_t aTarget)
 {
-  NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
+  MOZ_ASSERT(OnTaskQueue());
   if (mVideoDecoder) {
     nsresult rv = mVideoDecoder->Flush();
     NS_ENSURE_SUCCESS(rv, rv);

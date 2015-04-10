@@ -18,6 +18,7 @@
 #include "nsLayoutUtils.h"
 #include "nsIFrame.h"
 #include "nsIDocument.h"
+#include "nsDOMMutationObserver.h"
 #include <math.h>
 
 using namespace mozilla;
@@ -34,10 +35,10 @@ CSSAnimationPlayer::GetReady(ErrorResult& aRv)
 }
 
 void
-CSSAnimationPlayer::Play()
+CSSAnimationPlayer::Play(LimitBehavior aLimitBehavior)
 {
   mPauseShouldStick = false;
-  AnimationPlayer::Play();
+  AnimationPlayer::Play(aLimitBehavior);
 }
 
 void
@@ -70,7 +71,7 @@ CSSAnimationPlayer::PlayFromStyle()
 {
   mIsStylePaused = false;
   if (!mPauseShouldStick) {
-    DoPlay();
+    DoPlay(AnimationPlayer::LimitBehavior::Continue);
   }
 }
 
@@ -221,6 +222,32 @@ nsAnimationManager::QueueEvents(AnimationPlayerCollection* aCollection,
   }
 }
 
+void
+nsAnimationManager::MaybeUpdateCascadeResults(AnimationPlayerCollection* aCollection)
+{
+  for (size_t playerIdx = aCollection->mPlayers.Length(); playerIdx-- != 0; ) {
+    CSSAnimationPlayer* player =
+      aCollection->mPlayers[playerIdx]->AsCSSAnimationPlayer();
+
+    if (player->HasInEffectSource() != player->mInEffectForCascadeResults) {
+      // Update our own cascade results.
+      mozilla::dom::Element* element = aCollection->GetElementToRestyle();
+      if (element) {
+        nsIFrame* frame = element->GetPrimaryFrame();
+        if (frame) {
+          UpdateCascadeResults(frame->StyleContext(), aCollection);
+        }
+      }
+
+      // Notify the transition manager, whose results might depend on ours.
+      mPresContext->TransitionManager()->
+        UpdateCascadeResultsWithAnimations(aCollection);
+
+      return;
+    }
+  }
+}
+
 /* virtual */ size_t
 nsAnimationManager::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
 {
@@ -253,20 +280,29 @@ nsAnimationManager::CheckAnimationRule(nsStyleContext* aStyleContext,
 
   const nsStyleDisplay* disp = aStyleContext->StyleDisplay();
   AnimationPlayerCollection* collection =
-    GetAnimationPlayers(aElement, aStyleContext->GetPseudoType(), false);
+    GetAnimations(aElement, aStyleContext->GetPseudoType(), false);
   if (!collection &&
       disp->mAnimationNameCount == 1 &&
       disp->mAnimations[0].GetName().IsEmpty()) {
     return nullptr;
   }
 
+  nsAutoAnimationMutationBatch mb(aElement);
+
   // build the animations list
   dom::AnimationTimeline* timeline = aElement->OwnerDoc()->Timeline();
   AnimationPlayerPtrArray newPlayers;
-  BuildAnimations(aStyleContext, aElement, timeline, newPlayers);
+  if (!aStyleContext->IsInDisplayNoneSubtree()) {
+    BuildAnimations(aStyleContext, aElement, timeline, newPlayers);
+  }
 
   if (newPlayers.IsEmpty()) {
     if (collection) {
+      // There might be transitions that run now that animations don't
+      // override them.
+      mPresContext->TransitionManager()->
+        UpdateCascadeResultsWithAnimationsToBeDestroyed(collection);
+
       collection->Destroy();
     }
     return nullptr;
@@ -314,11 +350,16 @@ nsAnimationManager::CheckAnimationRule(nsStyleContext* aStyleContext,
           continue;
         }
 
+        bool animationChanged = false;
+
         // Update the old from the new so we can keep the original object
         // identity (and any expando properties attached to it).
         if (oldPlayer->GetSource() && newPlayer->GetSource()) {
           Animation* oldAnim = oldPlayer->GetSource();
           Animation* newAnim = newPlayer->GetSource();
+          animationChanged =
+            oldAnim->Timing() != newAnim->Timing() ||
+            oldAnim->Properties() != newAnim->Properties();
           oldAnim->Timing() = newAnim->Timing();
           oldAnim->Properties() = newAnim->Properties();
         }
@@ -333,11 +374,18 @@ nsAnimationManager::CheckAnimationRule(nsStyleContext* aStyleContext,
         // (We should check newPlayer->IsStylePaused() but that requires
         //  downcasting to CSSAnimationPlayer and we happen to know that
         //  newPlayer will only ever be paused by calling PauseFromStyle
-        //  making IsPaused synonymous in this case.)
-        if (!oldPlayer->IsStylePaused() && newPlayer->IsPaused()) {
+        //  making IsPausedOrPausing synonymous in this case.)
+        if (!oldPlayer->IsStylePaused() && newPlayer->IsPausedOrPausing()) {
           oldPlayer->PauseFromStyle();
-        } else if (oldPlayer->IsStylePaused() && !newPlayer->IsPaused()) {
+          animationChanged = true;
+        } else if (oldPlayer->IsStylePaused() &&
+                   !newPlayer->IsPausedOrPausing()) {
           oldPlayer->PlayFromStyle();
+          animationChanged = true;
+        }
+
+        if (animationChanged) {
+          nsNodeUtils::AnimationChanged(oldPlayer);
         }
 
         // Replace new animation with the (updated) old one and remove the
@@ -350,11 +398,15 @@ nsAnimationManager::CheckAnimationRule(nsStyleContext* aStyleContext,
         newPlayer = nullptr;
         newPlayers.ReplaceElementAt(newIdx, oldPlayer);
         collection->mPlayers.RemoveElementAt(oldIdx);
+
+        // We've touched the old animation's timing properties, so this
+        // could update the old player's relevance.
+        oldPlayer->UpdateRelevance();
       }
     }
   } else {
     collection =
-      GetAnimationPlayers(aElement, aStyleContext->GetPseudoType(), true);
+      GetAnimations(aElement, aStyleContext->GetPseudoType(), true);
   }
   collection->mPlayers.SwapElements(newPlayers);
   collection->mNeedsRefreshes = true;
@@ -364,6 +416,8 @@ nsAnimationManager::CheckAnimationRule(nsStyleContext* aStyleContext,
   for (size_t newPlayerIdx = newPlayers.Length(); newPlayerIdx-- != 0; ) {
     newPlayers[newPlayerIdx]->Cancel();
   }
+
+  UpdateCascadeResults(aStyleContext, collection);
 
   TimeStamp refreshTime = mPresContext->RefreshDriver()->MostRecentRefresh();
   UpdateStyleAndEvents(collection, refreshTime,
@@ -574,6 +628,7 @@ nsAnimationManager::BuildAnimations(nsStyleContext* aStyleContext,
 
       AnimationProperty &propData = *destAnim->Properties().AppendElement();
       propData.mProperty = prop;
+      propData.mWinsInCascade = true;
 
       KeyframeData *fromKeyframe = nullptr;
       nsRefPtr<nsStyleContext> fromContext;
@@ -679,6 +734,119 @@ nsAnimationManager::BuildSegment(InfallibleTArray<AnimationPropertySegment>&
   return true;
 }
 
+/* static */ void
+nsAnimationManager::UpdateCascadeResults(
+                      nsStyleContext* aStyleContext,
+                      AnimationPlayerCollection* aElementAnimations)
+{
+  /*
+   * Figure out which properties we need to examine.
+   */
+
+  // size of 2 since we only currently have 2 properties we animate on
+  // the compositor
+  nsAutoTArray<nsCSSProperty, 2> propertiesToTrack;
+
+  {
+    nsCSSPropertySet propertiesToTrackAsSet;
+
+    for (size_t playerIdx = aElementAnimations->mPlayers.Length();
+         playerIdx-- != 0; ) {
+      const AnimationPlayer* player = aElementAnimations->mPlayers[playerIdx];
+      const Animation* anim = player->GetSource();
+      if (!anim) {
+        continue;
+      }
+
+      for (size_t propIdx = 0, propEnd = anim->Properties().Length();
+           propIdx != propEnd; ++propIdx) {
+        const AnimationProperty& prop = anim->Properties()[propIdx];
+        // We only bother setting mWinsInCascade for properties that we
+        // can animate on the compositor.
+        if (nsCSSProps::PropHasFlags(prop.mProperty,
+                                     CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR)) {
+          if (!propertiesToTrackAsSet.HasProperty(prop.mProperty)) {
+            propertiesToTrack.AppendElement(prop.mProperty);
+            propertiesToTrackAsSet.AddProperty(prop.mProperty);
+          }
+        }
+      }
+    }
+  }
+
+  /*
+   * Determine whether those properties are set in things that
+   * override animations.
+   */
+
+  nsCSSPropertySet propertiesOverridden;
+  nsRuleNode::ComputePropertiesOverridingAnimation(propertiesToTrack,
+                                                   aStyleContext,
+                                                   propertiesOverridden);
+
+  /*
+   * Set mWinsInCascade based both on what is overridden at levels
+   * higher than animations and based on one animation overriding
+   * another.
+   *
+   * We iterate from the last animation to the first, just like we do
+   * when calling ComposeStyle from
+   * AnimationPlayerCollection::EnsureStyleRuleFor.  Later animations
+   * override earlier ones, so we add properties to the set of
+   * overridden properties as we encounter them, if the animation is
+   * currently in effect.
+   */
+
+  bool changed = false;
+  for (size_t playerIdx = aElementAnimations->mPlayers.Length();
+       playerIdx-- != 0; ) {
+    CSSAnimationPlayer* player =
+      aElementAnimations->mPlayers[playerIdx]->AsCSSAnimationPlayer();
+    Animation* anim = player->GetSource();
+
+    player->mInEffectForCascadeResults = player->HasInEffectSource();
+
+    if (!anim) {
+      continue;
+    }
+
+    for (size_t propIdx = 0, propEnd = anim->Properties().Length();
+         propIdx != propEnd; ++propIdx) {
+      AnimationProperty& prop = anim->Properties()[propIdx];
+      // We only bother setting mWinsInCascade for properties that we
+      // can animate on the compositor.
+      if (nsCSSProps::PropHasFlags(prop.mProperty,
+                                   CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR)) {
+        bool newWinsInCascade =
+          !propertiesOverridden.HasProperty(prop.mProperty);
+        if (newWinsInCascade != prop.mWinsInCascade) {
+          changed = true;
+        }
+        prop.mWinsInCascade = newWinsInCascade;
+
+        if (prop.mWinsInCascade && player->mInEffectForCascadeResults) {
+          // This animation is in effect right now, so it overrides
+          // earlier animations.  (For animations that aren't in effect,
+          // we set mWinsInCascade as though they were, but they don't
+          // suppress animations lower in the cascade.)
+          propertiesOverridden.AddProperty(prop.mProperty);
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    nsPresContext* presContext = aElementAnimations->mManager->PresContext();
+    presContext->RestyleManager()->IncrementAnimationGeneration();
+    aElementAnimations->UpdateAnimationGeneration(presContext);
+    aElementAnimations->PostUpdateLayerAnimations();
+
+    // Invalidate our style rule.
+    aElementAnimations->mNeedsRefreshes = true;
+    aElementAnimations->mStyleRuleRefreshTime = TimeStamp();
+  }
+}
+
 /* virtual */ void
 nsAnimationManager::WillRefresh(mozilla::TimeStamp aTime)
 {
@@ -710,6 +878,9 @@ nsAnimationManager::FlushAnimations(FlushFlags aFlags)
        l = PR_NEXT_LINK(l)) {
     AnimationPlayerCollection* collection =
       static_cast<AnimationPlayerCollection*>(l);
+
+    nsAutoAnimationMutationBatch mb(collection->mElement);
+
     collection->Tick();
     bool canThrottleTick = aFlags == Can_Throttle &&
       collection->CanPerformOnCompositorThread(

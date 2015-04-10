@@ -10,6 +10,7 @@
 #include "Point.h"
 #include "Rect.h"
 #include "Matrix.h"
+#include "Quaternion.h"
 #include "UserData.h"
 
 // GenericRefCountedBase allows us to hold on to refcounted objects of any type
@@ -194,7 +195,7 @@ public:
     : mColor(aColor)
   {}
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::COLOR;
   }
@@ -222,7 +223,7 @@ public:
   {
   }
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::LINEAR_GRADIENT;
   }
@@ -262,7 +263,7 @@ public:
   {
   }
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::RADIAL_GRADIENT;
   }
@@ -295,7 +296,7 @@ public:
     , mSamplingRect(aSamplingRect)
   {}
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::SURFACE;
   }
@@ -371,7 +372,7 @@ protected:
 class DataSourceSurface : public SourceSurface
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DataSourceSurface, MOZ_OVERRIDE)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DataSourceSurface, override)
   DataSourceSurface()
     : mIsMapped(false)
   {
@@ -395,7 +396,7 @@ public:
     READ_WRITE
   };
 
-  virtual SurfaceType GetType() const MOZ_OVERRIDE { return SurfaceType::DATA; }
+  virtual SurfaceType GetType() const override { return SurfaceType::DATA; }
   /** @deprecated
    * Get the raw bitmap data of the surface.
    * Can return null if there was OOM allocating surface data.
@@ -430,7 +431,7 @@ public:
    * Returns a DataSourceSurface with the same data as this one, but
    * guaranteed to have surface->GetType() == SurfaceType::DATA.
    */
-  virtual TemporaryRef<DataSourceSurface> GetDataSurface() MOZ_OVERRIDE;
+  virtual TemporaryRef<DataSourceSurface> GetDataSurface() override;
 
 protected:
   bool mIsMapped;

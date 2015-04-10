@@ -28,8 +28,8 @@ class Proxy;
 class XMLHttpRequestUpload;
 class WorkerPrivate;
 
-class XMLHttpRequest MOZ_FINAL: public nsXHREventTarget,
-                                public WorkerFeature
+class XMLHttpRequest final: public nsXHREventTarget,
+                            public WorkerFeature
 {
 public:
   struct StateData
@@ -70,7 +70,7 @@ private:
 
 public:
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(XMLHttpRequest,
@@ -106,7 +106,7 @@ public:
   Unpin();
 
   bool
-  Notify(JSContext* aCx, Status aStatus) MOZ_OVERRIDE;
+  Notify(JSContext* aCx, Status aStatus) override;
 
   IMPL_EVENT_HANDLER(readystatechange)
 
@@ -171,6 +171,9 @@ public:
 
   void
   Send(File& aBody, ErrorResult& aRv);
+
+  void
+  Send(nsFormData& aBody, ErrorResult& aRv);
 
   void
   Send(const ArrayBuffer& aBody, ErrorResult& aRv);

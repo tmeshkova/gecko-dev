@@ -15,8 +15,8 @@ namespace mozilla {
 namespace dom {
 namespace cellbroadcast {
 
-class CellBroadcastIPCService MOZ_FINAL : public PCellBroadcastChild
-                                        , public nsICellBroadcastService
+class CellBroadcastIPCService final : public PCellBroadcastChild
+                                    , public nsICellBroadcastService
 
 {
 public:
@@ -39,12 +39,12 @@ public:
                             const bool& aHasEtwsInfo,
                             const uint32_t& aEtwsWarningType,
                             const bool& aEtwsEmergencyUserAlert,
-                            const bool& aEtwsPopup) MOZ_OVERRIDE;
+                            const bool& aEtwsPopup) override;
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
 private:
-  // MOZ_FINAL suppresses -Werror,-Wdelete-non-virtual-dtor
+  // final suppresses -Werror,-Wdelete-non-virtual-dtor
   ~CellBroadcastIPCService();
 
   bool mActorDestroyed;

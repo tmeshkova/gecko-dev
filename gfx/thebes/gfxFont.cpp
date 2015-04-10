@@ -2657,7 +2657,13 @@ gfxFont::ShapeTextWithoutWordCache(gfxContext *aContext,
             aTextRun->SetIsNewline(aOffset + i);
         } else if (IsInvalidControlChar(ch) &&
             !(aTextRun->GetFlags() & gfxTextRunFactory::TEXT_HIDE_CONTROL_CHARACTERS)) {
-            aTextRun->SetMissingGlyph(aOffset + i, ch, this);
+            if (GetFontEntry()->IsUserFont() && HasCharacter(ch)) {
+                ShapeFragmentWithoutWordCache(aContext, aText + i,
+                                              aOffset + i, 1,
+                                              aScript, aVertical, aTextRun);
+            } else {
+                aTextRun->SetMissingGlyph(aOffset + i, ch, this);
+            }
         }
         fragStart = i + 1;
     }
@@ -2861,7 +2867,13 @@ gfxFont::SplitAndInitTextRun(gfxContext *aContext,
             aTextRun->SetIsNewline(aRunStart + i);
         } else if (IsInvalidControlChar(ch) &&
             !(aTextRun->GetFlags() & gfxTextRunFactory::TEXT_HIDE_CONTROL_CHARACTERS)) {
-            aTextRun->SetMissingGlyph(aRunStart + i, ch, this);
+            if (GetFontEntry()->IsUserFont() && HasCharacter(ch)) {
+                ShapeFragmentWithoutWordCache(aContext, aString + i,
+                                              aRunStart + i, 1,
+                                              aRunScript, aVertical, aTextRun);
+            } else {
+                aTextRun->SetMissingGlyph(aRunStart + i, ch, this);
+            }
         }
 
         hash = 0;
@@ -3484,9 +3496,14 @@ gfxFont::CreateVerticalMetrics()
             // centered vertical baseline by default.
             gfxFloat halfExtent = 0.5 * gfxFloat(mFUnitsConvFactor) *
                 (int16_t(vhea->ascender) + std::abs(int16_t(vhea->descender)));
-            metrics->maxAscent = halfExtent;
-            metrics->maxDescent = halfExtent;
-            SET_SIGNED(externalLeading, vhea->lineGap);
+            // Some bogus fonts have ascent and descent set to zero in 'vhea'.
+            // In that case we just ignore them and keep our synthetic values
+            // from above.
+            if (halfExtent > 0) {
+                metrics->maxAscent = halfExtent;
+                metrics->maxDescent = halfExtent;
+                SET_SIGNED(externalLeading, vhea->lineGap);
+            }
         }
     }
 
@@ -3743,9 +3760,9 @@ gfxFontStyle::AdjustForSubSuperscript(int32_t aAppUnitsPerDevPixel)
     // calculate reduced size, roughly mimicing behavior of font-size: smaller
     float cssSize = size * aAppUnitsPerDevPixel / AppUnitsPerCSSPixel();
     if (cssSize < NS_FONT_SUB_SUPER_SMALL_SIZE) {
-        cssSize *= NS_FONT_SUB_SUPER_SIZE_RATIO_SMALL;
-    } else if (cssSize >= NS_FONT_SUB_SUPER_SMALL_SIZE) {
-        cssSize *= NS_FONT_SUB_SUPER_SIZE_RATIO_LARGE;
+        size *= NS_FONT_SUB_SUPER_SIZE_RATIO_SMALL;
+    } else if (cssSize >= NS_FONT_SUB_SUPER_LARGE_SIZE) {
+        size *= NS_FONT_SUB_SUPER_SIZE_RATIO_LARGE;
     } else {
         gfxFloat t = (cssSize - NS_FONT_SUB_SUPER_SMALL_SIZE) /
                          (NS_FONT_SUB_SUPER_LARGE_SIZE -

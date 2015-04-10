@@ -30,8 +30,8 @@ class TelephonyDialCallback;
 
 class OwningTelephonyCallOrTelephonyCallGroup;
 
-class Telephony MOZ_FINAL : public DOMEventTargetHelper,
-                            private nsITelephonyListener
+class Telephony final : public DOMEventTargetHelper,
+                        private nsITelephonyListener
 {
   /**
    * Class Telephony doesn't actually expose nsITelephonyListener.
@@ -69,7 +69,7 @@ public:
 
   // WrapperCache
   virtual JSObject*
-  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL
   already_AddRefed<Promise>

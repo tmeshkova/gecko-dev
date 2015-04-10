@@ -25,6 +25,17 @@
       mDriverInfo->AppendElement(info); \
     } while (false)
 
+#define APPEND_TO_DRIVER_BLOCKLIST_RANGE_GPU2(os, vendor, devices, feature, featureStatus, driverComparator, driverVersion, driverVersionMax, suggestedVersion) \
+    do { \
+      MOZ_ASSERT(driverComparator == DRIVER_BETWEEN_EXCLUSIVE || \
+                 driverComparator == DRIVER_BETWEEN_INCLUSIVE || \
+                 driverComparator == DRIVER_BETWEEN_INCLUSIVE_START); \
+      GfxDriverInfo info(os, vendor, devices, feature, featureStatus, driverComparator, driverVersion, suggestedVersion, false, true); \
+      info.mDriverVersionMax = driverVersionMax; \
+      mDriverInfo->AppendElement(info); \
+    } while (false)
+
+
 namespace mozilla {
 namespace widget {
 
@@ -36,6 +47,7 @@ enum OperatingSystem {
   DRIVER_OS_WINDOWS_7,
   DRIVER_OS_WINDOWS_8,
   DRIVER_OS_WINDOWS_8_1,
+  DRIVER_OS_WINDOWS_10,
   DRIVER_OS_LINUX,
   DRIVER_OS_OS_X_10_5,
   DRIVER_OS_OS_X_10_6,
@@ -74,6 +86,8 @@ enum DeviceFamily {
   Geforce7300GT,
   Nvidia310M,
   AMDRadeonHD5800,
+  Bug1137716,
+  Bug1116812,
   DeviceFamilyMax
 };
 
@@ -97,7 +111,7 @@ struct GfxDriverInfo
   GfxDriverInfo(OperatingSystem os, nsAString& vendor, GfxDeviceFamily* devices,
                 int32_t feature, int32_t featureStatus, VersionComparisonOp op,
                 uint64_t driverVersion, const char *suggestedVersion = nullptr,
-                bool ownDevices = false);
+                bool ownDevices = false, bool gpu2 = false);
 
   GfxDriverInfo();
   GfxDriverInfo(const GfxDriverInfo&);
@@ -138,6 +152,8 @@ struct GfxDriverInfo
   static nsAString* mDeviceVendors[DeviceVendorMax];
 
   nsString mModel, mHardware, mProduct, mManufacturer;
+
+  bool mGpu2;
 };
 
 #define GFX_DRIVER_VERSION(a,b,c,d) \

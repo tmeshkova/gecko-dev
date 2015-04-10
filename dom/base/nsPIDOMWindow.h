@@ -63,8 +63,8 @@ enum UIStateChangeType
 };
 
 #define NS_PIDOMWINDOW_IID \
-{ 0x19fb3019, 0x7b5d, 0x4235, \
-  { 0xa9, 0x59, 0xa2, 0x31, 0xa2, 0xe7, 0x94, 0x79 } }
+{ 0x4178bd68, 0xa3f7, 0x4ff7, \
+  { 0xa6, 0x27, 0x4a, 0x99, 0xa1, 0xe0, 0x42, 0x37 } }
 
 class nsPIDOMWindow : public nsIDOMWindowInternal
 {
@@ -96,6 +96,17 @@ public:
   }
 
   // Outer windows only.
+  void SetDesktopModeViewport(bool aDesktopModeViewport)
+  {
+    MOZ_ASSERT(IsOuterWindow());
+    mDesktopModeViewport = aDesktopModeViewport;
+  }
+  bool IsDesktopModeViewport() const
+  {
+    MOZ_ASSERT(IsOuterWindow());
+    return mDesktopModeViewport;
+  }
+
   virtual void SetIsBackground(bool aIsBackground)
   {
     MOZ_ASSERT(IsOuterWindow());
@@ -149,9 +160,6 @@ public:
     mMutationBits |= aType;
   }
 
-  virtual void MaybeUpdateTouchState() {}
-  virtual void UpdateTouchState() {}
-
   nsIDocument* GetExtantDoc() const
   {
     return mDoc;
@@ -177,6 +185,18 @@ public:
   nsresult SetAudioVolume(float aVolume);
 
   float GetAudioGlobalVolume();
+
+  virtual void SetServiceWorkersTestingEnabled(bool aEnabled)
+  {
+    MOZ_ASSERT(IsOuterWindow());
+    mServiceWorkersTestingEnabled = aEnabled;
+  }
+
+  bool GetServiceWorkersTestingEnabled()
+  {
+    MOZ_ASSERT(IsOuterWindow());
+    return mServiceWorkersTestingEnabled;
+  }
 
 protected:
   // Lazily instantiate an about:blank document if necessary, and if
@@ -428,21 +448,6 @@ public:
     return mMayHavePaintEventListener;
   }
   
-  /**
-   * Call this to indicate that some node (this window, its document,
-   * or content in that document) has a touch event listener.
-   */
-  void SetHasTouchEventListeners()
-  {
-    mMayHaveTouchEventListener = true;
-    MaybeUpdateTouchState();
-  }
-
-  bool HasTouchEventListeners()
-  {
-    return mMayHaveTouchEventListener;
-  }
-
   /**
    * Moves the top-level window into fullscreen mode if aIsFullScreen is true,
    * otherwise exits fullscreen. If aRequireTrust is true, this method only
@@ -763,7 +768,6 @@ protected:
   bool                   mIsHandlingResizeEvent;
   bool                   mIsInnerWindow;
   bool                   mMayHavePaintEventListener;
-  bool                   mMayHaveTouchEventListener;
   bool                   mMayHaveMouseEnterLeaveEventListener;
   bool                   mMayHavePointerEnterLeaveEventListener;
 
@@ -782,6 +786,9 @@ protected:
 
   bool                   mAudioMuted;
   float                  mAudioVolume;
+
+  // current desktop mode flag.
+  bool                   mDesktopModeViewport;
 
   // And these are the references between inner and outer windows.
   nsPIDOMWindow* MOZ_NON_OWNING_REF mInnerWindow;
@@ -803,6 +810,10 @@ protected:
   bool mHasNotifiedGlobalCreated;
 
   uint32_t mMarkedCCGeneration;
+
+  // Let the service workers plumbing know that some feature are enabled while
+  // testing.
+  bool mServiceWorkersTestingEnabled;
 };
 
 

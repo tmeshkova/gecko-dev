@@ -9,7 +9,7 @@
 
 #include "base/basictypes.h"            // for DISALLOW_EVIL_CONSTRUCTORS
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT_HELPER2
-#include "mozilla/Attributes.h"         // for MOZ_OVERRIDE
+#include "mozilla/Attributes.h"         // for override
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/layers/PCompositorChild.h"
 #include "nsAutoPtr.h"                  // for nsRefPtr
@@ -36,7 +36,7 @@ class ClientLayerManager;
 class CompositorParent;
 struct FrameMetrics;
 
-class CompositorChild MOZ_FINAL : public PCompositorChild
+class CompositorChild final : public PCompositorChild
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorChild)
 
@@ -60,6 +60,12 @@ public:
   static PCompositorChild*
   Create(Transport* aTransport, ProcessId aOtherProcess);
 
+  /**
+   * Initialize the CompositorChild and open the connection in the non-multi-process
+   * case.
+   */
+  bool OpenSameProcess(CompositorParent* aParent);
+
   static CompositorChild* Get();
 
   static bool ChildProcessHasCompositor() { return sCompositor != nullptr; }
@@ -67,21 +73,21 @@ public:
   void AddOverfillObserver(ClientLayerManager* aLayerManager);
 
   virtual bool
-  RecvDidComposite(const uint64_t& aId, const uint64_t& aTransactionId) MOZ_OVERRIDE;
+  RecvDidComposite(const uint64_t& aId, const uint64_t& aTransactionId) override;
 
   virtual bool
-  RecvInvalidateAll() MOZ_OVERRIDE;
+  RecvInvalidateAll() override;
 
   virtual bool
-  RecvOverfill(const uint32_t &aOverfill) MOZ_OVERRIDE;
+  RecvOverfill(const uint32_t &aOverfill) override;
 
   virtual bool
   RecvUpdatePluginConfigurations(const nsIntPoint& aContentOffset,
                                  const nsIntRegion& aVisibleRegion,
-                                 nsTArray<PluginWindowData>&& aPlugins) MOZ_OVERRIDE;
+                                 nsTArray<PluginWindowData>&& aPlugins) override;
 
   virtual bool
-  RecvUpdatePluginVisibility(nsTArray<uintptr_t>&& aWindowList) MOZ_OVERRIDE;
+  RecvUpdatePluginVisibility(nsTArray<uintptr_t>&& aWindowList) override;
 
   /**
    * Request that the parent tell us when graphics are ready on GPU.
@@ -120,22 +126,22 @@ private:
     AllocPLayerTransactionChild(const nsTArray<LayersBackend>& aBackendHints,
                                 const uint64_t& aId,
                                 TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                bool* aSuccess) MOZ_OVERRIDE;
+                                bool* aSuccess) override;
 
-  virtual bool DeallocPLayerTransactionChild(PLayerTransactionChild *aChild) MOZ_OVERRIDE;
+  virtual bool DeallocPLayerTransactionChild(PLayerTransactionChild *aChild) override;
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   virtual bool RecvSharedCompositorFrameMetrics(const mozilla::ipc::SharedMemoryBasic::Handle& metrics,
                                                 const CrossProcessMutexHandle& handle,
                                                 const uint64_t& aLayersId,
-                                                const uint32_t& aAPZCId) MOZ_OVERRIDE;
+                                                const uint32_t& aAPZCId) override;
 
   virtual bool RecvReleaseSharedCompositorFrameMetrics(const ViewID& aId,
-                                                       const uint32_t& aAPZCId) MOZ_OVERRIDE;
+                                                       const uint32_t& aAPZCId) override;
 
   virtual bool
-  RecvRemotePaintIsReady() MOZ_OVERRIDE;
+  RecvRemotePaintIsReady() override;
 
   // Class used to store the shared FrameMetrics, mutex, and APZCId  in a hash table
   class SharedFrameMetricsData {
@@ -168,6 +174,9 @@ private:
                                                         void* aLayerTransactionChild);
 
   nsRefPtr<ClientLayerManager> mLayerManager;
+  // When not multi-process, hold a reference to the CompositorParent to keep it
+  // alive. This reference should be null in multi-process.
+  nsRefPtr<CompositorParent> mCompositorParent;
 
   // The ViewID of the FrameMetrics is used as the key for this hash table.
   // While this should be safe to use since the ViewID is unique

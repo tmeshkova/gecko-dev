@@ -47,8 +47,8 @@ class SVGAnimatedPointList;
  *
  * Our DOM items are created lazily on demand as and when script requests them.
  */
-class DOMSVGPointList MOZ_FINAL : public nsISupports,
-                                  public nsWrapperCache
+class DOMSVGPointList final : public nsISupports,
+                              public nsWrapperCache
 {
   friend class AutoChangePointListNotifier;
   friend class nsISVGPoint;
@@ -58,7 +58,7 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(DOMSVGPointList)
 
-  virtual JSObject* WrapObject(JSContext *cx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 
   nsISupports* GetParentObject()
   {

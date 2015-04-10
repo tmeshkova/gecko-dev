@@ -154,7 +154,7 @@ public:
         }
     }
 
-    void Run() MOZ_OVERRIDE
+    void Run() override
     {
         mParent->DoInjection(mSnapshot);
         // We don't need to hold this lock during DoInjection, but we do need
@@ -163,7 +163,7 @@ public:
         mozilla::MutexAutoLock lock(mMutex);
     }
 
-    void Cancel() MOZ_OVERRIDE
+    void Cancel() override
     {
         mozilla::MutexAutoLock lock(mMutex);
         mMainThreadMsgLoop = nullptr;
@@ -387,30 +387,25 @@ PluginModuleContentParent::LoadModule(uint32_t aPluginId)
 
 /* static */ void
 PluginModuleContentParent::AssociatePluginId(uint32_t aPluginId,
-                                             base::ProcessId aProcessId)
+                                             base::ProcessId aOtherPid)
 {
     DebugOnly<PluginModuleMapping*> mapping =
-        PluginModuleMapping::AssociateWithProcessId(aPluginId, aProcessId);
+        PluginModuleMapping::AssociateWithProcessId(aPluginId, aOtherPid);
     MOZ_ASSERT(mapping);
 }
 
 /* static */ PluginModuleContentParent*
 PluginModuleContentParent::Initialize(mozilla::ipc::Transport* aTransport,
-                                      base::ProcessId aOtherProcess)
+                                      base::ProcessId aOtherPid)
 {
     nsAutoPtr<PluginModuleMapping> moduleMapping(
-        PluginModuleMapping::Resolve(aOtherProcess));
+        PluginModuleMapping::Resolve(aOtherPid));
     MOZ_ASSERT(moduleMapping);
     PluginModuleContentParent* parent = moduleMapping->GetModule();
     MOZ_ASSERT(parent);
 
-    ProcessHandle handle;
-    if (!base::OpenProcessHandle(aOtherProcess, &handle)) {
-        // Bug 1090578 - need to kill |aOtherProcess|, it's boned.
-        return nullptr;
-    }
-
-    DebugOnly<bool> ok = parent->Open(aTransport, handle, XRE_GetIOMessageLoop(),
+    DebugOnly<bool> ok = parent->Open(aTransport, aOtherPid,
+                                      XRE_GetIOMessageLoop(),
                                       mozilla::ipc::ParentSide);
     MOZ_ASSERT(ok);
 
@@ -454,7 +449,7 @@ bool
 PluginModuleChromeParent::SendAssociatePluginId()
 {
     MOZ_ASSERT(mContentParent);
-    return mContentParent->SendAssociatePluginId(mPluginId, OtherSidePID());
+    return mContentParent->SendAssociatePluginId(mPluginId, OtherPid());
 }
 
 // static
@@ -513,7 +508,9 @@ PluginModuleChromeParent::OnProcessLaunched(const bool aSucceeded)
     if (mAsyncInitRv != NS_ERROR_NOT_INITIALIZED || mShutdown) {
         return;
     }
-    Open(mSubprocess->GetChannel(), mSubprocess->GetChildProcessHandle());
+
+    Open(mSubprocess->GetChannel(),
+         base::GetProcId(mSubprocess->GetChildProcessHandle()));
 
     // Request Windows message deferral behavior on our channel. This
     // applies to the top level and all sub plugin protocols since they
@@ -536,6 +533,13 @@ PluginModuleChromeParent::OnProcessLaunched(const bool aSucceeded)
         Close();
         OnInitFailure();
         return;
+    }
+    CrashReporterParent* crashReporter = CrashReporter();
+    if (crashReporter) {
+        crashReporter->AnnotateCrashReport(NS_LITERAL_CSTRING("AsyncPluginInit"),
+                                           mIsStartingAsync ?
+                                               NS_LITERAL_CSTRING("1") :
+                                               NS_LITERAL_CSTRING("0"));
     }
 #ifdef XP_WIN
     { // Scope for lock
@@ -607,6 +611,12 @@ PluginModuleParent::PluginModuleParent(bool aIsChrome)
 {
 #if defined(XP_WIN) || defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK)
     mIsStartingAsync = Preferences::GetBool(kAsyncInitPref, false);
+#if defined(MOZ_CRASHREPORTER)
+    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AsyncPluginInit"),
+                                       mIsStartingAsync ?
+                                           NS_LITERAL_CSTRING("1") :
+                                           NS_LITERAL_CSTRING("0"));
+#endif
 #endif
 }
 
@@ -1208,22 +1218,29 @@ PluginModuleChromeParent::TerminateChildProcess(MessageLoop* aMsgLoop)
     }
 #endif
 
+    mozilla::ipc::ScopedProcessHandle geckoChildProcess;
+    bool childOpened = base::OpenProcessHandle(OtherPid(),
+                                               &geckoChildProcess.rwget());
+
 #ifdef XP_WIN
     // collect cpu usage for plugin processes
 
     InfallibleTArray<base::ProcessHandle> processHandles;
 
-    processHandles.AppendElement(OtherProcess());
+    if (childOpened) {
+        processHandles.AppendElement(geckoChildProcess);
+    }
 
 #ifdef MOZ_CRASHREPORTER_INJECTOR
-    {
-      base::ProcessHandle handle;
-      if (mFlashProcess1 && base::OpenProcessHandle(mFlashProcess1, &handle)) {
-        processHandles.AppendElement(handle);
-      }
-      if (mFlashProcess2 && base::OpenProcessHandle(mFlashProcess2, &handle)) {
-        processHandles.AppendElement(handle);
-      }
+    mozilla::ipc::ScopedProcessHandle flashBrokerProcess;
+    if (mFlashProcess1 &&
+        base::OpenProcessHandle(mFlashProcess1, &flashBrokerProcess.rwget())) {
+        processHandles.AppendElement(flashBrokerProcess);
+    }
+    mozilla::ipc::ScopedProcessHandle flashSandboxProcess;
+    if (mFlashProcess2 &&
+        base::OpenProcessHandle(mFlashProcess2, &flashSandboxProcess.rwget())) {
+        processHandles.AppendElement(flashSandboxProcess);
     }
 #endif
 
@@ -1240,8 +1257,9 @@ PluginModuleChromeParent::TerminateChildProcess(MessageLoop* aMsgLoop)
         mChromeTaskFactory.NewRunnableMethod(
             &PluginModuleChromeParent::CleanupFromTimeout, isFromHangUI));
 
-    if (!KillProcess(OtherProcess(), 1, false))
+    if (!childOpened || !KillProcess(geckoChildProcess, 1, false)) {
         NS_WARNING("failed to kill subprocess!");
+    }
 }
 
 bool
@@ -1544,6 +1562,8 @@ PluginModuleParent::DeallocPPluginInstanceParent(PPluginInstanceParent* aActor)
 void
 PluginModuleParent::SetPluginFuncs(NPPluginFuncs* aFuncs)
 {
+    MOZ_ASSERT(aFuncs);
+
     aFuncs->version = (NP_VERSION_MAJOR << 8) | NP_VERSION_MINOR;
     aFuncs->javaClass = nullptr;
 
@@ -1868,7 +1888,7 @@ PluginModuleParent::OnInitFailure()
     }
 }
 
-class OfflineObserver MOZ_FINAL : public nsIObserver
+class OfflineObserver final : public nsIObserver
 {
 public:
     NS_DECL_ISUPPORTS
@@ -2179,7 +2199,7 @@ PluginModuleParent::RecvNP_InitializeResult(const NPError& aError)
         return true;
     }
 
-    if (mIsStartingAsync) {
+    if (mIsStartingAsync && mNPPIface) {
         SetPluginFuncs(mNPPIface);
         InitAsyncSurrogates();
     }
@@ -2301,8 +2321,17 @@ PluginModuleParent::NP_GetEntryPoints(NPPluginFuncs* pFuncs, NPError* error)
 
     *error = NPERR_NO_ERROR;
     if (mIsStartingAsync && !IsChrome()) {
-        PluginAsyncSurrogate::NP_GetEntryPoints(pFuncs);
         mNPPIface = pFuncs;
+#if defined(XP_MACOSX)
+        if (mNPInitialized) {
+            SetPluginFuncs(pFuncs);
+            InitAsyncSurrogates();
+        } else {
+            PluginAsyncSurrogate::NP_GetEntryPoints(pFuncs);
+        }
+#else
+        PluginAsyncSurrogate::NP_GetEntryPoints(pFuncs);
+#endif
     } else {
         SetPluginFuncs(pFuncs);
     }
@@ -2648,7 +2677,7 @@ PluginModuleParent::RecvPluginHideWindow(const uint32_t& aWindowId)
 {
     PLUGIN_LOG_DEBUG(("%s", FULLFUNCTION));
 #if defined(XP_MACOSX)
-    mac_plugin_interposing::parent::OnPluginHideWindow(aWindowId, OtherSidePID());
+    mac_plugin_interposing::parent::OnPluginHideWindow(aWindowId, OtherPid());
     return true;
 #else
     NS_NOTREACHED(
@@ -2869,15 +2898,23 @@ PluginModuleChromeParent::OnCrash(DWORD processID)
 {
     if (!mShutdown) {
         GetIPCChannel()->CloseWithError();
-        KillProcess(OtherProcess(), 1, false);
+        mozilla::ipc::ScopedProcessHandle geckoPluginChild;
+        if (base::OpenProcessHandle(OtherPid(), &geckoPluginChild.rwget())) {
+            if (!base::KillProcess(geckoPluginChild,
+                                   base::PROCESS_END_KILLED_BY_USER, false)) {
+                NS_ERROR("May have failed to kill child process.");
+            }
+        } else {
+            NS_ERROR("Failed to open child process when attempting kill.");
+        }
     }
 }
 
 #endif // MOZ_CRASHREPORTER_INJECTOR
 
 #ifdef MOZ_ENABLE_PROFILER_SPS
-class PluginProfilerObserver MOZ_FINAL : public nsIObserver,
-                                         public nsSupportsWeakReference
+class PluginProfilerObserver final : public nsIObserver,
+                                     public nsSupportsWeakReference
 {
 public:
     NS_DECL_ISUPPORTS

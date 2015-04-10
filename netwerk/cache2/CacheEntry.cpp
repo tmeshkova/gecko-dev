@@ -337,6 +337,8 @@ bool CacheEntry::Load(bool aTruncate, bool aPriority)
   nsAutoCString fileKey;
   rv = HashingKeyWithStorage(fileKey);
 
+  bool reportMiss = false;
+
   // Check the index under two conditions for two states and take appropriate action:
   // 1. When this is a disk entry and not told to truncate, check there is a disk file.
   //    If not, set the 'truncate' flag to true so that this entry will open instantly
@@ -351,6 +353,9 @@ bool CacheEntry::Load(bool aTruncate, bool aPriority)
       switch (status) {
       case CacheIndex::DOES_NOT_EXIST:
         LOG(("  entry doesn't exist according information from the index, truncating"));
+        if (!aTruncate && mUseDisk) {
+          reportMiss = true;
+        }
         aTruncate = true;
         break;
       case CacheIndex::EXISTS:
@@ -379,6 +384,11 @@ bool CacheEntry::Load(bool aTruncate, bool aPriority)
 
   {
     mozilla::MutexAutoUnlock unlock(mLock);
+
+    if (reportMiss) {
+      CacheFileUtils::DetailedCacheHitTelemetry::AddRecord(
+        CacheFileUtils::DetailedCacheHitTelemetry::MISS, mLoadStart);
+    }
 
     LOG(("  performing load, file=%p", mFile.get()));
     if (NS_SUCCEEDED(rv)) {
@@ -1594,7 +1604,7 @@ void CacheEntry::BackgroundOp(uint32_t aOperations, bool aForceAsync)
       // Because CacheFile::Set*() are not thread-safe to use (uses WeakReference that
       // is not thread-safe) we must post to the main thread...
       nsRefPtr<nsRunnableMethod<CacheEntry> > event =
-        NS_NewRunnableMethod(this, &CacheEntry::StoreFrecency);
+        NS_NewRunnableMethodWithArg<double>(this, &CacheEntry::StoreFrecency, mFrecency);
       NS_DispatchToMainThread(event);
     }
 
@@ -1618,14 +1628,12 @@ void CacheEntry::BackgroundOp(uint32_t aOperations, bool aForceAsync)
   }
 }
 
-void CacheEntry::StoreFrecency()
+void CacheEntry::StoreFrecency(double aFrecency)
 {
-  // No need for thread safety over mFrecency, it will be rewriten
-  // correctly on following invocation if broken by concurrency.
   MOZ_ASSERT(NS_IsMainThread());
 
   if (NS_SUCCEEDED(mFileStatus)) {
-    mFile->SetFrecency(FRECENCY2INT(mFrecency));
+    mFile->SetFrecency(FRECENCY2INT(aFrecency));
   }
 }
 

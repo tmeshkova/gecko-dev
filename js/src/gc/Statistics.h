@@ -43,7 +43,6 @@ enum Phase {
     PHASE_SWEEP_MARK_INCOMING_GRAY,
     PHASE_SWEEP_MARK_GRAY,
     PHASE_SWEEP_MARK_GRAY_WEAK,
-    PHASE_SWEEP_MARK_JITCODE_GLOBAL_TABLE,
     PHASE_FINALIZE_START,
     PHASE_SWEEP_ATOMS,
     PHASE_SWEEP_SYMBOL_REGISTRY,
@@ -76,6 +75,7 @@ enum Phase {
     PHASE_EVICT_NURSERY,
     PHASE_TRACE_HEAP,
     PHASE_MARK_ROOTS,
+    PHASE_BUFFER_GRAY_ROOTS,
     PHASE_MARK_CCWS,
     PHASE_MARK_ROOTERS,
     PHASE_MARK_RUNTIME_DATA,
@@ -156,25 +156,28 @@ struct Statistics
      */
     static const size_t MAX_MULTIPARENT_PHASES = 6;
 
-    explicit Statistics(JSRuntime *rt);
+    explicit Statistics(JSRuntime* rt);
     ~Statistics();
 
     void beginPhase(Phase phase);
     void endPhase(Phase phase);
-    void endParallelPhase(Phase phase, const GCParallelTask *task);
+    void endParallelPhase(Phase phase, const GCParallelTask* task);
 
-    void beginSlice(const ZoneGCStats &zoneStats, JSGCInvocationKind gckind,
+    void beginSlice(const ZoneGCStats& zoneStats, JSGCInvocationKind gckind,
                     JS::gcreason::Reason reason);
     void endSlice();
 
     void startTimingMutator();
-    bool stopTimingMutator(double &mutator_ms, double &gc_ms);
+    bool stopTimingMutator(double& mutator_ms, double& gc_ms);
 
-    void reset(const char *reason) {
+    void reset(const char* reason) {
         if (!aborted)
             slices.back().resetReason = reason;
     }
-    void nonincremental(const char *reason) { nonincrementalReason = reason; }
+
+    void nonincremental(const char* reason) { nonincrementalReason_ = reason; }
+
+    const char* nonincrementalReason() const { return nonincrementalReason_; }
 
     void count(Stat s) {
         MOZ_ASSERT(s < STAT_LIMIT);
@@ -184,8 +187,8 @@ struct Statistics
     int64_t beginSCC();
     void endSCC(unsigned scc, int64_t start);
 
-    char16_t *formatMessage();
-    char16_t *formatJSON(uint64_t timestamp);
+    char16_t* formatMessage();
+    char16_t* formatJSON(uint64_t timestamp);
     UniqueChars formatDetailedMessage();
 
     JS::GCSliceCallback setSliceCallback(JS::GCSliceCallback callback);
@@ -204,12 +207,35 @@ struct Statistics
 
     static const size_t MAX_NESTING = 20;
 
+    struct SliceData {
+        SliceData(JS::gcreason::Reason reason, int64_t start, size_t startFaults)
+          : reason(reason), resetReason(nullptr), start(start), startFaults(startFaults)
+        {
+            for (size_t i = 0; i < MAX_MULTIPARENT_PHASES + 1; i++)
+                mozilla::PodArrayZero(phaseTimes[i]);
+        }
+
+        JS::gcreason::Reason reason;
+        const char* resetReason;
+        int64_t start, end;
+        size_t startFaults, endFaults;
+        int64_t phaseTimes[MAX_MULTIPARENT_PHASES + 1][PHASE_LIMIT];
+
+        int64_t duration() const { return end - start; }
+    };
+
+    typedef Vector<SliceData, 8, SystemAllocPolicy> SliceDataVector;
+    typedef SliceDataVector::ConstRange SliceRange;
+
+    SliceRange sliceRange() const { return slices.all(); }
+    size_t slicesLength() const { return slices.length(); }
+
   private:
-    JSRuntime *runtime;
+    JSRuntime* runtime;
 
     int64_t startupTime;
 
-    FILE *fp;
+    FILE* fp;
     bool fullFormat;
 
     /*
@@ -222,26 +248,9 @@ struct Statistics
 
     JSGCInvocationKind gckind;
 
-    const char *nonincrementalReason;
+    const char* nonincrementalReason_;
 
-    struct SliceData {
-        SliceData(JS::gcreason::Reason reason, int64_t start, size_t startFaults)
-          : reason(reason), resetReason(nullptr), start(start), startFaults(startFaults)
-        {
-            for (size_t i = 0; i < MAX_MULTIPARENT_PHASES + 1; i++)
-                mozilla::PodArrayZero(phaseTimes[i]);
-        }
-
-        JS::gcreason::Reason reason;
-        const char *resetReason;
-        int64_t start, end;
-        size_t startFaults, endFaults;
-        int64_t phaseTimes[MAX_MULTIPARENT_PHASES + 1][PHASE_LIMIT];
-
-        int64_t duration() const { return end - start; }
-    };
-
-    Vector<SliceData, 8, SystemAllocPolicy> slices;
+    SliceDataVector slices;
 
     /* Most recent time when the given phase started. */
     int64_t phaseStartTimes[PHASE_LIMIT];
@@ -295,13 +304,13 @@ struct Statistics
 
     void recordPhaseEnd(Phase phase);
 
-    void gcDuration(int64_t *total, int64_t *maxPause);
-    void sccDurations(int64_t *total, int64_t *maxPause);
+    void gcDuration(int64_t* total, int64_t* maxPause);
+    void sccDurations(int64_t* total, int64_t* maxPause);
     void printStats();
-    bool formatData(StatisticsSerializer &ss, uint64_t timestamp);
+    bool formatData(StatisticsSerializer& ss, uint64_t timestamp);
 
     UniqueChars formatDescription();
-    UniqueChars formatSliceDescription(unsigned i, const SliceData &slice);
+    UniqueChars formatSliceDescription(unsigned i, const SliceData& slice);
     UniqueChars formatTotals();
     UniqueChars formatPhaseTimes(int64_t (*phaseTimes)[PHASE_LIMIT]);
 
@@ -310,7 +319,7 @@ struct Statistics
 
 struct AutoGCSlice
 {
-    AutoGCSlice(Statistics &stats, const ZoneGCStats &zoneStats, JSGCInvocationKind gckind,
+    AutoGCSlice(Statistics& stats, const ZoneGCStats& zoneStats, JSGCInvocationKind gckind,
                 JS::gcreason::Reason reason
                 MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : stats(stats)
@@ -320,13 +329,13 @@ struct AutoGCSlice
     }
     ~AutoGCSlice() { stats.endSlice(); }
 
-    Statistics &stats;
+    Statistics& stats;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
 struct AutoPhase
 {
-    AutoPhase(Statistics &stats, Phase phase
+    AutoPhase(Statistics& stats, Phase phase
               MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : stats(stats), task(nullptr), phase(phase), enabled(true)
     {
@@ -334,7 +343,7 @@ struct AutoPhase
         stats.beginPhase(phase);
     }
 
-    AutoPhase(Statistics &stats, bool condition, Phase phase
+    AutoPhase(Statistics& stats, bool condition, Phase phase
               MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : stats(stats), task(nullptr), phase(phase), enabled(condition)
     {
@@ -343,7 +352,7 @@ struct AutoPhase
             stats.beginPhase(phase);
     }
 
-    AutoPhase(Statistics &stats, const GCParallelTask &task, Phase phase
+    AutoPhase(Statistics& stats, const GCParallelTask& task, Phase phase
               MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : stats(stats), task(&task), phase(phase), enabled(true)
     {
@@ -361,8 +370,8 @@ struct AutoPhase
         }
     }
 
-    Statistics &stats;
-    const GCParallelTask *task;
+    Statistics& stats;
+    const GCParallelTask* task;
     Phase phase;
     bool enabled;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
@@ -370,7 +379,7 @@ struct AutoPhase
 
 struct AutoSCC
 {
-    AutoSCC(Statistics &stats, unsigned scc
+    AutoSCC(Statistics& stats, unsigned scc
             MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : stats(stats), scc(scc)
     {
@@ -381,14 +390,14 @@ struct AutoSCC
         stats.endSCC(scc, start);
     }
 
-    Statistics &stats;
+    Statistics& stats;
     unsigned scc;
     int64_t start;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-const char *ExplainInvocationKind(JSGCInvocationKind gckind);
-const char *ExplainReason(JS::gcreason::Reason reason);
+const char* ExplainInvocationKind(JSGCInvocationKind gckind);
+const char* ExplainReason(JS::gcreason::Reason reason);
 
 } /* namespace gcstats */
 } /* namespace js */

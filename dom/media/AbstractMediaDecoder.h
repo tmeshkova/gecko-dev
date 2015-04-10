@@ -54,9 +54,9 @@ public:
   // Returns true if the decoder is shut down.
   virtual bool IsShutdown() const = 0;
 
-  virtual bool OnStateMachineThread() const = 0;
+  virtual bool OnStateMachineTaskQueue() const = 0;
 
-  virtual bool OnDecodeThread() const = 0;
+  virtual bool OnDecodeTaskQueue() const = 0;
 
   // Get the current MediaResource being used. Its URI will be returned
   // by currentSrc. Returns what was passed to Load(), if Load() has been called.
@@ -188,7 +188,7 @@ public:
     : MetadataContainer(aDecoder, aInfo, aTags, aEventVisibility)
   {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     mDecoder->MetadataLoaded(mInfo, mTags, mEventVisibility);
     return NS_OK;
@@ -204,7 +204,7 @@ public:
     : MetadataContainer(aDecoder, aInfo, nsAutoPtr<MetadataTags>(nullptr), aEventVisibility)
   {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     mDecoder->FirstFrameLoaded(mInfo, mEventVisibility);
     return NS_OK;
@@ -221,7 +221,7 @@ public:
     : MetadataContainer(aDecoder, aInfo, aTags, aEventVisibility)
   {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     nsAutoPtr<MediaInfo> info(new MediaInfo());
     *info = *mInfo;
@@ -238,7 +238,7 @@ public:
     : mDecoder(aDecoder)
   {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     MOZ_ASSERT(NS_IsMainThread());
 

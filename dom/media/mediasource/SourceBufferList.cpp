@@ -62,6 +62,13 @@ SourceBufferList::Append(SourceBuffer* aSourceBuffer)
 }
 
 void
+SourceBufferList::AppendSimple(SourceBuffer* aSourceBuffer)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  mSourceBuffers.AppendElement(aSourceBuffer);
+}
+
+void
 SourceBufferList::Remove(SourceBuffer* aSourceBuffer)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -86,6 +93,13 @@ SourceBufferList::Clear()
   }
   mSourceBuffers.Clear();
   QueueAsyncSimpleEvent("removesourcebuffer");
+}
+
+void
+SourceBufferList::ClearSimple()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  mSourceBuffers.Clear();
 }
 
 bool
@@ -187,9 +201,9 @@ SourceBufferList::GetParentObject() const
 }
 
 JSObject*
-SourceBufferList::WrapObject(JSContext* aCx)
+SourceBufferList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return SourceBufferListBinding::Wrap(aCx, this);
+  return SourceBufferListBinding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(SourceBufferList, DOMEventTargetHelper,

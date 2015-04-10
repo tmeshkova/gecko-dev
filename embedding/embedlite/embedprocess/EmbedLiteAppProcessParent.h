@@ -31,7 +31,7 @@ public:
   void GetPrefs(InfallibleTArray<PrefSetting>* prefs);
 
 protected:
-  void OnChannelConnected(int32_t pid) MOZ_OVERRIDE;
+  void OnChannelConnected(int32_t pid) override;
 
   virtual bool
   RecvInitialized();

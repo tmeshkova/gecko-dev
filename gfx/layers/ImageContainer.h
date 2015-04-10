@@ -115,18 +115,6 @@ protected:
   ImageBackendData() {}
 };
 
-// sadly we'll need this until we get rid of Deprected image classes
-class ISharedImage {
-public:
-    virtual uint8_t* GetBuffer() = 0;
-
-    /**
-     * For use with the CompositableClient only (so that the later can
-     * synchronize the TextureClient with the TextureHost).
-     */
-    virtual TextureClient* GetTextureClient(CompositableClient* aClient) = 0;
-};
-
 /**
  * A class representing a buffer of pixel data. The data can be in one
  * of various formats including YCbCr.
@@ -145,8 +133,6 @@ class Image {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(Image)
 
 public:
-  virtual ISharedImage* AsSharedImage() { return nullptr; }
-
   ImageFormat GetFormat() { return mFormat; }
   void* GetImplData() { return mImplData; }
 
@@ -172,6 +158,16 @@ public:
   {
     return nullptr;
   }
+
+  virtual bool IsValid() { return true; }
+
+  virtual uint8_t* GetBuffer() { return nullptr; }
+
+  /**
+  * For use with the CompositableClient only (so that the later can
+  * synchronize the TextureClient with the TextureHost).
+  */
+  virtual TextureClient* GetTextureClient(CompositableClient* aClient) { return nullptr; }
 
 protected:
   Image(void* aImplData, ImageFormat aFormat) :
@@ -203,7 +199,7 @@ protected:
  * and we must avoid creating a reference loop between an ImageContainer and
  * its active image.
  */
-class BufferRecycleBin MOZ_FINAL {
+class BufferRecycleBin final {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(BufferRecycleBin)
 
   //typedef mozilla::gl::GLContext GLContext;
@@ -294,7 +290,7 @@ protected:
  * updates the shared state to point to the new image and the old image
  * is immediately released (not true in Normal or Asynchronous modes).
  */
-class ImageContainer MOZ_FINAL : public SupportsWeakPtr<ImageContainer> {
+class ImageContainer final : public SupportsWeakPtr<ImageContainer> {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ImageContainer)
 public:
   MOZ_DECLARE_REFCOUNTED_TYPENAME(ImageContainer)
@@ -791,8 +787,7 @@ protected:
  * device output color space. This class is very simple as all backends
  * have to know about how to deal with drawing a cairo image.
  */
-class CairoImage MOZ_FINAL : public Image,
-                             public ISharedImage {
+class CairoImage final : public Image {
 public:
   struct Data {
     gfx::IntSize mSize;
@@ -810,16 +805,14 @@ public:
     mSourceSurface = aData.mSourceSurface;
   }
 
-  virtual TemporaryRef<gfx::SourceSurface> GetAsSourceSurface() MOZ_OVERRIDE
+  virtual TemporaryRef<gfx::SourceSurface> GetAsSourceSurface() override
   {
     return mSourceSurface.get();
   }
 
-  virtual ISharedImage* AsSharedImage() MOZ_OVERRIDE { return this; }
-  virtual uint8_t* GetBuffer() MOZ_OVERRIDE { return nullptr; }
-  virtual TextureClient* GetTextureClient(CompositableClient* aClient) MOZ_OVERRIDE;
+  virtual TextureClient* GetTextureClient(CompositableClient* aClient) override;
 
-  virtual gfx::IntSize GetSize() MOZ_OVERRIDE { return mSize; }
+  virtual gfx::IntSize GetSize() override { return mSize; }
 
   CairoImage();
   ~CairoImage();

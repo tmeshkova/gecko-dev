@@ -23,8 +23,8 @@ namespace mozilla {
 namespace dom {
 namespace telephony {
 
-class TelephonyDialCallback MOZ_FINAL : public TelephonyCallback,
-                                        public nsITelephonyDialCallback
+class TelephonyDialCallback final : public TelephonyCallback,
+                                    public nsITelephonyDialCallback
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED

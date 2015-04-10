@@ -22,9 +22,9 @@ class NetworkInformation;
 namespace dom {
 namespace network {
 
-class Connection MOZ_FINAL : public DOMEventTargetHelper
-                           , public NetworkObserver
-                           , public nsINetworkProperties
+class Connection final : public DOMEventTargetHelper
+                       , public NetworkObserver
+                       , public nsINetworkProperties
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -37,11 +37,11 @@ public:
   void Shutdown();
 
   // For IObserver
-  void Notify(const hal::NetworkInformation& aNetworkInfo) MOZ_OVERRIDE;
+  void Notify(const hal::NetworkInformation& aNetworkInfo) override;
 
   // WebIDL
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   ConnectionType Type() const { return mType; }
 

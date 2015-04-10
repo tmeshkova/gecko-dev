@@ -14,6 +14,10 @@
 #include "WMFMediaDataDecoder.h"
 #include "nsIWindowsRegKey.h"
 #include "nsComponentManagerUtils.h"
+#include "nsServiceManagerUtils.h"
+#include "nsIGfxInfo.h"
+#include "GfxDriverInfo.h"
+#include "gfxWindowsPlatform.h"
 
 namespace mozilla {
 
@@ -26,6 +30,8 @@ WMFDecoderModule::WMFDecoderModule()
 
 WMFDecoderModule::~WMFDecoderModule()
 {
+  DebugOnly<HRESULT> hr = wmf::MFShutdown();
+  NS_ASSERTION(SUCCEEDED(hr), "MFShutdown failed");
 }
 
 /* static */
@@ -40,7 +46,8 @@ WMFDecoderModule::Init()
   if (NS_FAILED(WMFDecoder::LoadDLLs())) {
     sIsWMFEnabled = false;
   }
-  sDXVAEnabled = Preferences::GetBool("media.windows-media-foundation.use-dxva", false);
+  sDXVAEnabled = !gfxWindowsPlatform::GetPlatform()->IsWARP() &&
+                 gfxPlatform::CanUseHardwareVideoDecoding();
 }
 
 nsresult
@@ -56,14 +63,6 @@ WMFDecoderModule::Startup()
   return NS_OK;
 }
 
-nsresult
-WMFDecoderModule::Shutdown()
-{
-  DebugOnly<HRESULT> hr = wmf::MFShutdown();
-  NS_ASSERTION(SUCCEEDED(hr), "MFShutdown failed");
-  return NS_OK;
-}
-
 already_AddRefed<MediaDataDecoder>
 WMFDecoderModule::CreateVideoDecoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
                                      layers::LayersBackend aLayersBackend,
@@ -75,7 +74,7 @@ WMFDecoderModule::CreateVideoDecoder(const mp4_demuxer::VideoDecoderConfig& aCon
     new WMFMediaDataDecoder(new WMFVideoMFTManager(aConfig,
                                                    aLayersBackend,
                                                    aImageContainer,
-                                                   sDXVAEnabled),
+                                                   sDXVAEnabled && ShouldUseDXVA(aConfig)),
                             aVideoTaskQueue,
                             aCallback);
   return decoder.forget();
@@ -94,19 +93,47 @@ WMFDecoderModule::CreateAudioDecoder(const mp4_demuxer::AudioDecoderConfig& aCon
 }
 
 bool
-WMFDecoderModule::SupportsVideoMimeType(const char* aMimeType)
+WMFDecoderModule::ShouldUseDXVA(const mp4_demuxer::VideoDecoderConfig& aConfig) const
 {
-  return !strcmp(aMimeType, "video/mp4") ||
-         !strcmp(aMimeType, "video/avc") ||
-         !strcmp(aMimeType, "video/webm; codecs=vp8") ||
-         !strcmp(aMimeType, "video/webm; codecs=vp9");
+  static bool isAMD = false;
+  static bool initialized = false;
+  if (!initialized) {
+    nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
+    nsAutoString vendor;
+    gfxInfo->GetAdapterVendorID(vendor);
+    isAMD = vendor.Equals(widget::GfxDriverInfo::GetDeviceVendor(widget::VendorAMD), nsCaseInsensitiveStringComparator()) ||
+            vendor.Equals(widget::GfxDriverInfo::GetDeviceVendor(widget::VendorATI), nsCaseInsensitiveStringComparator());
+    initialized = true;
+  }
+  if (!isAMD) {
+    return true;
+  }
+  // Don't use DXVA for 4k videos or above, since it seems to perform poorly.
+  return aConfig.display_height <= 1920 && aConfig.display_height <= 1200;
 }
 
 bool
-WMFDecoderModule::SupportsAudioMimeType(const char* aMimeType)
+WMFDecoderModule::SupportsSharedDecoders(const mp4_demuxer::VideoDecoderConfig& aConfig) const
 {
-  return !strcmp(aMimeType, "audio/mp4a-latm") ||
-         !strcmp(aMimeType, "audio/mpeg");
+  // If DXVA is enabled, but we're not going to use it for this specific config, then
+  // we can't use the shared decoder.
+  return !sDXVAEnabled || ShouldUseDXVA(aConfig);
+}
+
+bool
+WMFDecoderModule::SupportsVideoMimeType(const nsACString& aMimeType)
+{
+  return aMimeType.EqualsLiteral("video/mp4") ||
+         aMimeType.EqualsLiteral("video/avc") ||
+         aMimeType.EqualsLiteral("video/webm; codecs=vp8") ||
+         aMimeType.EqualsLiteral("video/webm; codecs=vp9");
+}
+
+bool
+WMFDecoderModule::SupportsAudioMimeType(const nsACString& aMimeType)
+{
+  return aMimeType.EqualsLiteral("audio/mp4a-latm") ||
+         aMimeType.EqualsLiteral("audio/mpeg");
 }
 
 static bool

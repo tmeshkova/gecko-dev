@@ -37,6 +37,7 @@ let OverviewView = {
     this._onRecordingTick = this._onRecordingTick.bind(this);
     this._onGraphSelecting = this._onGraphSelecting.bind(this);
     this._onPrefChanged = this._onPrefChanged.bind(this);
+    this._onThemeChanged = this._onThemeChanged.bind(this);
 
     // Toggle the initial visibility of memory and framerate graph containers
     // based off of prefs.
@@ -44,6 +45,7 @@ let OverviewView = {
     $("#time-framerate").hidden = !PerformanceController.getOption("enable-framerate");
 
     PerformanceController.on(EVENTS.PREF_CHANGED, this._onPrefChanged);
+    PerformanceController.on(EVENTS.THEME_CHANGED, this._onThemeChanged);
     PerformanceController.on(EVENTS.RECORDING_WILL_START, this._onRecordingWillStart);
     PerformanceController.on(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
     PerformanceController.on(EVENTS.RECORDING_WILL_STOP, this._onRecordingWillStop);
@@ -66,6 +68,7 @@ let OverviewView = {
     }
 
     PerformanceController.off(EVENTS.PREF_CHANGED, this._onPrefChanged);
+    PerformanceController.off(EVENTS.THEME_CHANGED, this._onThemeChanged);
     PerformanceController.off(EVENTS.RECORDING_WILL_START, this._onRecordingWillStart);
     PerformanceController.off(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
     PerformanceController.off(EVENTS.RECORDING_WILL_STOP, this._onRecordingWillStop);
@@ -93,19 +96,35 @@ let OverviewView = {
   },
 
   /**
+   * Sets the theme for the markers overview and memory overview.
+   */
+  setTheme: function (options={}) {
+    let theme = options.theme || PerformanceController.getTheme();
+
+    if (this.markersOverview) {
+      this.markersOverview.setTheme(theme);
+      this.markersOverview.refresh({ force: options.redraw });
+    }
+
+    if (this.memoryOverview) {
+      this.memoryOverview.setTheme(theme);
+      this.memoryOverview.refresh({ force: options.redraw });
+    }
+  },
+
+  /**
    * Sets the time interval selection for all graphs in this overview.
    *
    * @param object interval
    *        The { startTime, endTime }, in milliseconds.
    */
   setTimeInterval: function(interval, options = {}) {
-    if (this.isDisabled()) {
-      return;
-    }
-
     let recording = PerformanceController.getCurrentRecording();
     if (recording == null) {
       throw new Error("A recording should be available in order to set the selection.");
+    }
+    if (this.isDisabled()) {
+      return;
     }
     let mapStart = () => 0;
     let mapEnd = () => recording.getDuration();
@@ -123,13 +142,11 @@ let OverviewView = {
    */
   getTimeInterval: function() {
     let recording = PerformanceController.getCurrentRecording();
-
-    if (this.isDisabled()) {
-      return { startTime: 0, endTime: recording.getDuration() };
-    }
-
     if (recording == null) {
       throw new Error("A recording should be available in order to get the selection.");
+    }
+    if (this.isDisabled()) {
+      return { startTime: 0, endTime: recording.getDuration() };
     }
     let mapStart = () => 0;
     let mapEnd = () => recording.getDuration();
@@ -155,6 +172,7 @@ let OverviewView = {
     this.markersOverview.groupPadding = MARKERS_GROUP_VERTICAL_PADDING;
     this.markersOverview.on("selecting", this._onGraphSelecting);
     yield this.markersOverview.ready();
+    this.setTheme();
     return true;
   }),
 
@@ -176,6 +194,7 @@ let OverviewView = {
     this.memoryOverview = new MemoryOverview($("#memory-overview"));
     this.memoryOverview.fixedHeight = MEMORY_GRAPH_HEIGHT;
     yield this.memoryOverview.ready();
+    this.setTheme();
 
     CanvasGraphUtils.linkAnimation(this.markersOverview, this.memoryOverview);
     CanvasGraphUtils.linkSelection(this.markersOverview, this.memoryOverview);
@@ -371,6 +390,13 @@ let OverviewView = {
       }
     }
   }),
+
+  /**
+   * Called when `devtools.theme` changes.
+   */
+  _onThemeChanged: function (_, theme) {
+    this.setTheme({ theme, redraw: true });
+  },
 
   toString: () => "[object OverviewView]"
 };

@@ -31,7 +31,7 @@ namespace indexedDB {
 
 class SerializedKeyRange;
 
-class IDBKeyRange MOZ_FINAL
+class IDBKeyRange final
   : public nsISupports
 {
   nsCOMPtr<nsISupports> mGlobal;
@@ -141,7 +141,7 @@ public:
 
   // WebIDL
   bool
-  WrapObject(JSContext* aCx, JS::MutableHandle<JSObject*> aReflector);
+  WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector);
 
   nsISupports*
   GetParentObject() const

@@ -123,8 +123,8 @@ uint32_t             nsXULPrototypeAttribute::gNumCacheSets;
 uint32_t             nsXULPrototypeAttribute::gNumCacheFills;
 #endif
 
-class nsXULElementTearoff MOZ_FINAL : public nsIDOMElementCSSInlineStyle,
-                                      public nsIFrameLoaderOwner
+class nsXULElementTearoff final : public nsIDOMElementCSSInlineStyle,
+                                  public nsIFrameLoaderOwner
 {
   ~nsXULElementTearoff() {}
 
@@ -138,7 +138,7 @@ public:
   {
   }
 
-  NS_IMETHOD GetStyle(nsIDOMCSSStyleDeclaration** aStyle) MOZ_OVERRIDE
+  NS_IMETHOD GetStyle(nsIDOMCSSStyleDeclaration** aStyle) override
   {
     nsXULElement* element = static_cast<nsXULElement*>(mElement.get());
     NS_ADDREF(*aStyle = element->Style());
@@ -2117,9 +2117,9 @@ nsXULElement::IsEventAttributeName(nsIAtom *aName)
 }
 
 JSObject*
-nsXULElement::WrapNode(JSContext *aCx)
+nsXULElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-    return dom::XULElementBinding::Wrap(aCx, this);
+    return dom::XULElementBinding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsXULPrototypeNode)
@@ -2826,7 +2826,7 @@ nsXULPrototypeScript::Compile(JS::SourceBufferHolder& aSrcBuf,
         NS_ADDREF(aOffThreadReceiver);
     } else {
         JS::Rooted<JSScript*> script(cx);
-        if (!JS::Compile(cx, scope, options, aSrcBuf, &script))
+        if (!JS::Compile(cx, options, aSrcBuf, &script))
             return NS_ERROR_OUT_OF_MEMORY;
         Set(script);
     }

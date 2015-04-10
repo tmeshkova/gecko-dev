@@ -208,7 +208,7 @@ nsresult GetPathToSpecialDir(const char *aKey, nsString& aOutPath)
  * For this purpose, we register an observer to set |gPaths->profileDir|
  * and |gPaths->localProfileDir| once the profile is setup.
  */
-class DelayedPathSetter MOZ_FINAL: public nsIObserver
+class DelayedPathSetter final: public nsIObserver
 {
   ~DelayedPathSetter() {}
 
@@ -727,9 +727,11 @@ static const dom::ConstantSpec gWinProperties[] =
   // CreateFile attributes
   INT_CONSTANT(FILE_ATTRIBUTE_ARCHIVE),
   INT_CONSTANT(FILE_ATTRIBUTE_DIRECTORY),
+  INT_CONSTANT(FILE_ATTRIBUTE_HIDDEN),
   INT_CONSTANT(FILE_ATTRIBUTE_NORMAL),
   INT_CONSTANT(FILE_ATTRIBUTE_READONLY),
   INT_CONSTANT(FILE_ATTRIBUTE_REPARSE_POINT),
+  INT_CONSTANT(FILE_ATTRIBUTE_SYSTEM),
   INT_CONSTANT(FILE_ATTRIBUTE_TEMPORARY),
   INT_CONSTANT(FILE_FLAG_BACKUP_SEMANTICS),
 

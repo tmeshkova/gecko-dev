@@ -27,8 +27,8 @@ class Promise;
 class RetrieveRevisionsCounter;
 class RevisionAddedEnableStoreCallback;
 
-class DataStoreService MOZ_FINAL : public nsIDataStoreService
-                                 , public nsIObserver
+class DataStoreService final : public nsIDataStoreService
+                             , public nsIObserver
 {
   friend class ContentChild;
   friend class FirstRevisionIdCallback;

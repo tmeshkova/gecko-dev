@@ -490,7 +490,7 @@ nsDOMWindowUtils::SetDisplayPortBaseForElement(int32_t aX,
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::SetResolution(float aXResolution, float aYResolution)
+nsDOMWindowUtils::SetResolution(float aResolution)
 {
   if (!nsContentUtils::IsCallerChrome()) {
     return NS_ERROR_DOM_SECURITY_ERR;
@@ -503,15 +503,15 @@ nsDOMWindowUtils::SetResolution(float aXResolution, float aYResolution)
 
   nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
   if (sf) {
-    sf->SetResolution(gfxSize(aXResolution, aYResolution));
-    presShell->SetResolution(aXResolution, aYResolution);
+    sf->SetResolution(aResolution);
+    presShell->SetResolution(aResolution);
   }
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::SetResolutionAndScaleTo(float aXResolution, float aYResolution)
+nsDOMWindowUtils::SetResolutionAndScaleTo(float aResolution)
 {
   if (!nsContentUtils::IsCallerChrome()) {
     return NS_ERROR_DOM_SECURITY_ERR;
@@ -524,15 +524,15 @@ nsDOMWindowUtils::SetResolutionAndScaleTo(float aXResolution, float aYResolution
 
   nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
   if (sf) {
-    sf->SetResolutionAndScaleTo(gfxSize(aXResolution, aYResolution));
-    presShell->SetResolutionAndScaleTo(aXResolution, aYResolution);
+    sf->SetResolutionAndScaleTo(aResolution);
+    presShell->SetResolutionAndScaleTo(aResolution);
   }
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::GetResolution(float* aXResolution, float* aYResolution)
+nsDOMWindowUtils::GetResolution(float* aResolution)
 {
   MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
 
@@ -543,12 +543,9 @@ nsDOMWindowUtils::GetResolution(float* aXResolution, float* aYResolution)
 
   nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
   if (sf) {
-    const gfxSize& res = sf->GetResolution();
-    *aXResolution = res.width;
-    *aYResolution = res.height;
+    *aResolution = sf->GetResolution();
   } else {
-    *aXResolution = presShell->GetXResolution();
-    *aYResolution = presShell->GetYResolution();
+    *aResolution = presShell->GetResolution();
   }
 
   return NS_OK;
@@ -815,22 +812,26 @@ nsDOMWindowUtils::SendMouseEventCommon(const nsAString& aType,
   event.refPoint = ToWidgetPoint(CSSPoint(aX, aY), offset, presContext);
   event.ignoreRootScrollFrame = aIgnoreRootScrollFrame;
 
-  nsEventStatus status;
+  nsEventStatus status = nsEventStatus_eIgnore;
   if (aToWindow) {
     nsCOMPtr<nsIPresShell> presShell;
     nsView* view = GetViewToDispatchEvent(presContext, getter_AddRefs(presShell));
     if (!presShell || !view) {
       return NS_ERROR_FAILURE;
     }
-    status = nsEventStatus_eIgnore;
     return presShell->HandleEvent(view->GetFrame(), &event, false, &status);
   }
-  nsresult rv = widget->DispatchEvent(&event, status);
+  if (gfxPrefs::TestEventsAsyncEnabled()) {
+    status = widget->DispatchInputEvent(&event);
+  } else {
+    nsresult rv = widget->DispatchEvent(&event, status);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
   if (aPreventDefault) {
     *aPreventDefault = (status == nsEventStatus_eConsumeNoDefault);
   }
 
-  return rv;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -2376,6 +2377,18 @@ nsDOMWindowUtils::IsInModalState(bool *retval)
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::SetDesktopModeViewport(bool aDesktopMode)
+{
+  MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
+
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryReferent(mWindow);
+  NS_ENSURE_STATE(window);
+
+  static_cast<nsGlobalWindow*>(window.get())->SetDesktopModeViewport(aDesktopMode);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::GetOuterWindowID(uint64_t *aWindowID)
 {
   MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
@@ -2514,7 +2527,7 @@ nsDOMWindowUtils::StopFrameTimeRecording(uint32_t   startIndex,
   mgr->StopFrameTimeRecording(startIndex, tmpFrameIntervals);
   *frameCount = tmpFrameIntervals.Length();
 
-  *frameIntervals = (float*)nsMemory::Alloc(*frameCount * sizeof(float));
+  *frameIntervals = (float*)moz_xmalloc(*frameCount * sizeof(float));
 
   /* copy over the frame intervals and paint times into the arrays we just allocated */
   for (uint32_t i = 0; i < *frameCount; i++) {
@@ -2582,7 +2595,7 @@ nsDOMWindowUtils::AdvanceTimeAndRefresh(int64_t aMilliseconds)
   if (doc) {
     PendingPlayerTracker* tracker = doc->GetPendingPlayerTracker();
     if (tracker) {
-      tracker->StartPendingPlayersNow();
+      tracker->TriggerPendingPlayersNow();
     }
   }
 
@@ -2881,19 +2894,6 @@ nsDOMWindowUtils::LeafLayersPartitionWindow(bool* aResult)
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::GetMayHaveTouchEventListeners(bool* aResult)
-{
-  MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
-
-  nsCOMPtr<nsPIDOMWindow> window = do_QueryReferent(mWindow);
-  NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
-
-  nsPIDOMWindow* innerWindow = window->GetCurrentInnerWindow();
-  *aResult = innerWindow ? innerWindow->HasTouchEventListeners() : false;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsDOMWindowUtils::CheckAndClearPaintedState(nsIDOMElement* aElement, bool* aResult)
 {
   MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
@@ -2925,6 +2925,67 @@ nsDOMWindowUtils::CheckAndClearPaintedState(nsIDOMElement* aElement, bool* aResu
   }
 
   *aResult = frame->CheckAndClearPaintedState();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::IsPartOfOpaqueLayer(nsIDOMElement* aElement, bool* aResult)
+{
+  MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
+
+  if (!aElement) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  nsresult rv;
+  nsCOMPtr<nsIContent> content = do_QueryInterface(aElement, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsIFrame* frame = content->GetPrimaryFrame();
+  if (!frame) {
+    return NS_ERROR_FAILURE;
+  }
+
+  Layer* layer = FrameLayerBuilder::GetDebugSingleOldLayerForFrame(frame);
+  if (!layer || !layer->AsPaintedLayer()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  *aResult = (layer->GetContentFlags() & Layer::CONTENT_OPAQUE);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::NumberOfAssignedPaintedLayers(nsIDOMElement** aElements,
+                                                uint32_t aCount,
+                                                uint32_t* aResult)
+{
+  MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
+
+  if (!aElements) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  nsTHashtable<nsPtrHashKey<PaintedLayer>> layers;
+  nsresult rv;
+  for (uint32_t i = 0; i < aCount; i++) {
+    nsCOMPtr<nsIContent> content = do_QueryInterface(aElements[i], &rv);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    nsIFrame* frame = content->GetPrimaryFrame();
+    if (!frame) {
+      return NS_ERROR_FAILURE;
+    }
+
+    Layer* layer = FrameLayerBuilder::GetDebugSingleOldLayerForFrame(frame);
+    if (!layer || !layer->AsPaintedLayer()) {
+      return NS_ERROR_FAILURE;
+    }
+
+    layers.PutEntry(layer->AsPaintedLayer());
+  }
+
+  *aResult = layers.Count();
   return NS_OK;
 }
 
@@ -3715,7 +3776,7 @@ nsDOMWindowUtils::GetOMTAStyle(nsIDOMElement* aElement,
 
 namespace {
 
-class HandlingUserInputHelper MOZ_FINAL : public nsIJSRAIIHelper
+class HandlingUserInputHelper final : public nsIJSRAIIHelper
 {
 public:
   explicit HandlingUserInputHelper(bool aHandlingUserInput);
@@ -3921,6 +3982,32 @@ nsDOMWindowUtils::GetFramesReflowed(uint64_t* aResult)
   }
 
   *aResult = presContext->FramesReflowedCount();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::SetServiceWorkersTestingEnabled(bool aEnabled)
+{
+  MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
+
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryReferent(mWindow);
+  NS_ENSURE_STATE(window);
+
+  window->SetServiceWorkersTestingEnabled(aEnabled);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetServiceWorkersTestingEnabled(bool *aEnabled)
+{
+  MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
+
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryReferent(mWindow);
+  NS_ENSURE_STATE(window);
+
+  *aEnabled = window->GetServiceWorkersTestingEnabled();
+
   return NS_OK;
 }
 

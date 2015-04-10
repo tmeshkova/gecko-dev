@@ -134,6 +134,9 @@ def dedent(s):
 fill_multiline_substitution_re = re.compile(r"( *)\$\*{(\w+)}(\n)?")
 
 
+find_substitutions = re.compile(r"\${")
+
+
 @memoize
 def compile_fill_template(template):
     """
@@ -173,6 +176,8 @@ def compile_fill_template(template):
         return "${" + modified_name + "}"
 
     t = re.sub(fill_multiline_substitution_re, replace, t)
+    if not re.search(find_substitutions, t):
+        raise TypeError("Using fill() when dedent() would do.")
     return (string.Template(t), argModList)
 
 
@@ -1141,14 +1146,14 @@ class CGHeaders(CGWrapper):
         if len(callbacks) != 0:
             # We need CallbackFunction to serve as our parent class
             declareIncludes.add("mozilla/dom/CallbackFunction.h")
-            # And we need BindingUtils.h so we can wrap "this" objects
-            declareIncludes.add("mozilla/dom/BindingUtils.h")
+            # And we need ToJSValue.h so we can wrap "this" objects
+            declareIncludes.add("mozilla/dom/ToJSValue.h")
 
         if len(callbackDescriptors) != 0 or len(jsImplementedDescriptors) != 0:
             # We need CallbackInterface to serve as our parent class
             declareIncludes.add("mozilla/dom/CallbackInterface.h")
-            # And we need BindingUtils.h so we can wrap "this" objects
-            declareIncludes.add("mozilla/dom/BindingUtils.h")
+            # And we need ToJSValue.h so we can wrap "this" objects
+            declareIncludes.add("mozilla/dom/ToJSValue.h")
 
         # Also need to include the headers for ancestors of
         # JS-implemented interfaces.
@@ -1503,7 +1508,7 @@ class CGAddPropertyHook(CGAbstractClassHook):
         args = [Argument('JSContext*', 'cx'),
                 Argument('JS::Handle<JSObject*>', 'obj'),
                 Argument('JS::Handle<jsid>', 'id'),
-                Argument('JS::MutableHandle<JS::Value>', 'vp')]
+                Argument('JS::Handle<JS::Value>', 'val')]
         CGAbstractClassHook.__init__(self, descriptor, ADDPROPERTY_HOOK_NAME,
                                      'bool', args)
 
@@ -2150,7 +2155,8 @@ class MethodDefiner(PropertyDefiner):
                 "flags": "JSPROP_ENUMERATE",
                 "condition": PropertyDefiner.getControllingCondition(m, descriptor),
                 "allowCrossOriginThis": m.getExtendedAttribute("CrossOriginCallable"),
-                "returnsPromise": m.returnsPromise()
+                "returnsPromise": m.returnsPromise(),
+                "hasIteratorAlias": "@@iterator" in m.aliases
             }
             if isChromeOnly(m):
                 self.chrome.append(method)
@@ -2158,7 +2164,8 @@ class MethodDefiner(PropertyDefiner):
                 self.regular.append(method)
 
         # FIXME Check for an existing iterator on the interface first.
-        if any(m.isGetter() and m.isIndexed() for m in methods):
+        if (any(m.isGetter() and m.isIndexed() for m in methods) and
+            not any("@@iterator" in m.aliases for m in methods)):
             self.regular.append({
                 "name": "@@iterator",
                 "methodInfo": False,
@@ -2491,6 +2498,12 @@ class CGNativeProperties(CGList):
                 else:
                     props = "nullptr, nullptr, nullptr"
                 nativeProps.append(CGGeneric(props))
+            iteratorAliasIndex = -1
+            for index, item in enumerate(properties.methods.regular):
+                if item.get("hasIteratorAlias"):
+                    iteratorAliasIndex = index
+                    break
+            nativeProps.append(CGGeneric(str(iteratorAliasIndex)));
             return CGWrapper(CGIndenter(CGList(nativeProps, ",\n")),
                              pre="static const NativeProperties %s = {\n" % name,
                              post="\n};\n")
@@ -2758,19 +2771,74 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
 
         if self.descriptor.hasUnforgeableMembers:
             assert needInterfacePrototypeObject
-            setUnforgeableHolder = CGGeneric(fill(
+            setUnforgeableHolder = CGGeneric(dedent(
                 """
                 if (*protoCache) {
                   js::SetReservedSlot(*protoCache, DOM_INTERFACE_PROTO_SLOTS_BASE,
                                       JS::ObjectValue(*unforgeableHolder));
                 }
-                """,
-                name=self.descriptor.name))
+                """))
         else:
             setUnforgeableHolder = None
+
+        aliasedMembers = [m for m in self.descriptor.interface.members if m.isMethod() and m.aliases]
+        if aliasedMembers:
+            assert needInterfacePrototypeObject
+
+            def defineAlias(alias):
+                if alias == "@@iterator":
+                    symbolJSID = "SYMBOL_TO_JSID(JS::GetWellKnownSymbol(aCx, JS::SymbolCode::iterator))"
+                    getSymbolJSID = CGGeneric(fill("JS::Rooted<jsid> iteratorId(aCx, ${symbolJSID});",
+                                                   symbolJSID=symbolJSID))
+                    defineFn = "JS_DefinePropertyById"
+                    prop = "iteratorId"
+                elif alias.startswith("@@"):
+                    raise TypeError("Can't handle any well-known Symbol other than @@iterator")
+                else:
+                    getSymbolJSID = None
+                    defineFn = "JS_DefineProperty"
+                    prop = '"%s"' % alias
+                return CGList([
+                    getSymbolJSID,
+                    # XXX If we ever create non-enumerate properties that can be
+                    #     aliased, we should consider making the aliases match
+                    #     the enumerability of the property being aliased.
+                    CGGeneric(fill("""
+                    if (!${defineFn}(aCx, proto, ${prop}, aliasedVal, JSPROP_ENUMERATE)) {
+                      return;
+                    }
+                    """,
+                    defineFn=defineFn,
+                    prop=prop))
+                ], "\n")
+
+            def defineAliasesFor(m):
+                return CGList([
+                    CGGeneric(fill("""
+                        if (!JS_GetProperty(aCx, proto, \"${prop}\", &aliasedVal)) {
+                          return;
+                        }
+                        """,
+                        prop=m.identifier.name))
+                ] + [defineAlias(alias) for alias in sorted(m.aliases)])
+
+            defineAliases = CGList([
+                CGGeneric(dedent("""
+                    // Set up aliases on the interface prototype object we just created.
+                    JS::Handle<JSObject*> proto = GetProtoObjectHandle(aCx, aGlobal);
+                    if (!proto) {
+                      return;
+                    }
+
+                    """)),
+                CGGeneric("JS::Rooted<JS::Value> aliasedVal(aCx);\n\n")
+            ] + [defineAliasesFor(m) for m in sorted(aliasedMembers)])
+        else:
+            defineAliases = None
+
         return CGList(
             [CGGeneric(getParentProto), CGGeneric(getConstructorProto), initIds,
-             prefCache, CGGeneric(call), createUnforgeableHolder, setUnforgeableHolder],
+             prefCache, CGGeneric(call), defineAliases, createUnforgeableHolder, setUnforgeableHolder],
             "\n").define()
 
 
@@ -3182,11 +3250,8 @@ def CopyUnforgeablePropertiesToInstance(descriptor, wrapperCache):
         copyFunc = "JS_InitializePropertiesFromCompatibleNativeObject"
     copyCode.append(CGGeneric(fill(
         """
-        // XXXbz Once we allow subclassing, we'll want to make sure that
-        // this uses the canonical proto, not whatever random passed-in
-        // proto we end up using for the object.
         JS::Rooted<JSObject*> unforgeableHolder(aCx,
-          &js::GetReservedSlot(proto, DOM_INTERFACE_PROTO_SLOTS_BASE).toObject());
+          &js::GetReservedSlot(canonicalProto, DOM_INTERFACE_PROTO_SLOTS_BASE).toObject());
         if (!${copyFunc}(aCx, ${obj}, unforgeableHolder)) {
           $*{cleanup}
           return false;
@@ -3206,8 +3271,9 @@ def AssertInheritanceChain(descriptor):
         desc = descriptor.getDescriptor(iface.identifier.name)
         asserts += (
             "MOZ_ASSERT(static_cast<%s*>(aObject) == \n"
-            "           reinterpret_cast<%s*>(aObject));\n" %
-            (desc.nativeType, desc.nativeType))
+            "           reinterpret_cast<%s*>(aObject),\n"
+            "           \"Multiple inheritance for %s is broken.\");\n" %
+            (desc.nativeType, desc.nativeType, desc.nativeType))
         iface = iface.parent
     asserts += "MOZ_ASSERT(ToSupportsIsCorrect(aObject));\n"
     return asserts
@@ -3242,6 +3308,30 @@ def InitMemberSlots(descriptor, wrapperCache):
         clearWrapper=clearWrapper)
 
 
+def DeclareProto():
+    """
+    Declare the canonicalProto and proto we have for our wrapping operation.
+    """
+    return dedent(
+        """
+        JS::Handle<JSObject*> canonicalProto = GetProtoObjectHandle(aCx, global);
+        if (!canonicalProto) {
+          return false;
+        }
+        JS::Rooted<JSObject*> proto(aCx);
+        if (aGivenProto) {
+          proto = aGivenProto;
+          if (js::GetContextCompartment(aCx) != js::GetObjectCompartment(proto)) {
+            if (!JS_WrapObject(aCx, &proto)) {
+              return false;
+            }
+          }
+        } else {
+          proto = canonicalProto;
+        }
+        """)
+
+
 class CGWrapWithCacheMethod(CGAbstractMethod):
     """
     Create a wrapper JSObject for a given native that implements nsWrapperCache.
@@ -3253,6 +3343,7 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
         args = [Argument('JSContext*', 'aCx'),
                 Argument(descriptor.nativeType + '*', 'aObject'),
                 Argument('nsWrapperCache*', 'aCache'),
+                Argument('JS::Handle<JSObject*>', 'aGivenProto'),
                 Argument('JS::MutableHandle<JSObject*>', 'aReflector')]
         CGAbstractMethod.__init__(self, descriptor, 'Wrap', 'bool', args)
         self.properties = properties
@@ -3260,7 +3351,10 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
     def definition_body(self):
         return fill(
             """
-            $*{assertion}
+            $*{assertInheritance}
+            MOZ_ASSERT(!aCache->GetWrapper(),
+                       "You should probably not be using Wrap() directly; use "
+                       "GetOrCreateDOMReflector instead");
 
             MOZ_ASSERT(ToSupportsIsOnPrimaryInheritanceChain(aObject, aCache),
                        "nsISupports must be on our primary inheritance chain");
@@ -3274,15 +3368,14 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
             // of XBL.  Check for that, and bail out as needed.
             aReflector.set(aCache->GetWrapper());
             if (aReflector) {
+              MOZ_ASSERT(!aGivenProto,
+                         "How are we supposed to change the proto now?");
               return true;
             }
 
             JSAutoCompartment ac(aCx, parent);
             JS::Rooted<JSObject*> global(aCx, js::GetGlobalForObjectCrossCompartment(parent));
-            JS::Handle<JSObject*> proto = GetProtoObjectHandle(aCx, global);
-            if (!proto) {
-              return false;
-            }
+            $*{declareProto}
 
             $*{createObject}
 
@@ -3292,7 +3385,8 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
             creator.InitializationSucceeded();
             return true;
             """,
-            assertion=AssertInheritanceChain(self.descriptor),
+            assertInheritance=AssertInheritanceChain(self.descriptor),
+            declareProto=DeclareProto(),
             createObject=CreateBindingJSObject(self.descriptor, self.properties),
             unforgeable=CopyUnforgeablePropertiesToInstance(self.descriptor, True),
             slots=InitMemberSlots(self.descriptor, True))
@@ -3303,14 +3397,15 @@ class CGWrapMethod(CGAbstractMethod):
         # XXX can we wrap if we don't have an interface prototype object?
         assert descriptor.interface.hasInterfacePrototypeObject()
         args = [Argument('JSContext*', 'aCx'),
-                Argument('T*', 'aObject')]
+                Argument('T*', 'aObject'),
+                Argument('JS::Handle<JSObject*>', 'aGivenProto')]
         CGAbstractMethod.__init__(self, descriptor, 'Wrap', 'JSObject*', args,
                                   inline=True, templateArgs=["class T"])
 
     def definition_body(self):
         return dedent("""
             JS::Rooted<JSObject*> reflector(aCx);
-            return Wrap(aCx, aObject, aObject, &reflector) ? reflector.get() : nullptr;
+            return Wrap(aCx, aObject, aObject, aGivenProto, &reflector) ? reflector.get() : nullptr;
             """)
 
 
@@ -3326,6 +3421,7 @@ class CGWrapNonWrapperCacheMethod(CGAbstractMethod):
         assert descriptor.interface.hasInterfacePrototypeObject()
         args = [Argument('JSContext*', 'aCx'),
                 Argument(descriptor.nativeType + '*', 'aObject'),
+                Argument('JS::Handle<JSObject*>', 'aGivenProto'),
                 Argument('JS::MutableHandle<JSObject*>', 'aReflector')]
         CGAbstractMethod.__init__(self, descriptor, 'Wrap', 'bool', args)
         self.properties = properties
@@ -3336,10 +3432,7 @@ class CGWrapNonWrapperCacheMethod(CGAbstractMethod):
             $*{assertions}
 
             JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
-            JS::Handle<JSObject*> proto = GetProtoObjectHandle(aCx, global);
-            if (!proto) {
-              return false;
-            }
+            $*{declareProto}
 
             $*{createObject}
 
@@ -3350,6 +3443,7 @@ class CGWrapNonWrapperCacheMethod(CGAbstractMethod):
             return true;
             """,
             assertions=AssertInheritanceChain(self.descriptor),
+            declareProto=DeclareProto(),
             createObject=CreateBindingJSObject(self.descriptor, self.properties),
             unforgeable=CopyUnforgeablePropertiesToInstance(self.descriptor, False),
             slots=InitMemberSlots(self.descriptor, False))
@@ -3393,10 +3487,10 @@ class CGWrapGlobalMethod(CGAbstractMethod):
             fireOnNewGlobal = ""
 
         if self.descriptor.hasUnforgeableMembers:
-            declareProto = "JS::Handle<JSObject*> proto =\n"
+            declareProto = "JS::Handle<JSObject*> canonicalProto =\n"
             assertProto = (
-                "MOZ_ASSERT(proto &&\n"
-                "           IsDOMIfaceAndProtoClass(js::GetObjectClass(proto)));\n")
+                "MOZ_ASSERT(canonicalProto &&\n"
+                "           IsDOMIfaceAndProtoClass(js::GetObjectClass(canonicalProto)));\n")
         else:
             declareProto = ""
             assertProto = ""
@@ -9124,7 +9218,7 @@ class ClassMethod(ClassItem):
                  breakAfterReturnDecl="\n",
                  breakAfterSelf="\n", override=False):
         """
-        override indicates whether to flag the method as MOZ_OVERRIDE
+        override indicates whether to flag the method as override
         """
         assert not override or virtual
         assert not (override and static)
@@ -9181,7 +9275,7 @@ class ClassMethod(ClassItem):
             name=self.name,
             args=args,
             const=' const' if self.const else '',
-            override=' MOZ_OVERRIDE' if self.override else '',
+            override=' override' if self.override else '',
             body=body,
             breakAfterSelf=self.breakAfterSelf)
 
@@ -9781,7 +9875,7 @@ class CGProxySpecialOperation(CGPerSignatureCall):
     false.
     """
     def __init__(self, descriptor, operation, checkFound=True,
-                 argumentMutableValue=None, resultVar=None, foundVar=None):
+                 argumentHandleValue=None, resultVar=None, foundVar=None):
         self.checkFound = checkFound
         self.foundVar = foundVar or "found"
 
@@ -9806,12 +9900,12 @@ class CGProxySpecialOperation(CGPerSignatureCall):
                 treatNullAs=argument.treatNullAs,
                 sourceDescription=("value being assigned to %s setter" %
                                    descriptor.interface.identifier.name))
-            if argumentMutableValue is None:
-                argumentMutableValue = "desc.value()"
+            if argumentHandleValue is None:
+                argumentHandleValue = "desc.value()"
             templateValues = {
                 "declName": argument.identifier.name,
                 "holderName": argument.identifier.name + "_holder",
-                "val": argumentMutableValue,
+                "val": argumentHandleValue,
                 "obj": "obj",
                 "passedToJSImpl": "false"
             }
@@ -9856,10 +9950,10 @@ class CGProxyIndexedOperation(CGProxySpecialOperation):
     foundVar: See the docstring for CGProxySpecialOperation.
     """
     def __init__(self, descriptor, name, doUnwrap=True, checkFound=True,
-                 argumentMutableValue=None, resultVar=None, foundVar=None):
+                 argumentHandleValue=None, resultVar=None, foundVar=None):
         self.doUnwrap = doUnwrap
         CGProxySpecialOperation.__init__(self, descriptor, name, checkFound,
-                                         argumentMutableValue=argumentMutableValue,
+                                         argumentHandleValue=argumentHandleValue,
                                          resultVar=resultVar,
                                          foundVar=foundVar)
 
@@ -9917,9 +10011,9 @@ class CGProxyIndexedSetter(CGProxyIndexedOperation):
     """
     Class to generate a call to an indexed setter.
     """
-    def __init__(self, descriptor, argumentMutableValue=None):
+    def __init__(self, descriptor, argumentHandleValue=None):
         CGProxyIndexedOperation.__init__(self, descriptor, 'IndexedSetter',
-                                         argumentMutableValue=argumentMutableValue)
+                                         argumentHandleValue=argumentHandleValue)
 
 
 class CGProxyIndexedDeleter(CGProxyIndexedOperation):
@@ -9947,10 +10041,10 @@ class CGProxyNamedOperation(CGProxySpecialOperation):
 
     foundVar: See the docstring for CGProxySpecialOperation.
     """
-    def __init__(self, descriptor, name, value=None, argumentMutableValue=None,
+    def __init__(self, descriptor, name, value=None, argumentHandleValue=None,
                  resultVar=None, foundVar=None):
         CGProxySpecialOperation.__init__(self, descriptor, name,
-                                         argumentMutableValue=argumentMutableValue,
+                                         argumentHandleValue=argumentHandleValue,
                                          resultVar=resultVar,
                                          foundVar=foundVar)
         self.value = value
@@ -10048,9 +10142,9 @@ class CGProxyNamedSetter(CGProxyNamedOperation):
     """
     Class to generate a call to a named setter.
     """
-    def __init__(self, descriptor, argumentMutableValue=None):
+    def __init__(self, descriptor, argumentHandleValue=None):
         CGProxyNamedOperation.__init__(self, descriptor, 'NamedSetter',
-                                       argumentMutableValue=argumentMutableValue)
+                                       argumentHandleValue=argumentHandleValue)
 
 
 class CGProxyNamedDeleter(CGProxyNamedOperation):
@@ -10220,7 +10314,7 @@ class CGDOMJSProxyHandler_defineProperty(ClassMethod):
         args = [Argument('JSContext*', 'cx'),
                 Argument('JS::Handle<JSObject*>', 'proxy'),
                 Argument('JS::Handle<jsid>', 'id'),
-                Argument('JS::MutableHandle<JSPropertyDescriptor>', 'desc'),
+                Argument('JS::Handle<JSPropertyDescriptor>', 'desc'),
                 Argument('JS::ObjectOpResult&', 'opresult'),
                 Argument('bool*', 'defined')]
         ClassMethod.__init__(self, "defineProperty", "bool", args, virtual=True, override=True, const=True)
@@ -10667,7 +10761,7 @@ class CGDOMJSProxyHandler_setCustom(ClassMethod):
         args = [Argument('JSContext*', 'cx'),
                 Argument('JS::Handle<JSObject*>', 'proxy'),
                 Argument('JS::Handle<jsid>', 'id'),
-                Argument('JS::MutableHandle<JS::Value>', 'vp'),
+                Argument('JS::Handle<JS::Value>', 'v'),
                 Argument('bool*', 'done')]
         ClassMethod.__init__(self, "setCustom", "bool", args, virtual=True, override=True, const=True)
         self.descriptor = descriptor
@@ -10692,7 +10786,7 @@ class CGDOMJSProxyHandler_setCustom(ClassMethod):
                 raise ValueError("In interface " + self.descriptor.name + ": " +
                                  "Can't cope with [OverrideBuiltins] and unforgeable members")
 
-            callSetter = CGProxyNamedSetter(self.descriptor, argumentMutableValue="vp")
+            callSetter = CGProxyNamedSetter(self.descriptor, argumentHandleValue="v")
             return (assertion +
                     callSetter.define() +
                     "*done = true;\n"
@@ -10717,7 +10811,7 @@ class CGDOMJSProxyHandler_setCustom(ClassMethod):
 
                 """,
                 callSetter=CGProxyIndexedSetter(self.descriptor,
-                                                argumentMutableValue="vp").define())
+                                                argumentHandleValue="v").define())
         else:
             setIndexed = ""
 
@@ -11424,7 +11518,7 @@ class CGDictionary(CGThing):
                 """,
                 dictName=self.makeClassName(self.dictionary.parent))
         else:
-            body += fill(
+            body += dedent(
                 """
                 if (!IsConvertibleToDictionary(cx, val)) {
                   return ThrowErrorMessage(cx, MSG_NOT_DICTIONARY, sourceDescription);
@@ -11510,7 +11604,7 @@ class CGDictionary(CGThing):
                 """,
                 dictName=self.makeClassName(self.dictionary.parent))
         else:
-            body += fill(
+            body += dedent(
                 """
                 JS::Rooted<JSObject*> obj(cx, JS_NewPlainObject(cx));
                 if (!obj) {
@@ -13082,7 +13176,8 @@ class CGBindingImplClass(CGClass):
                                    name="aName")]),
                     { "infallible": True }))
 
-        wrapArgs = [Argument('JSContext*', 'aCx')]
+        wrapArgs = [Argument('JSContext*', 'aCx'),
+                    Argument('JS::Handle<JSObject*>', 'aGivenProto')]
         self.methodDecls.insert(0,
                                 ClassMethod(wrapMethodName, "JSObject*",
                                             wrapArgs, virtual=descriptor.wrapperCache,
@@ -13150,7 +13245,7 @@ class CGExampleClass(CGBindingImplClass):
         if descriptor.interface.hasChildInterfaces():
             decorators = ""
         else:
-            decorators = "MOZ_FINAL"
+            decorators = "final"
 
         CGClass.__init__(self, self.nativeLeafName(descriptor),
                          bases=bases,
@@ -13202,9 +13297,9 @@ class CGExampleClass(CGBindingImplClass):
 
         classImpl = ccImpl + ctordtor + "\n" + dedent("""
             JSObject*
-            ${nativeType}::WrapObject(JSContext* aCx)
+            ${nativeType}::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
             {
-              return ${ifaceName}Binding::Wrap(aCx, this);
+              return ${ifaceName}Binding::Wrap(aCx, this, aGivenProto);
             }
 
             """)
@@ -13528,7 +13623,7 @@ class CGJSImplClass(CGBindingImplClass):
             # We need a protected virtual destructor our subclasses can use
             destructor = ClassDestructor(virtual=True, visibility="protected")
         else:
-            decorators = "MOZ_FINAL"
+            decorators = "final"
             destructor = ClassDestructor(virtual=False, visibility="private")
 
         baseConstructors = [
@@ -13572,7 +13667,7 @@ class CGJSImplClass(CGBindingImplClass):
     def getWrapObjectBody(self):
         return fill(
             """
-            JS::Rooted<JSObject*> obj(aCx, ${name}Binding::Wrap(aCx, this));
+            JS::Rooted<JSObject*> obj(aCx, ${name}Binding::Wrap(aCx, this, aGivenProto));
             if (!obj) {
               return nullptr;
             }
@@ -13713,7 +13808,7 @@ class CGCallback(CGClass):
         args.append(Argument("JSCompartment*", "aCompartment", "nullptr"))
         # And now insert our template argument.
         argsWithoutThis = list(args)
-        args.insert(0, Argument("const T&",  "thisObjPtr"))
+        args.insert(0, Argument("const T&",  "thisVal"))
         errorReturn = method.getDefaultRetval()
 
         setupCall = fill(
@@ -13729,14 +13824,11 @@ class CGCallback(CGClass):
         bodyWithThis = fill(
             """
             $*{setupCall}
-            JS::Rooted<JSObject*> thisObjJS(s.GetContext(),
-              WrapCallThisObject(s.GetContext(), thisObjPtr));
-            if (!thisObjJS) {
+            JS::Rooted<JS::Value> thisValJS(s.GetContext());
+            if (!ToJSValue(s.GetContext(), thisVal, &thisValJS)) {
               aRv.Throw(NS_ERROR_FAILURE);
               return${errorReturn};
             }
-            JS::Rooted<JS::Value> thisValJS(s.GetContext(),
-                                            JS::ObjectValue(*thisObjJS));
             return ${methodName}(${callArgs});
             """,
             setupCall=setupCall,
@@ -14965,7 +15057,7 @@ class CGEventClass(CGBindingImplClass):
                          extradeclarations=baseDeclarations)
 
     def getWrapObjectBody(self):
-        return "return %sBinding::Wrap(aCx, this);\n" % self.descriptor.name
+        return "return %sBinding::Wrap(aCx, this, aGivenProto);\n" % self.descriptor.name
 
     def implTraverse(self):
         retVal = ""

@@ -4709,7 +4709,7 @@ nsImageRenderer::ComputeIntrinsicSize()
     case eStyleImageType_Image:
     {
       bool haveWidth, haveHeight;
-      nsIntSize imageIntSize;
+      CSSIntSize imageIntSize;
       nsLayoutUtils::ComputeSizeForDrawing(mImageContainer, imageIntSize,
                                            result.mRatio, haveWidth, haveHeight);
       if (haveWidth) {
@@ -4737,9 +4737,10 @@ nsImageRenderer::ComputeIntrinsicSize()
           int32_t appUnitsPerDevPixel =
             mForFrame->PresContext()->AppUnitsPerDevPixel();
           result.SetSize(
-            nsSVGIntegrationUtils::GetContinuationUnionSize(mPaintServerFrame).
-              ToNearestPixels(appUnitsPerDevPixel).
-              ToAppUnits(appUnitsPerDevPixel));
+            IntSizeToAppUnits(
+              nsSVGIntegrationUtils::GetContinuationUnionSize(mPaintServerFrame).
+                ToNearestPixels(appUnitsPerDevPixel),
+              appUnitsPerDevPixel));
         }
       } else {
         NS_ASSERTION(mImageElementSurface.mSourceSurface, "Surface should be ready.");
@@ -5195,13 +5196,11 @@ nsImageRenderer::IsAnimatedImage()
 already_AddRefed<mozilla::layers::ImageContainer>
 nsImageRenderer::GetContainer(LayerManager* aManager)
 {
-  if (mType != eStyleImageType_Image || !mImageContainer)
+  if (mType != eStyleImageType_Image || !mImageContainer) {
     return nullptr;
+  }
 
-  nsRefPtr<ImageContainer> container;
-  nsresult rv = mImageContainer->GetImageContainer(aManager, getter_AddRefs(container));
-  NS_ENSURE_SUCCESS(rv, nullptr);
-  return container.forget();
+  return mImageContainer->GetImageContainer(aManager, imgIContainer::FLAG_NONE);
 }
 
 #define MAX_BLUR_RADIUS 300

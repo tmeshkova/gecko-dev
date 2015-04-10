@@ -97,9 +97,6 @@
     </style>
 
     <style name="Widget.MenuItemActionView">
-        <item name="android:divider">@drawable/divider_vertical</item>
-        <item name="android:showDividers">middle</item>
-        <item name="android:dividerPadding">0dip</item>
         <item name="android:gravity">left</item>
     </style>
 
@@ -413,14 +410,21 @@
         <item name="android:textColor">?android:attr/textColorHint</item>
     </style>
 
-    <style name="TextAppearance.Widget.DoorHanger.Medium" parent="TextAppearance.Medium">
+    <style name="TextAppearance.DoorHanger">
         <item name="android:textColor">@color/placeholder_active_grey</item>
         <item name="android:textColorLink">@color/doorhanger_link</item>
     </style>
 
-    <style name="TextAppearance.Widget.DoorHanger.Small" parent="TextAppearance.Small">
-        <item name="android:textColor">@color/placeholder_active_grey</item>
-        <item name="android:textColorLink">@color/doorhanger_link</item>
+    <style name="TextAppearance.DoorHanger.Medium">
+        <item name="android:textSize">16dp</item>
+    </style>
+
+    <style name="TextAppearance.DoorHanger.Medium.Light">
+        <item name="android:fontFamily">sans-serif-light</item>
+    </style>
+
+    <style name="TextAppearance.DoorHanger.Small">
+        <item name="android:textSize">14sp</item>
     </style>
 
     <style name="TextAppearance.UrlBar.Title" parent="TextAppearance.Small">
@@ -781,24 +785,25 @@
         <item name="android:gravity">right</item>
     </style>
 
-    <style name="ShareOverlayButton">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:minHeight">60dp</item>
-        <item name="android:gravity">center_vertical</item>
+    <style name="ShareOverlayTitle">
+        <item name="android:gravity">center_horizontal</item>
         <item name="android:paddingLeft">15dp</item>
         <item name="android:paddingRight">15dp</item>
-        <item name="android:paddingTop">17dp</item>
-        <item name="android:paddingBottom">17dp</item>
-        <item name="android:focusableInTouchMode">false</item>
-        <item name="android:layout_margin">0dp</item>
     </style>
 
-    <style name="ShareOverlayButton.Text">
-        <item name="android:drawablePadding">15dp</item>
-        <item name="android:maxLines">1</item>
-        <item name="android:textSize">14sp</item>
-        <item name="android:textColor">@color/overlay_btn_text</item>
+    <style name="TextAppearance.ShareOverlay">
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.ShareOverlay.Header">
+        <item name="android:textColor">@android:color/white</item>
+    </style>
+
+    <style name="ShareOverlayRow">
+        <item name="android:minHeight">60dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:background">@drawable/overlay_share_button_background</item>
+        <item name="android:focusableInTouchMode">false</item>
     </style>
 
     <style name="TabInput"></style>
@@ -816,17 +821,6 @@
 
     <style name="FloatingHintEditText" parent="android:style/Widget.EditText">
         <item name="android:paddingTop">0dp</item>
-    </style>
-
-    <!-- Make the share overlay activity appear like an overlay. -->
-    <style name="ShareOverlayActivity">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:windowIsTranslucent">true</item>
-        <item name="android:backgroundDimEnabled">true</item>
-
-        <!-- We display the overlay on top of other Activities so show their status bar. -->
-        <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
 
     <style name="TextAppearance.FirstrunLight"/>
@@ -897,4 +891,5 @@
         <item name="android:paddingRight">8dp</item>
     </style>
 
+    <style name="TabQueueActivity" parent="android:style/Theme.NoDisplay" />
 </resources>

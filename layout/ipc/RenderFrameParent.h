@@ -11,6 +11,7 @@
 #include "mozilla/Attributes.h"
 #include <map>
 
+#include "mozilla/layers/APZUtils.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layout/PRenderFrameParent.h"
 #include "nsDisplayList.h"
@@ -45,6 +46,7 @@ class RenderFrameParent : public PRenderFrameParent
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::layers::TextureFactoryIdentifier TextureFactoryIdentifier;
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
+  typedef mozilla::layers::TouchBehaviorFlags TouchBehaviorFlags;
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
   typedef FrameMetrics::ViewID ViewID;
 
@@ -86,6 +88,8 @@ public:
                                  bool aPreventDefault);
   void SetTargetAPZC(uint64_t aInputBlockId,
                      const nsTArray<ScrollableLayerGuid>& aTargets);
+  void SetAllowedTouchBehavior(uint64_t aInputBlockId,
+                               const nsTArray<TouchBehaviorFlags>& aFlags);
 
   void UpdateZoomConstraints(uint32_t aPresShellId,
                              ViewID aViewId,
@@ -101,11 +105,11 @@ public:
   void TakeFocusForClick();
 
 protected:
-  void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
+  void ActorDestroy(ActorDestroyReason why) override;
 
-  virtual bool RecvNotifyCompositorTransaction() MOZ_OVERRIDE;
+  virtual bool RecvNotifyCompositorTransaction() override;
 
-  virtual bool RecvUpdateHitRegion(const nsRegion& aRegion) MOZ_OVERRIDE;
+  virtual bool RecvUpdateHitRegion(const nsRegion& aRegion) override;
 
 private:
   void TriggerRepaint();
@@ -167,15 +171,15 @@ public:
 
   virtual LayerState GetLayerState(nsDisplayListBuilder* aBuilder,
                                    LayerManager* aManager,
-                                   const ContainerLayerParameters& aParameters) MOZ_OVERRIDE
+                                   const ContainerLayerParameters& aParameters) override
   { return mozilla::LAYER_ACTIVE_FORCE; }
 
   virtual already_AddRefed<Layer>
   BuildLayer(nsDisplayListBuilder* aBuilder, LayerManager* aManager,
-             const ContainerLayerParameters& aContainerParameters) MOZ_OVERRIDE;
+             const ContainerLayerParameters& aContainerParameters) override;
 
   void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
-               HitTestState* aState, nsTArray<nsIFrame*> *aOutFrames) MOZ_OVERRIDE;
+               HitTestState* aState, nsTArray<nsIFrame*> *aOutFrames) override;
 
   NS_DISPLAY_DECL_NAME("Remote", TYPE_REMOTE)
 

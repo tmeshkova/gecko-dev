@@ -32,8 +32,8 @@ using mozilla::Preferences;
 
 BEGIN_FMRADIO_NAMESPACE
 
-class FMRadioRequest MOZ_FINAL : public FMRadioReplyRunnable
-                               , public DOMRequest
+class FMRadioRequest final : public FMRadioReplyRunnable
+                           , public DOMRequest
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -185,9 +185,9 @@ FMRadio::Shutdown()
 }
 
 JSObject*
-FMRadio::WrapObject(JSContext* aCx)
+FMRadio::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return FMRadioBinding::Wrap(aCx, this);
+  return FMRadioBinding::Wrap(aCx, this, aGivenProto);
 }
 
 void

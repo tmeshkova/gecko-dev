@@ -13,8 +13,8 @@
 
 // Wrapper class to make replacement of nsHttpChannel's listener
 // from JavaScript possible. It is workaround for bug 433711 and 682305.
-class nsStreamListenerWrapper MOZ_FINAL : public nsIStreamListener
-                                        , public nsIThreadRetargetableStreamListener
+class nsStreamListenerWrapper final : public nsIStreamListener
+                                    , public nsIThreadRetargetableStreamListener
 {
 public:
   explicit nsStreamListenerWrapper(nsIStreamListener *listener)

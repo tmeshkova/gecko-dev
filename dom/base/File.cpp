@@ -51,9 +51,9 @@ namespace dom {
 // ensure that the buffer underlying the stream we get
 // from NS_NewByteInputStream is held alive as long as the
 // stream is.  We do that by passing back this class instead.
-class DataOwnerAdapter MOZ_FINAL : public nsIInputStream,
-                                   public nsISeekableStream,
-                                   public nsIIPCSerializableInputStream
+class DataOwnerAdapter final : public nsIInputStream,
+                               public nsISeekableStream,
+                               public nsIIPCSerializableInputStream
 {
   typedef FileImplMemory::DataOwner DataOwner;
 public:
@@ -559,10 +559,10 @@ File::IsMemoryFile()
 }
 
 JSObject*
-File::WrapObject(JSContext* aCx)
+File::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return IsFile() ? FileBinding::Wrap(aCx, this)
-                  : BlobBinding::Wrap(aCx, this);
+  return IsFile() ? FileBinding::Wrap(aCx, this, aGivenProto)
+                  : BlobBinding::Wrap(aCx, this, aGivenProto);
 }
 
 /* static */ already_AddRefed<File>
@@ -1099,7 +1099,7 @@ FileImplMemory::DataOwner::sMemoryReporterRegistered = false;
 
 MOZ_DEFINE_MALLOC_SIZE_OF(MemoryFileDataOwnerMallocSizeOf)
 
-class FileImplMemoryDataOwnerMemoryReporter MOZ_FINAL
+class FileImplMemoryDataOwnerMemoryReporter final
   : public nsIMemoryReporter
 {
   ~FileImplMemoryDataOwnerMemoryReporter() {}
@@ -1108,7 +1108,7 @@ public:
   NS_DECL_THREADSAFE_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIMemoryReporterCallback *aCallback,
-                            nsISupports *aClosure, bool aAnonymize) MOZ_OVERRIDE
+                            nsISupports *aClosure, bool aAnonymize) override
   {
     typedef FileImplMemory::DataOwner DataOwner;
 
@@ -1235,9 +1235,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(FileList)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(FileList)
 
 JSObject*
-FileList::WrapObject(JSContext *cx)
+FileList::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return mozilla::dom::FileListBinding::Wrap(cx, this);
+  return mozilla::dom::FileListBinding::Wrap(cx, this, aGivenProto);
 }
 
 NS_IMETHODIMP

@@ -16,8 +16,8 @@
 namespace mozilla {
 namespace dom {
 
-class MediaError MOZ_FINAL : public nsIDOMMediaError,
-                             public nsWrapperCache
+class MediaError final : public nsIDOMMediaError,
+                         public nsWrapperCache
 {
   ~MediaError() {}
 
@@ -36,7 +36,7 @@ public:
     return mParent;
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   uint16_t Code() const
   {

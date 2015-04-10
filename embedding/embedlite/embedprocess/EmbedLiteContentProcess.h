@@ -27,7 +27,7 @@ class EmbedLiteContentProcess : public mozilla::ipc::ProcessChild
     typedef mozilla::ipc::ProcessChild ProcessChild;
 
 public:
-    EmbedLiteContentProcess(ProcessHandle mParentHandle);
+    EmbedLiteContentProcess(ProcessId parentHandle);
     ~EmbedLiteContentProcess();
 
     virtual bool Init();

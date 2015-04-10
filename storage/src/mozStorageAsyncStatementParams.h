@@ -22,8 +22,8 @@ class AsyncStatement;
  * Since mozIStorageStatementParams is just a tagging interface we do not have
  * an async variant.
  */
-class AsyncStatementParams MOZ_FINAL : public mozIStorageStatementParams
-                                     , public nsIXPCScriptable
+class AsyncStatementParams final : public mozIStorageStatementParams
+                                 , public nsIXPCScriptable
 {
 public:
   explicit AsyncStatementParams(AsyncStatement *aStatement);
@@ -38,7 +38,7 @@ protected:
 
   AsyncStatement *mStatement;
 
-  friend class AsyncStatement;
+  friend class AsyncStatementParamsHolder;
 };
 
 } // namespace storage

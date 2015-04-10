@@ -14,10 +14,15 @@
 */
 
 :-moz-native-anonymous .highlighter-container {
-  pointer-events: none;
   position: absolute;
   width: 100%;
   height: 100%;
+  /* The container for all highlighters doesn't react to pointer-events by
+     default. This is because most highlighters cover the whole viewport but
+     don't contain UIs that need to be accessed.
+     If your highlighter has UI that needs to be interacted with, add
+     'pointer-events:auto;' on its container element. */
+  pointer-events: none;
 }
 
 :-moz-native-anonymous .highlighter-container [hidden] {
@@ -181,6 +186,12 @@
 
 /* Element geometry highlighter */
 
+:-moz-native-anonymous .geometry-editor-root {
+  /* The geometry editor can be interacted with, so it needs to react to
+     pointer events */
+  pointer-events: auto;
+}
+
 :-moz-native-anonymous .geometry-editor-offset-parent {
   stroke: #08c;
   shape-rendering: crispEdges;
@@ -212,3 +223,57 @@
   text-anchor: middle;
   dominant-baseline: middle;
 }
+
+/* Rules highlighter */
+
+:-moz-native-anonymous .rulers-highlighter-elements {
+  shape-rendering: crispEdges;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+:-moz-native-anonymous .rulers-highlighter-elements > g {
+  opacity: 0.8;
+}
+
+:-moz-native-anonymous .rulers-highlighter-elements > g > rect {
+  fill: #fff;
+}
+
+/*
+  Setting `stroke-width` with a low floating point number, ensure that `path`
+  draws always 1px despites the zoom level, with `crispEdges` on the ancestor.
+*/
+:-moz-native-anonymous .rulers-highlighter-ruler-graduations,
+:-moz-native-anonymous .rulers-highlighter-ruler-markers {
+  stroke-width: 0.0001;
+}
+
+:-moz-native-anonymous .rulers-highlighter-ruler-graduations {
+  stroke: #bebebe;
+}
+
+:-moz-native-anonymous .rulers-highlighter-ruler-markers {
+  stroke: #202020;
+}
+
+:-moz-native-anonymous .rulers-highlighter-horizontal-labels > text,
+:-moz-native-anonymous .rulers-highlighter-vertical-labels > text {
+  stroke: none;
+  fill: #202020;
+  font: message-box;
+  font-size: 9px;
+  dominant-baseline: hanging;
+}
+
+:-moz-native-anonymous .rulers-highlighter-horizontal-labels > text {
+  text-anchor: left;
+}
+
+:-moz-native-anonymous .rulers-highlighter-vertical-labels > text {
+  transform: rotate(-90deg);
+  text-anchor: end;
+}
+

@@ -162,26 +162,26 @@ public:
 private:
   virtual ~FileOpenHelper() {}
 
-  NS_IMETHOD OnFileOpened(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE;
+  NS_IMETHOD OnFileOpened(CacheFileHandle *aHandle, nsresult aResult) override;
   NS_IMETHOD OnDataWritten(CacheFileHandle *aHandle, const char *aBuf,
-                           nsresult aResult) MOZ_OVERRIDE {
+                           nsresult aResult) override {
     MOZ_CRASH("FileOpenHelper::OnDataWritten should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
   NS_IMETHOD OnDataRead(CacheFileHandle *aHandle, char *aBuf,
-                        nsresult aResult) MOZ_OVERRIDE {
+                        nsresult aResult) override {
     MOZ_CRASH("FileOpenHelper::OnDataRead should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
-  NS_IMETHOD OnFileDoomed(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE {
+  NS_IMETHOD OnFileDoomed(CacheFileHandle *aHandle, nsresult aResult) override {
     MOZ_CRASH("FileOpenHelper::OnFileDoomed should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
-  NS_IMETHOD OnEOFSet(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE {
+  NS_IMETHOD OnEOFSet(CacheFileHandle *aHandle, nsresult aResult) override {
     MOZ_CRASH("FileOpenHelper::OnEOFSet should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
-  NS_IMETHOD OnFileRenamed(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE {
+  NS_IMETHOD OnFileRenamed(CacheFileHandle *aHandle, nsresult aResult) override {
     MOZ_CRASH("FileOpenHelper::OnFileRenamed should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
@@ -1670,7 +1670,7 @@ CacheIndex::WriteRecords()
   }
 
   rv = CacheFileIOManager::Write(mIndexHandle, fileOffset, mRWBuf, mRWBufPos,
-                                 mSkipEntries == mProcessEntries, this);
+                                 mSkipEntries == mProcessEntries, false, this);
   if (NS_FAILED(rv)) {
     LOG(("CacheIndex::WriteRecords() - CacheFileIOManager::Write() failed "
          "synchronously [rv=0x%08x]", rv));
@@ -2131,7 +2131,8 @@ CacheIndex::ParseRecords()
       // synchronously.
       rv = CacheFileIOManager::Write(mIndexHandle, 0,
                                      reinterpret_cast<char *>(hdr),
-                                     sizeof(CacheIndexHeader), true, nullptr);
+                                     sizeof(CacheIndexHeader), true, false,
+                                     nullptr);
       if (NS_FAILED(rv)) {
         // This is not fatal, just free the memory
         free(hdr);

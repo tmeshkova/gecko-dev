@@ -19,14 +19,13 @@ add_task(function*() {
 
   info("Pause the animation via the content DOM");
   yield executeInContent("Test:ToggleAnimationPlayer", {
+    selector: ".animated",
     animationIndex: 0,
     pause: true
-  }, {
-    node: getNode(".animated")
   });
 
   info("Wait for the next state update");
-  yield widget.player.once(widget.player.AUTO_REFRESH_EVENT);
+  yield onceNextPlayerRefresh(widget.player);
 
   is(widget.player.state.playState, "paused", "The AnimationPlayerFront is paused");
   ok(widget.el.classList.contains("paused"), "The button's state has changed");
@@ -34,14 +33,13 @@ add_task(function*() {
 
   info("Play the animation via the content DOM");
   yield executeInContent("Test:ToggleAnimationPlayer", {
+    selector: ".animated",
     animationIndex: 0,
     pause: false
-  }, {
-    node: getNode(".animated")
   });
 
   info("Wait for the next state update");
-  yield widget.player.once(widget.player.AUTO_REFRESH_EVENT);
+  yield onceNextPlayerRefresh(widget.player);
 
   is(widget.player.state.playState, "running", "The AnimationPlayerFront is running");
   ok(widget.el.classList.contains("running"), "The button's state has changed");

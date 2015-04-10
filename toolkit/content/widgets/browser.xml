@@ -133,11 +133,27 @@
             if (!aURI)
               aURI = "about:blank";
 
+            var aReferrerPolicy = Components.interfaces.nsIHttpChannel.REFERRER_POLICY_DEFAULT;
+
+            // Check for loadURIWithFlags(uri, { ... });
+            var params = arguments[1];
+            if (params && typeof(params) == "object") {
+              aFlags = params.flags;
+              aReferrerURI = params.referrerURI;
+              if ('referrerPolicy' in params) {
+                aReferrerPolicy = params.referrerPolicy;
+              }
+              aCharset = params.charset;
+              aPostData = params.postData;
+            }
+
             if (!(aFlags & this.webNavigation.LOAD_FLAGS_FROM_EXTERNAL))
               this.userTypedClear++;
 
             try {
-              this.webNavigation.loadURI(aURI, aFlags, aReferrerURI, aPostData, null);
+              this.webNavigation.loadURIWithOptions(
+                  aURI, aFlags, aReferrerURI, aReferrerPolicy,
+                  aPostData, null, null);
             } finally {
               if (this.userTypedClear)
                 this.userTypedClear--;
@@ -388,9 +404,8 @@
 
       <field name="_permanentKey">({})</field>
 
-      <property name="permanentKey"
-                onget="return this._permanentKey;"
-                onset="this._permanentKey = val;"/>
+      <property name="permanentKey" readonly="true"
+                onget="return this._permanentKey;"/>
 
       <property name="outerWindowID" readonly="true">
         <getter><![CDATA[
@@ -877,8 +892,7 @@
               if (!this.autoscrollEnabled) {
                 return false;
               }
-              let pos = this.mapScreenCoordinatesFromContent(data.screenX, data.screenY);
-              this.startScroll(data.scrolldir, pos.x, pos.y);
+              this.startScroll(data.scrolldir, data.screenX, data.screenY);
               return true;
             }
             case "Autoscroll:Cancel":
@@ -1059,31 +1073,18 @@
         </body>
       </method>
 
-      <!--
-        For out-of-process code, event.screen[XY] is relative to the
-        left/top of the content view. For in-process code,
-        event.screen[XY] is relative to the left/top of the screen. We
-        use this method to map screen coordinates received from a
-        (possibly out-of-process) <browser> element to coordinates
-        that are relative to the screen. This code handles the
-        in-process case, where we return the coordinates unchanged.
-      -->
-      <method name="mapScreenCoordinatesFromContent">
-        <parameter name="aScreenX"/>
-        <parameter name="aScreenY"/>
-        <body>
-        <![CDATA[
-          return { x: aScreenX, y: aScreenY };
-        ]]>
-        </body>
-      </method>
-
       <method name="swapDocShells">
         <parameter name="aOtherBrowser"/>
         <body>
         <![CDATA[
           if (this.isRemoteBrowser != aOtherBrowser.isRemoteBrowser)
             throw new Error("Can only swap docshells between browsers in the same process.");
+
+          // Give others a chance to swap state.
+          let event = new CustomEvent("SwapDocShells", {"detail": aOtherBrowser});
+          this.dispatchEvent(event);
+          event = new CustomEvent("SwapDocShells", {"detail": this});
+          aOtherBrowser.dispatchEvent(event);
 
           // We need to swap fields that are tied to our docshell or related to
           // the loaded page

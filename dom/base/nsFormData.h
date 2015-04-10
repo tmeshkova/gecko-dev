@@ -25,10 +25,10 @@ class GlobalObject;
 } // namespace dom
 } // namespace mozilla
 
-class nsFormData MOZ_FINAL : public nsIDOMFormData,
-                             public nsIXHRSendable,
-                             public nsFormSubmission,
-                             public nsWrapperCache
+class nsFormData final : public nsIDOMFormData,
+                         public nsIXHRSendable,
+                         public nsFormSubmission,
+                         public nsWrapperCache
 {
 private:
   ~nsFormData() {}
@@ -39,7 +39,6 @@ private:
     nsString name;
     nsString stringValue;
     nsRefPtr<File> fileValue;
-    nsString filename;
     bool valueIsFile;
   };
 
@@ -60,13 +59,11 @@ private:
 
   void SetNameFilePair(FormDataTuple* aData,
                        const nsAString& aName,
-                       File* aBlob,
-                       const nsAString& aFilename)
+                       File* aBlob)
   {
     MOZ_ASSERT(aData);
     aData->name = aName;
     aData->fileValue = aBlob;
-    aData->filename = aFilename;
     aData->valueIsFile = true;
   }
 
@@ -83,7 +80,7 @@ public:
   NS_DECL_NSIXHRSENDABLE
 
   // nsWrapperCache
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL
   nsISupports*
@@ -108,22 +105,48 @@ public:
 
   // nsFormSubmission
   virtual nsresult GetEncodedSubmission(nsIURI* aURI,
-                                        nsIInputStream** aPostDataStream) MOZ_OVERRIDE;
+                                        nsIInputStream** aPostDataStream) override;
   virtual nsresult AddNameValuePair(const nsAString& aName,
-                                    const nsAString& aValue) MOZ_OVERRIDE
+                                    const nsAString& aValue) override
   {
     FormDataTuple* data = mFormData.AppendElement();
     SetNameValuePair(data, aName, aValue);
     return NS_OK;
   }
   virtual nsresult AddNameFilePair(const nsAString& aName,
-                                   File* aBlob,
-                                   const nsString& aFilename) MOZ_OVERRIDE
+                                   File* aBlob) override
   {
     FormDataTuple* data = mFormData.AppendElement();
-    SetNameFilePair(data, aName, aBlob, aFilename);
+    SetNameFilePair(data, aName, aBlob);
     return NS_OK;
   }
+
+  typedef bool (*FormDataEntryCallback)(const nsString& aName, bool aIsFile,
+                                        const nsString& aValue,
+                                        File* aFile, void* aClosure);
+
+  uint32_t
+  Length() const
+  {
+    return mFormData.Length();
+  }
+
+  // Stops iteration and returns false if any invocation of callback returns
+  // false. Returns true otherwise.
+  bool
+  ForEach(FormDataEntryCallback aFunc, void* aClosure)
+  {
+    for (uint32_t i = 0; i < mFormData.Length(); ++i) {
+      FormDataTuple& tuple = mFormData[i];
+      if (!aFunc(tuple.name, tuple.valueIsFile, tuple.stringValue,
+                 tuple.fileValue, aClosure)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
 private:
   nsCOMPtr<nsISupports> mOwner;
 

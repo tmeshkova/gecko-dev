@@ -49,7 +49,7 @@ const uint16_t SVG_MEETORSLICE_MAX_VALID = SVG_MEETORSLICE_SLICE;
 
 class SVGAnimatedPreserveAspectRatio;
 
-class SVGPreserveAspectRatio MOZ_FINAL
+class SVGPreserveAspectRatio final
 {
   friend class SVGAnimatedPreserveAspectRatio;
 public:
@@ -112,8 +112,8 @@ private:
 
 namespace dom {
 
-class DOMSVGPreserveAspectRatio MOZ_FINAL : public nsISupports,
-                                            public nsWrapperCache
+class DOMSVGPreserveAspectRatio final : public nsISupports,
+                                        public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -128,7 +128,7 @@ public:
 
   // WebIDL
   nsSVGElement* GetParentObject() const { return mSVGElement; }
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   uint16_t Align();
   void SetAlign(uint16_t aAlign, ErrorResult& rv);

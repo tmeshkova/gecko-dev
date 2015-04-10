@@ -11,6 +11,7 @@
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/BluetoothGattBinding.h"
 #include "mozilla/dom/bluetooth/BluetoothCommon.h"
+#include "mozilla/dom/bluetooth/BluetoothGattService.h"
 #include "nsCOMPtr.h"
 
 namespace mozilla {
@@ -26,8 +27,8 @@ class BluetoothService;
 class BluetoothSignal;
 class BluetoothValue;
 
-class BluetoothGatt MOZ_FINAL : public DOMEventTargetHelper
-                              , public BluetoothSignalObserver
+class BluetoothGatt final : public DOMEventTargetHelper
+                          , public BluetoothSignalObserver
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -41,6 +42,11 @@ public:
     return mConnectionState;
   }
 
+  void GetServices(nsTArray<nsRefPtr<BluetoothGattService>>& aServices) const
+  {
+    aServices = mServices;
+  }
+
   /****************************************************************************
    * Event Handlers
    ***************************************************************************/
@@ -51,6 +57,8 @@ public:
    ***************************************************************************/
   already_AddRefed<Promise> Connect(ErrorResult& aRv);
   already_AddRefed<Promise> Disconnect(ErrorResult& aRv);
+  already_AddRefed<Promise> DiscoverServices(ErrorResult& aRv);
+  already_AddRefed<Promise> ReadRemoteRssi(ErrorResult& aRv);
 
   /****************************************************************************
    * Others
@@ -62,8 +70,9 @@ public:
      return GetOwner();
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
-  virtual void DisconnectFromOwner() MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx,
+                               JS::Handle<JSObject*> aGivenProto) override;
+  virtual void DisconnectFromOwner() override;
 
   BluetoothGatt(nsPIDOMWindow* aOwner,
                 const nsAString& aDeviceAddr);
@@ -85,6 +94,15 @@ private:
    * @param aUuidString [out] String to store the generated uuid.
    */
   void GenerateUuid(nsAString &aUuidString);
+
+  /**
+   * Add newly discovered GATT services into mServices and update the cache
+   * value of mServices.
+   *
+   * @param aValue [in] BluetoothValue which contains an array of
+   *                    BluetoothGattServiceId of all discovered services.
+   */
+  void HandleServicesDiscovered(const BluetoothValue& aValue);
 
   /****************************************************************************
    * Variables
@@ -109,6 +127,16 @@ private:
    * Address of the remote device.
    */
   nsString mDeviceAddr;
+
+  /**
+   * Array of discovered services from the remote GATT server.
+   */
+  nsTArray<nsRefPtr<BluetoothGattService>> mServices;
+
+  /**
+   * Indicate whether there is ongoing discoverServices request or not.
+   */
+  bool mDiscoveringServices;
 };
 
 END_BLUETOOTH_NAMESPACE

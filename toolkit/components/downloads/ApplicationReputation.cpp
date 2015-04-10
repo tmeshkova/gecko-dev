@@ -80,7 +80,7 @@ class PendingDBLookup;
 // nsIApplicationReputationQuery and an nsIApplicationReputationCallback. Once
 // created by ApplicationReputationService, it is guaranteed to call mCallback.
 // This class is private to ApplicationReputationService.
-class PendingLookup MOZ_FINAL : public nsIStreamListener
+class PendingLookup final : public nsIStreamListener
 {
 public:
   NS_DECL_ISUPPORTS
@@ -209,7 +209,7 @@ private:
 
 // A single-use class for looking up a single URI in the safebrowsing DB. This
 // class is private to PendingLookup.
-class PendingDBLookup MOZ_FINAL : public nsIUrlClassifierCallback
+class PendingDBLookup final : public nsIUrlClassifierCallback
 {
 public:
   NS_DECL_ISUPPORTS
@@ -429,23 +429,17 @@ PendingLookup::LookupNext()
     nsRefPtr<PendingDBLookup> lookup(new PendingDBLookup(this));
     return lookup->LookupSpec(spec, true);
   }
-#ifdef XP_WIN
   // There are no more URIs to check against local list. If the file is
   // not eligible for remote lookup, bail.
   if (!IsBinaryFile()) {
     LOG(("Not eligible for remote lookups [this=%x]", this));
     return OnComplete(false, NS_OK);
   }
-  // Send the remote query if we are on Windows.
   nsresult rv = SendRemoteQuery();
   if (NS_FAILED(rv)) {
     return OnComplete(false, rv);
   }
   return NS_OK;
-#else
-  LOG(("PendingLookup: Nothing left to check [this=%p]", this));
-  return OnComplete(false, NS_OK);
-#endif
 }
 
 nsCString
@@ -785,7 +779,7 @@ PendingLookup::ParseCertificates(nsIArray* aSigArray)
 
       // Add this certificate to the protobuf to send remotely.
       certChain->add_element()->set_certificate(data, len);
-      nsMemory::Free(data);
+      free(data);
 
       rv = chainElt->HasMoreElements(&hasMoreCerts);
       NS_ENSURE_SUCCESS(rv, rv);
@@ -818,6 +812,7 @@ PendingLookup::SendRemoteQueryInternal()
 {
   // If we aren't supposed to do remote lookups, bail.
   if (!Preferences::GetBool(PREF_SB_DOWNLOADS_REMOTE_ENABLED, false)) {
+    LOG(("Remote lookups are disabled [this = %p]", this));
     return NS_ERROR_NOT_AVAILABLE;
   }
   // If the remote lookup URL is empty or absent, bail.
@@ -825,6 +820,7 @@ PendingLookup::SendRemoteQueryInternal()
   NS_ENSURE_SUCCESS(Preferences::GetCString(PREF_SB_APP_REP_URL, &serviceUrl),
                     NS_ERROR_NOT_AVAILABLE);
   if (serviceUrl.EqualsLiteral("")) {
+    LOG(("Remote lookup URL is empty [this = %p]", this));
     return NS_ERROR_NOT_AVAILABLE;
   }
 
@@ -834,13 +830,18 @@ PendingLookup::SendRemoteQueryInternal()
   NS_ENSURE_SUCCESS(Preferences::GetCString(PREF_DOWNLOAD_BLOCK_TABLE, &table),
                     NS_ERROR_NOT_AVAILABLE);
   if (table.EqualsLiteral("")) {
+    LOG(("Blocklist is empty [this = %p]", this));
     return NS_ERROR_NOT_AVAILABLE;
   }
+#ifdef XP_WIN
+  // The allowlist is only needed to do signature verification on Windows
   NS_ENSURE_SUCCESS(Preferences::GetCString(PREF_DOWNLOAD_ALLOW_TABLE, &table),
                     NS_ERROR_NOT_AVAILABLE);
   if (table.EqualsLiteral("")) {
+    LOG(("Allowlist is empty [this = %p]", this));
     return NS_ERROR_NOT_AVAILABLE;
   }
+#endif
 
   LOG(("Sending remote query for application reputation [this = %p]",
        this));
@@ -891,6 +892,8 @@ PendingLookup::SendRemoteQueryInternal()
   if (!mRequest.SerializeToString(&serialized)) {
     return NS_ERROR_UNEXPECTED;
   }
+  LOG(("Serialized protocol buffer [this = %p]: %s", this,
+       serialized.c_str()));
 
   // Set the input stream to the serialized protocol buffer
   nsCOMPtr<nsIStringInputStream> sstream =
@@ -1020,7 +1023,7 @@ PendingLookup::OnStopRequestInternal(nsIRequest *aRequest,
   std::string buf(mResponse.Data(), mResponse.Length());
   safe_browsing::ClientDownloadResponse response;
   if (!response.ParseFromString(buf)) {
-    NS_WARNING("Could not parse protocol buffer");
+    LOG(("Invalid protocol buffer response [this = %p]: %s", this, buf.c_str()));
     Accumulate(mozilla::Telemetry::APPLICATION_REPUTATION_SERVER,
                                    SERVER_RESPONSE_INVALID);
     return NS_ERROR_CANNOT_CONVERT_DATA;

@@ -33,7 +33,7 @@ using namespace mozilla::dom::indexedDB;
 namespace mozilla {
 namespace dom {
 
-class VersionChangeListener MOZ_FINAL : public nsIDOMEventListener
+class VersionChangeListener final : public nsIDOMEventListener
 {
 public:
   NS_DECL_ISUPPORTS
@@ -43,7 +43,7 @@ public:
   {}
 
   // nsIDOMEventListener
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) MOZ_OVERRIDE
+  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override
   {
     nsString type;
     nsresult rv = aEvent->GetType(type);
@@ -315,9 +315,13 @@ DataStoreDB::DatabaseOpened()
     return rv;
   }
 
-  nsRefPtr<IDBTransaction> txn = mDatabase->Transaction(mObjectStores,
-                                                        mTransactionMode,
-                                                        error);
+  StringOrStringSequence objectStores;
+  objectStores.RawSetAsStringSequence().AppendElements(mObjectStores);
+
+  nsRefPtr<IDBTransaction> txn;
+  error = mDatabase->Transaction(objectStores,
+                                 mTransactionMode,
+                                 getter_AddRefs(txn));
   if (NS_WARN_IF(error.Failed())) {
     return error.ErrorCode();
   }

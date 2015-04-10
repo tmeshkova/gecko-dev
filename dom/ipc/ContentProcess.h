@@ -23,15 +23,15 @@ class ContentProcess : public mozilla::ipc::ProcessChild
     typedef mozilla::ipc::ProcessChild ProcessChild;
 
 public:
-    explicit ContentProcess(ProcessHandle mParentHandle)
-        : ProcessChild(mParentHandle)
+    explicit ContentProcess(ProcessId aParentPid)
+        : ProcessChild(aParentPid)
     { }
 
     ~ContentProcess()
     { }
 
-    virtual bool Init() MOZ_OVERRIDE;
-    virtual void CleanUp() MOZ_OVERRIDE;
+    virtual bool Init() override;
+    virtual void CleanUp() override;
 
     void SetAppDir(const nsACString& aPath);
 

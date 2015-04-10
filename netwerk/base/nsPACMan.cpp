@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsPACMan.h"
+#include "mozIApplication.h"
+#include "nsIAppsService.h"
 #include "nsThreadUtils.h"
 #include "nsIAuthPrompt.h"
 #include "nsIPromptFactory.h"
@@ -55,7 +57,7 @@ HttpRequestSucceeded(nsIStreamLoader *loader)
 // nsPACManCallback::OnQueryComplete on the Main thread when its completion is
 // discovered on the pac thread
 
-class ExecuteCallback MOZ_FINAL : public nsRunnable
+class ExecuteCallback final : public nsRunnable
 {
 public:
   ExecuteCallback(nsPACManCallback *aCallback,
@@ -95,7 +97,7 @@ private:
 // acts as a proxy to do that, as the PACMan is reference counted
 // and might be destroyed on either thread
 
-class ShutdownThread MOZ_FINAL : public nsRunnable
+class ShutdownThread final : public nsRunnable
 {
 public:
   explicit ShutdownThread(nsIThread *thread)
@@ -116,7 +118,7 @@ private:
 
 // Dispatch this to wait until the PAC thread shuts down.
 
-class WaitForThreadShutdown MOZ_FINAL : public nsRunnable
+class WaitForThreadShutdown final : public nsRunnable
 {
 public:
   explicit WaitForThreadShutdown(nsPACMan *aPACMan)
@@ -144,7 +146,7 @@ private:
 // the javascript PAC file has been installed (perhaps unsuccessfully)
 // and that there is no reason to queue executions anymore
 
-class PACLoadComplete MOZ_FINAL : public nsRunnable
+class PACLoadComplete final : public nsRunnable
 {
 public:
   explicit PACLoadComplete(nsPACMan *aPACMan)
@@ -170,7 +172,7 @@ private:
 // thread onto the PAC thread. There are 3 options: process the queue,
 // cancel the queue, and setup the javascript context with a new PAC file
 
-class ExecutePACThreadAction MOZ_FINAL : public nsRunnable
+class ExecutePACThreadAction final : public nsRunnable
 {
 public:
   // by default we just process the queue
@@ -231,9 +233,12 @@ private:
 //-----------------------------------------------------------------------------
 
 PendingPACQuery::PendingPACQuery(nsPACMan *pacMan, nsIURI *uri,
+                                 uint32_t appId, bool isInBrowser,
                                  nsPACManCallback *callback,
                                  bool mainThreadResponse)
   : mPACMan(pacMan)
+  , mAppId(appId)
+  , mIsInBrowser(isInBrowser)
   , mCallback(callback)
   , mOnMainThreadOnly(mainThreadResponse)
 {
@@ -241,6 +246,18 @@ PendingPACQuery::PendingPACQuery(nsPACMan *pacMan, nsIURI *uri,
   uri->GetAsciiHost(mHost);
   uri->GetScheme(mScheme);
   uri->GetPort(&mPort);
+
+  nsCOMPtr<nsIAppsService> appsService =
+      do_GetService(APPS_SERVICE_CONTRACTID);
+  if (!appsService) {
+    return;
+  }
+  nsCOMPtr<mozIApplication> mozApp;
+  nsresult rv = appsService->GetAppByLocalId(appId, getter_AddRefs(mozApp));
+  if (NS_FAILED(rv) || !mozApp) {
+      return;
+  }
+  mozApp->GetOrigin(mAppOrigin);
 }
 
 void
@@ -329,7 +346,8 @@ nsPACMan::Shutdown()
 }
 
 nsresult
-nsPACMan::AsyncGetProxyForURI(nsIURI *uri, nsPACManCallback *callback,
+nsPACMan::AsyncGetProxyForURI(nsIURI *uri, uint32_t appId,
+                              bool isInBrowser, nsPACManCallback *callback,
                               bool mainThreadResponse)
 {
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
@@ -342,7 +360,8 @@ nsPACMan::AsyncGetProxyForURI(nsIURI *uri, nsPACManCallback *callback,
     LoadPACFromURI(EmptyCString());
 
   nsRefPtr<PendingPACQuery> query =
-    new PendingPACQuery(this, uri, callback, mainThreadResponse);
+    new PendingPACQuery(this, uri, appId, isInBrowser, callback,
+                        mainThreadResponse);
 
   if (IsPACURI(uri)) {
     // deal with this directly instead of queueing it
@@ -595,7 +614,10 @@ nsPACMan::ProcessPending()
 
   // the systemproxysettings didn't complete the resolution. try via PAC
   if (!completed) {
-    nsresult status = mPAC.GetProxyForURI(query->mSpec, query->mHost, pacString);
+    nsresult status = mPAC.GetProxyForURI(query->mSpec, query->mHost,
+                                          query->mAppId, query->mAppOrigin,
+                                          query->mIsInBrowser,
+                                          pacString);
     query->Complete(status, pacString);
   }
 

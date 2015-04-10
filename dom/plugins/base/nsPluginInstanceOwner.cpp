@@ -230,8 +230,8 @@ nsPluginInstanceOwner::GetImageContainer()
 
   // NotifySize() causes Flash to do a bunch of stuff like ask for surfaces to render
   // into, set y-flip flags, etc, so we do this at the beginning.
-  gfxSize resolution = mPluginFrame->PresContext()->PresShell()->GetCumulativeResolution();
-  ScreenSize screenSize = (r * LayoutDeviceToScreenScale(resolution.width, resolution.height)).Size();
+  float resolution = mPluginFrame->PresContext()->PresShell()->GetCumulativeResolution();
+  ScreenSize screenSize = (r * LayoutDeviceToScreenScale(resolution)).Size();
   mInstance->NotifySize(nsIntSize(screenSize.width, screenSize.height));
 
   container = LayerManager::CreateImageContainer();
@@ -580,8 +580,9 @@ NS_IMETHODIMP nsPluginInstanceOwner::ShowStatus(const char16_t *aStatusMsg)
 
 NS_IMETHODIMP nsPluginInstanceOwner::GetDocument(nsIDocument* *aDocument)
 {
-  if (!aDocument)
+  if (!aDocument || !mContent) {
     return NS_ERROR_NULL_POINTER;
+  }
 
   // XXX sXBL/XBL2 issue: current doc or owner doc?
   // But keep in mind bug 322414 comment 33
@@ -789,7 +790,6 @@ NPBool nsPluginInstanceOwner::ConvertPointPuppet(PuppetWidget *widget,
   tabContentBounds.ScaleInverseRoundOut(scaleFactor);
   int32_t windowH = tabContentBounds.height + int(chromeSize.y);
 
-  // This is actually relative to window-chrome.
   nsPoint pluginPosition = AsNsPoint(pluginFrame->GetScreenRect().TopLeft());
 
   // Convert (sourceX, sourceY) to 'real' (not PuppetWidget) screen space.
@@ -799,8 +799,8 @@ NPBool nsPluginInstanceOwner::ConvertPointPuppet(PuppetWidget *widget,
   nsPoint screenPoint;
   switch (sourceSpace) {
     case NPCoordinateSpacePlugin:
-      screenPoint = sourcePoint + pluginFrame->GetContentRectRelativeToSelf().TopLeft() +
-        chromeSize + pluginPosition + windowPosition;
+      screenPoint = sourcePoint + pluginPosition +
+        pluginFrame->GetContentRectRelativeToSelf().TopLeft() / nsPresContext::AppUnitsPerCSSPixel();
       break;
     case NPCoordinateSpaceWindow:
       screenPoint = nsPoint(sourcePoint.x, windowH-sourcePoint.y) +
@@ -823,8 +823,8 @@ NPBool nsPluginInstanceOwner::ConvertPointPuppet(PuppetWidget *widget,
   nsPoint destPoint;
   switch (destSpace) {
     case NPCoordinateSpacePlugin:
-      destPoint = screenPoint - pluginFrame->GetContentRectRelativeToSelf().TopLeft() -
-        chromeSize - pluginPosition - windowPosition;
+      destPoint = screenPoint - pluginPosition -
+        pluginFrame->GetContentRectRelativeToSelf().TopLeft() / nsPresContext::AppUnitsPerCSSPixel();
       break;
     case NPCoordinateSpaceWindow:
       destPoint = screenPoint - windowPosition;
@@ -1307,7 +1307,7 @@ GetOffsetRootContent(nsIFrame* aFrame)
       int32_t newAPD = f ? f->PresContext()->AppUnitsPerDevPixel() : 0;
       if (!f || newAPD != currAPD) {
         // Convert docOffset to the right APD and add it to offset.
-        offset += docOffset.ConvertAppUnits(currAPD, apd);
+        offset += docOffset.ScaleToOtherAppUnits(currAPD, apd);
         docOffset.x = docOffset.y = 0;
       }
       currAPD = newAPD;
@@ -1315,7 +1315,7 @@ GetOffsetRootContent(nsIFrame* aFrame)
     }
   }
 
-  offset += docOffset.ConvertAppUnits(currAPD, apd);
+  offset += docOffset.ScaleToOtherAppUnits(currAPD, apd);
 
   return offset;
 }
@@ -1466,6 +1466,23 @@ nsPluginInstanceOwner::NotifyHostCreateWidget()
     CallSetWindow();
   }
 #endif
+}
+
+void
+nsPluginInstanceOwner::NotifyDestroyPending()
+{
+  if (!mInstance) {
+    return;
+  }
+  bool isOOP = false;
+  if (NS_FAILED(mInstance->GetIsOOP(&isOOP)) || !isOOP) {
+    return;
+  }
+  NPP npp = nullptr;
+  if (NS_FAILED(mInstance->GetNPP(&npp)) || !npp) {
+    return;
+  }
+  PluginAsyncSurrogate::NotifyDestroyPending(npp);
 }
 
 nsresult nsPluginInstanceOwner::DispatchFocusToPlugin(nsIDOMEvent* aFocusEvent)

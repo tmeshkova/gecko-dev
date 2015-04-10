@@ -12,39 +12,42 @@ namespace mozilla {
 class SharedDecoderCallback : public MediaDataDecoderCallback
 {
 public:
-  explicit SharedDecoderCallback(SharedDecoderManager* aManager) : mManager(aManager) {}
+  explicit SharedDecoderCallback(SharedDecoderManager* aManager)
+    : mManager(aManager)
+  {
+  }
 
-  virtual void Output(MediaData* aData) MOZ_OVERRIDE
+  virtual void Output(MediaData* aData) override
   {
     if (mManager->mActiveCallback) {
       mManager->mActiveCallback->Output(aData);
     }
   }
-  virtual void Error() MOZ_OVERRIDE
+  virtual void Error() override
   {
     if (mManager->mActiveCallback) {
       mManager->mActiveCallback->Error();
     }
   }
-  virtual void InputExhausted() MOZ_OVERRIDE
+  virtual void InputExhausted() override
   {
     if (mManager->mActiveCallback) {
       mManager->mActiveCallback->InputExhausted();
     }
   }
-  virtual void DrainComplete() MOZ_OVERRIDE
+  virtual void DrainComplete() override
   {
     if (mManager->mActiveCallback) {
       mManager->DrainComplete();
     }
   }
-  virtual void NotifyResourcesStatusChanged() MOZ_OVERRIDE
+  virtual void NotifyResourcesStatusChanged() override
   {
     if (mManager->mActiveCallback) {
       mManager->mActiveCallback->NotifyResourcesStatusChanged();
     }
   }
-  virtual void ReleaseMediaResources() MOZ_OVERRIDE
+  virtual void ReleaseMediaResources() override
   {
     if (mManager->mActiveCallback) {
       mManager->mActiveCallback->ReleaseMediaResources();
@@ -55,7 +58,7 @@ public:
 };
 
 SharedDecoderManager::SharedDecoderManager()
-  : mTaskQueue(new FlushableMediaTaskQueue(GetMediaDecodeThreadPool()))
+  : mTaskQueue(new FlushableMediaTaskQueue(GetMediaThreadPool()))
   , mActiveProxy(nullptr)
   , mActiveCallback(nullptr)
   , mWaitForInternalDrain(false)
@@ -66,31 +69,66 @@ SharedDecoderManager::SharedDecoderManager()
   mCallback = new SharedDecoderCallback(this);
 }
 
-SharedDecoderManager::~SharedDecoderManager() {}
+SharedDecoderManager::~SharedDecoderManager()
+{
+}
 
 already_AddRefed<MediaDataDecoder>
 SharedDecoderManager::CreateVideoDecoder(
   PlatformDecoderModule* aPDM,
   const mp4_demuxer::VideoDecoderConfig& aConfig,
-  layers::LayersBackend aLayersBackend, layers::ImageContainer* aImageContainer,
-  FlushableMediaTaskQueue* aVideoTaskQueue, MediaDataDecoderCallback* aCallback)
+  layers::LayersBackend aLayersBackend,
+  layers::ImageContainer* aImageContainer,
+  FlushableMediaTaskQueue* aVideoTaskQueue,
+  MediaDataDecoderCallback* aCallback)
 {
   if (!mDecoder) {
     // We use the manager's task queue for the decoder, rather than the one
     // passed in, so that none of the objects sharing the decoder can shutdown
     // the task queue while we're potentially still using it for a *different*
     // object also sharing the decoder.
-    mDecoder = aPDM->CreateVideoDecoder(
-      aConfig, aLayersBackend, aImageContainer, mTaskQueue, mCallback);
+    mDecoder = aPDM->CreateVideoDecoder(aConfig,
+                                        aLayersBackend,
+                                        aImageContainer,
+                                        mTaskQueue,
+                                        mCallback);
     if (!mDecoder) {
+      mPDM = nullptr;
       return nullptr;
     }
+    mPDM = aPDM;
     nsresult rv = mDecoder->Init();
     NS_ENSURE_SUCCESS(rv, nullptr);
   }
 
   nsRefPtr<SharedDecoderProxy> proxy(new SharedDecoderProxy(this, aCallback));
   return proxy.forget();
+}
+
+void
+SharedDecoderManager::DisableHardwareAcceleration()
+{
+  MOZ_ASSERT(mPDM);
+  mPDM->DisableHardwareAcceleration();
+}
+
+bool
+SharedDecoderManager::Recreate(const mp4_demuxer::VideoDecoderConfig& aConfig,
+                               layers::LayersBackend aLayersBackend,
+                               layers::ImageContainer* aImageContainer)
+{
+  mDecoder->Flush();
+  mDecoder->Shutdown();
+  mDecoder = mPDM->CreateVideoDecoder(aConfig,
+                                      aLayersBackend,
+                                      aImageContainer,
+                                      mTaskQueue,
+                                      mCallback);
+  if (!mDecoder) {
+    return false;
+  }
+  nsresult rv = mDecoder->Init();
+  return rv == NS_OK;
 }
 
 void
@@ -152,6 +190,7 @@ SharedDecoderManager::Shutdown()
     mDecoder->Shutdown();
     mDecoder = nullptr;
   }
+  mPDM = nullptr;
   if (mTaskQueue) {
     mTaskQueue->BeginShutdown();
     mTaskQueue->AwaitShutdownAndIdle();
@@ -159,13 +198,17 @@ SharedDecoderManager::Shutdown()
   }
 }
 
-SharedDecoderProxy::SharedDecoderProxy(
-  SharedDecoderManager* aManager, MediaDataDecoderCallback* aCallback)
-  : mManager(aManager), mCallback(aCallback)
+SharedDecoderProxy::SharedDecoderProxy(SharedDecoderManager* aManager,
+                                       MediaDataDecoderCallback* aCallback)
+  : mManager(aManager)
+  , mCallback(aCallback)
 {
 }
 
-SharedDecoderProxy::~SharedDecoderProxy() { Shutdown(); }
+SharedDecoderProxy::~SharedDecoderProxy()
+{
+  Shutdown();
+}
 
 nsresult
 SharedDecoderProxy::Init()
@@ -229,14 +272,6 @@ SharedDecoderProxy::ReleaseMediaResources()
 {
   if (mManager->mActiveProxy == this) {
     mManager->ReleaseMediaResources();
-  }
-}
-
-void
-SharedDecoderProxy::ReleaseDecoder()
-{
-  if (mManager->mActiveProxy == this) {
-    mManager->mDecoder->ReleaseMediaResources();
   }
 }
 

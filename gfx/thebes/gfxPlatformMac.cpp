@@ -116,8 +116,7 @@ gfxPlatformMac::CreateOffscreenSurface(const IntSize& size,
                                        gfxContentType contentType)
 {
     nsRefPtr<gfxASurface> newSurface =
-      new gfxQuartzSurface(ThebesIntSize(size),
-                           OptimalFormatForContent(contentType));
+      new gfxQuartzSurface(size, OptimalFormatForContent(contentType));
     return newSurface.forget();
 }
 
@@ -432,32 +431,45 @@ static CVReturn VsyncCallback(CVDisplayLinkRef aDisplayLink,
                               CVOptionFlags* aFlagsOut,
                               void* aDisplayLinkContext);
 
-class OSXVsyncSource MOZ_FINAL : public VsyncSource
+class OSXVsyncSource final : public VsyncSource
 {
 public:
   OSXVsyncSource()
   {
   }
 
-  virtual Display& GetGlobalDisplay() MOZ_OVERRIDE
+  virtual Display& GetGlobalDisplay() override
   {
     return mGlobalDisplay;
   }
 
-  class OSXDisplay MOZ_FINAL : public VsyncSource::Display
+  class OSXDisplay final : public VsyncSource::Display
   {
   public:
     OSXDisplay()
       : mDisplayLink(nullptr)
     {
+      MOZ_ASSERT(NS_IsMainThread());
+      mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
     }
 
     ~OSXDisplay()
     {
+      MOZ_ASSERT(NS_IsMainThread());
+      mTimer->Cancel();
+      mTimer = nullptr;
       DisableVsync();
     }
 
-    virtual void EnableVsync() MOZ_OVERRIDE
+    static void RetryEnableVsync(nsITimer* aTimer, void* aOsxDisplay)
+    {
+      MOZ_ASSERT(NS_IsMainThread());
+      OSXDisplay* osxDisplay = static_cast<OSXDisplay*>(aOsxDisplay);
+      MOZ_ASSERT(osxDisplay);
+      osxDisplay->EnableVsync();
+    }
+
+    virtual void EnableVsync() override
     {
       MOZ_ASSERT(NS_IsMainThread());
       if (IsVsyncEnabled()) {
@@ -469,23 +481,43 @@ public:
       // situations. According to the docs, it is compatible with all displays running on the computer
       // But if we have different monitors at different display rates, we may hit issues.
       if (CVDisplayLinkCreateWithActiveCGDisplays(&mDisplayLink) != kCVReturnSuccess) {
-        NS_WARNING("Could not create a display link, returning");
+        NS_WARNING("Could not create a display link with all active displays. Retrying\n");
+        CVDisplayLinkRelease(mDisplayLink);
+        mDisplayLink = nullptr;
+
+        // bug 1142708 - When coming back from sleep,
+        // or when changing displays, active displays may not be ready yet,
+        // even if listening for the kIOMessageSystemHasPoweredOn event
+        // from OS X sleep notifications.
+        // Active displays are those that are drawable.
+        // bug 1144638 - When changing display configurations and getting
+        // notifications from CGDisplayReconfigurationCallBack, the
+        // callback gets called twice for each active display
+        // so it's difficult to know when all displays are active.
+        // Instead, try again soon. The delay is arbitrary. 100ms chosen
+        // because on a late 2013 15" retina, it takes about that
+        // long to come back up from sleep.
+        uint32_t delay = 100;
+        mTimer->InitWithFuncCallback(RetryEnableVsync, this, delay, nsITimer::TYPE_ONE_SHOT);
         return;
       }
 
       if (CVDisplayLinkSetOutputCallback(mDisplayLink, &VsyncCallback, this) != kCVReturnSuccess) {
         NS_WARNING("Could not set displaylink output callback");
+        CVDisplayLinkRelease(mDisplayLink);
+        mDisplayLink = nullptr;
         return;
       }
 
       mPreviousTimestamp = TimeStamp::Now();
       if (CVDisplayLinkStart(mDisplayLink) != kCVReturnSuccess) {
         NS_WARNING("Could not activate the display link");
+        CVDisplayLinkRelease(mDisplayLink);
         mDisplayLink = nullptr;
       }
     }
 
-    virtual void DisableVsync() MOZ_OVERRIDE
+    virtual void DisableVsync() override
     {
       MOZ_ASSERT(NS_IsMainThread());
       if (!IsVsyncEnabled()) {
@@ -499,7 +531,7 @@ public:
       }
     }
 
-    virtual bool IsVsyncEnabled() MOZ_OVERRIDE
+    virtual bool IsVsyncEnabled() override
     {
       MOZ_ASSERT(NS_IsMainThread());
       return mDisplayLink != nullptr;
@@ -515,6 +547,7 @@ public:
   private:
     // Manages the display link render thread
     CVDisplayLinkRef   mDisplayLink;
+    nsRefPtr<nsITimer> mTimer;
   }; // OSXDisplay
 
 private:

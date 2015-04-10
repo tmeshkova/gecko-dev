@@ -421,13 +421,13 @@ public:
 
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                        HitTestState* aState,
-                       nsTArray<nsIFrame*> *aOutFrames) MOZ_OVERRIDE {
+                       nsTArray<nsIFrame*> *aOutFrames) override {
     aOutFrames->AppendElement(mFrame);
   }
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
+                     nsRenderingContext* aCtx) override;
   virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
-                           bool* aSnap) MOZ_OVERRIDE;
+                           bool* aSnap) override;
   NS_DISPLAY_DECL_NAME("TableCellBackground", TYPE_TABLE_CELL_BACKGROUND)
 };
 
@@ -486,16 +486,6 @@ nsTableCellFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     // take account of 'empty-cells'
     if (StyleVisibility()->IsVisible() &&
         (NS_STYLE_TABLE_EMPTY_CELLS_HIDE != emptyCellStyle)) {
-    
-    
-      bool isRoot = aBuilder->IsAtRootOfPseudoStackingContext();
-      if (!isRoot) {
-        nsDisplayTableItem* currentItem = aBuilder->GetCurrentTableItem();
-        if (currentItem) {
-          currentItem->UpdateForFrameBackground(this);
-        }
-      }
-    
       // display outset box-shadows if we need to.
       const nsStyleBorder* borderStyle = StyleBorder();
       bool hasBoxShadow = !!borderStyle->mBoxShadow;
@@ -506,15 +496,25 @@ nsTableCellFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     
       // display background if we need to.
       if (aBuilder->IsForEventDelivery() ||
-          (((!tableFrame->IsBorderCollapse() || isRoot) &&
-          (!StyleBackground()->IsTransparent() || StyleDisplay()->mAppearance)))) {
-        // The cell background was not painted by the nsTablePainter,
-        // so we need to do it. We have special background processing here
-        // so we need to duplicate some code from nsFrame::DisplayBorderBackgroundOutline
-        nsDisplayTableItem* item =
-          new (aBuilder) nsDisplayTableCellBackground(aBuilder, this);
-        aLists.BorderBackground()->AppendNewToTop(item);
-        item->UpdateForFrameBackground(this);
+          !StyleBackground()->IsTransparent() || StyleDisplay()->mAppearance) {
+        if (!tableFrame->IsBorderCollapse() ||
+            aBuilder->IsAtRootOfPseudoStackingContext() ||
+            aBuilder->IsForEventDelivery()) {
+          // The cell background was not painted by the nsTablePainter,
+          // so we need to do it. We have special background processing here
+          // so we need to duplicate some code from nsFrame::DisplayBorderBackgroundOutline
+          nsDisplayTableItem* item =
+            new (aBuilder) nsDisplayTableCellBackground(aBuilder, this);
+          aLists.BorderBackground()->AppendNewToTop(item);
+          item->UpdateForFrameBackground(this);
+        } else {
+          // The nsTablePainter will paint our background. Make sure it
+          // knows if we're background-attachment:fixed.
+          nsDisplayTableItem* currentItem = aBuilder->GetCurrentTableItem();
+          if (currentItem) {
+            currentItem->UpdateForFrameBackground(this);
+          }
+        }
       }
     
       // display inset box-shadows if we need to.
@@ -840,8 +840,8 @@ CalcUnpaginagedHeight(nsPresContext*        aPresContext,
   firstCellInFlow->GetRowIndex(rowIndex);
   int32_t rowSpan = aTableFrame.GetEffectiveRowSpan(*firstCellInFlow);
 
-  nscoord computedHeight = firstTableInFlow->GetCellSpacingY(rowIndex,
-                                                             rowIndex + rowSpan - 1);
+  nscoord computedHeight = firstTableInFlow->GetRowSpacing(rowIndex,
+                                                           rowIndex + rowSpan - 1);
   computedHeight -= aVerticalBorderPadding;
   int32_t rowX;
   for (row = firstRGInFlow->GetFirstRow(), rowX = 0; row; row = row->GetNextRow(), rowX++) {
@@ -857,10 +857,11 @@ CalcUnpaginagedHeight(nsPresContext*        aPresContext,
 
 void
 nsTableCellFrame::Reflow(nsPresContext*           aPresContext,
-                                   nsHTMLReflowMetrics&     aDesiredSize,
-                                   const nsHTMLReflowState& aReflowState,
-                                   nsReflowStatus&          aStatus)
+                         nsHTMLReflowMetrics&     aDesiredSize,
+                         const nsHTMLReflowState& aReflowState,
+                         nsReflowStatus&          aStatus)
 {
+  MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTableCellFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowState, aDesiredSize, aStatus);
 

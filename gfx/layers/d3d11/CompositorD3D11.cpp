@@ -73,16 +73,18 @@ struct DeviceAttachmentsD3D11
   //
   // VR pieces
   //
-  RefPtr<ID3D11InputLayout> mVRDistortionInputLayout;
-  RefPtr<ID3D11Buffer> mVRDistortionConstants;
-
+  typedef EnumeratedArray<VRHMDType, VRHMDType::NumHMDTypes, RefPtr<ID3D11InputLayout>>
+          VRDistortionInputLayoutArray;
   typedef EnumeratedArray<VRHMDType, VRHMDType::NumHMDTypes, RefPtr<ID3D11VertexShader>>
           VRVertexShaderArray;
   typedef EnumeratedArray<VRHMDType, VRHMDType::NumHMDTypes, RefPtr<ID3D11PixelShader>>
           VRPixelShaderArray;
 
+  VRDistortionInputLayoutArray mVRDistortionInputLayout;
   VRVertexShaderArray mVRDistortionVS;
   VRPixelShaderArray mVRDistortionPS;
+
+  RefPtr<ID3D11Buffer> mVRDistortionConstants;
 
   // These will be created/filled in as needed during rendering whenever the configuration
   // changes.
@@ -298,20 +300,24 @@ CompositorD3D11::Initialize()
       return false;
     }
 
-    CD3D11_TEXTURE2D_DESC desc(DXGI_FORMAT_B8G8R8A8_UNORM, 1, 1, 1, 1,
-                                D3D11_BIND_SHADER_RESOURCE |
-                                D3D11_BIND_RENDER_TARGET);
-    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+    if (!gfxWindowsPlatform::GetPlatform()->IsWARP()) {
+      // It's okay to do this on Windows 8. But for now we'll just bail
+      // whenever we're using WARP.
+      CD3D11_TEXTURE2D_DESC desc(DXGI_FORMAT_B8G8R8A8_UNORM, 1, 1, 1, 1,
+                                 D3D11_BIND_SHADER_RESOURCE |
+                                 D3D11_BIND_RENDER_TARGET);
+      desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
 
-    RefPtr<ID3D11Texture2D> texture;
-    hr = mDevice->CreateTexture2D(&desc, nullptr, byRef(texture));
-    if (FAILED(hr)) {
-      return false;
-    }
+      RefPtr<ID3D11Texture2D> texture;
+      hr = mDevice->CreateTexture2D(&desc, nullptr, byRef(texture));
+      if (FAILED(hr)) {
+        return false;
+      }
 
-    hr = texture->QueryInterface((IDXGIResource**)byRef(mAttachments->mSyncTexture));
-    if (FAILED(hr)) {
-      return false;
+      hr = texture->QueryInterface((IDXGIResource**)byRef(mAttachments->mSyncTexture));
+      if (FAILED(hr)) {
+        return false;
+      }
     }
     
     //
@@ -330,7 +336,12 @@ CompositorD3D11::Initialize()
                                     sizeof(vrlayout) / sizeof(D3D11_INPUT_ELEMENT_DESC),
                                     OculusVRDistortionVS,
                                     sizeof(OculusVRDistortionVS),
-                                    byRef(mAttachments->mVRDistortionInputLayout));
+                                    byRef(mAttachments->mVRDistortionInputLayout[VRHMDType::Oculus]));
+
+    // XXX shared for now, rename
+    mAttachments->mVRDistortionInputLayout[VRHMDType::Cardboard] =
+      mAttachments->mVRDistortionInputLayout[VRHMDType::Oculus];
+
     cBufferDesc.ByteWidth = sizeof(gfx::VRDistortionConstants);
     hr = mDevice->CreateBuffer(&cBufferDesc, nullptr, byRef(mAttachments->mVRDistortionConstants));
     if (FAILED(hr)) {
@@ -657,6 +668,7 @@ CompositorD3D11::DrawVRDistortion(const gfx::Rect& aRect,
   gfx::IntSize size = vrEffect->mRenderTarget->GetSize(); // XXX source->GetSize()
 
   VRHMDInfo* hmdInfo = vrEffect->mHMD;
+  VRHMDType hmdType = hmdInfo->GetType();
   VRDistortionConstants shaderConstants;
 
   // do we need to recreate the VR buffers, since the config has changed?
@@ -705,19 +717,16 @@ CompositorD3D11::DrawVRDistortion(const gfx::Rect& aRect,
 
   // Triangle lists and same layout for both eyes
   mContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  mContext->IASetInputLayout(mAttachments->mVRDistortionInputLayout);
-
-  // Shaders for this HMD
-  mContext->VSSetShader(mAttachments->mVRDistortionVS[mAttachments->mVRConfiguration.hmdType], nullptr, 0);
-  mContext->PSSetShader(mAttachments->mVRDistortionPS[mAttachments->mVRConfiguration.hmdType], nullptr, 0);
+  mContext->IASetInputLayout(mAttachments->mVRDistortionInputLayout[hmdType]);
+  mContext->VSSetShader(mAttachments->mVRDistortionVS[hmdType], nullptr, 0);
+  mContext->PSSetShader(mAttachments->mVRDistortionPS[hmdType], nullptr, 0);
 
   // This is the source texture SRV for the pixel shader
-  // XXX, um should we cache this SRV?
+  // XXX, um should we cache this SRV on the source?
   RefPtr<ID3D11ShaderResourceView> view;
   mDevice->CreateShaderResourceView(source->GetD3D11Texture(), nullptr, byRef(view));
   ID3D11ShaderResourceView* srView = view;
   mContext->PSSetShaderResources(0, 1, &srView);
-
 
   gfx::IntSize vpSizeInt = mCurrentRT->GetSize();
   gfx::Size vpSize(vpSizeInt.width, vpSizeInt.height);
@@ -1101,23 +1110,23 @@ CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
   // ClearRect will set the correct blend state for us.
   ClearRect(Rect(invalidRect.x, invalidRect.y, invalidRect.width, invalidRect.height));
 
-  RefPtr<IDXGIKeyedMutex> mutex;
-  mAttachments->mSyncTexture->QueryInterface((IDXGIKeyedMutex**)byRef(mutex));
+  if (mAttachments->mSyncTexture) {
+    RefPtr<IDXGIKeyedMutex> mutex;
+    mAttachments->mSyncTexture->QueryInterface((IDXGIKeyedMutex**)byRef(mutex));
 
-  MOZ_ASSERT(mutex);
-  HRESULT hr = mutex->AcquireSync(0, 10000);
-  if (hr == WAIT_TIMEOUT) {
-    MOZ_CRASH();
+    MOZ_ASSERT(mutex);
+    HRESULT hr = mutex->AcquireSync(0, 10000);
+    if (hr == WAIT_TIMEOUT) {
+      MOZ_CRASH();
+    }
+
+    mutex->ReleaseSync(0);
   }
-
-  mutex->ReleaseSync(0);
 }
 
 void
 CompositorD3D11::EndFrame()
 {
-  mContext->Flush();
-
   nsIntSize oldSize = mSize;
   EnsureSize();
   UINT presentInterval = 0;
@@ -1261,7 +1270,7 @@ CompositorD3D11::UpdateRenderTarget()
   }
 
   mDefaultRT = new CompositingRenderTargetD3D11(backBuf, IntPoint(0, 0));
-  mDefaultRT->SetSize(mSize.ToIntSize());
+  mDefaultRT->SetSize(mSize);
 }
 
 bool
@@ -1339,6 +1348,11 @@ CompositorD3D11::CreateShaders()
     return false;
   }
 
+  // These are shared
+  // XXX rename Oculus shaders to something more generic
+  mAttachments->mVRDistortionVS[VRHMDType::Cardboard] = mAttachments->mVRDistortionVS[VRHMDType::Oculus];
+  mAttachments->mVRDistortionPS[VRHMDType::Cardboard] = mAttachments->mVRDistortionPS[VRHMDType::Oculus];
+
   return true;
 }
 
@@ -1347,16 +1361,20 @@ CompositorD3D11::UpdateConstantBuffers()
 {
   HRESULT hr;
   D3D11_MAPPED_SUBRESOURCE resource;
+  resource.pData = nullptr;
 
   hr = mContext->Map(mAttachments->mVSConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-  if (Failed(hr)) {
+  if (Failed(hr) || !resource.pData) {
+    gfxCriticalError() << "Failed to map VSConstantBuffer. Result: " << hr;
     return false;
   }
   *(VertexShaderConstants*)resource.pData = mVSConstants;
   mContext->Unmap(mAttachments->mVSConstantBuffer, 0);
+  resource.pData = nullptr;
 
   hr = mContext->Map(mAttachments->mPSConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-  if (Failed(hr)) {
+  if (Failed(hr) || !resource.pData) {
+    gfxCriticalError() << "Failed to map PSConstantBuffer. Result: " << hr;
     return false;
   }
   *(PixelShaderConstants*)resource.pData = mPSConstants;

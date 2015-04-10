@@ -86,7 +86,7 @@ bool xpc_IsReportableErrorCode(nsresult code)
 // PendingResult.
 class MOZ_STACK_CLASS AutoSavePendingResult {
 public:
-    explicit AutoSavePendingResult(XPCContext *xpcc) :
+    explicit AutoSavePendingResult(XPCContext* xpcc) :
         mXPCContext(xpcc)
     {
         // Save any existing pending result and reset to NS_OK for this invocation.
@@ -97,7 +97,7 @@ public:
         mXPCContext->SetPendingResult(mSavedResult);
     }
 private:
-    XPCContext *mXPCContext;
+    XPCContext* mXPCContext;
     nsresult mSavedResult;
 };
 
@@ -172,7 +172,7 @@ nsXPCWrappedJSClass::~nsXPCWrappedJSClass()
         mRuntime->GetWrappedJSClassMap()->Remove(this);
 
     if (mName)
-        nsMemory::Free(mName);
+        free(mName);
 }
 
 JSObject*
@@ -253,7 +253,7 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
                 if (jsexception.isObject()) {
                     // XPConnect may have constructed an object to represent a
                     // C++ QI failure. See if that is the case.
-                    Exception *e = nullptr;
+                    Exception* e = nullptr;
                     UNWRAP_OBJECT(Exception, &jsexception.toObject(), e);
 
                     if (e &&
@@ -690,7 +690,7 @@ nsXPCWrappedJSClass::CleanupPointerArray(const nsXPTType& datum_type,
         void** pp = (void**) arrayp;
         for (uint32_t k = 0; k < array_count; k++) {
             void* p = pp[k];
-            if (p) nsMemory::Free(p);
+            if (p) free(p);
         }
     }
 }
@@ -705,7 +705,7 @@ nsXPCWrappedJSClass::CleanupPointerTypeObject(const nsXPTType& type,
         if (p) p->Release();
     } else {
         void* p = *((void**)pp);
-        if (p) nsMemory::Free(p);
+        if (p) free(p);
     }
 }
 
@@ -918,8 +918,8 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
     if (!ccx.IsValid())
         return retval;
 
-    XPCContext *xpcc = ccx.GetXPCContext();
-    JSContext *cx = ccx.GetJSContext();
+    XPCContext* xpcc = ccx.GetXPCContext();
+    JSContext* cx = ccx.GetJSContext();
 
     if (!cx || !xpcc || !IsReflectable(methodIndex))
         return NS_ERROR_FAILURE;
@@ -927,7 +927,7 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
     // [implicit_jscontext] and [optional_argc] have a different calling
     // convention, which we don't support for JS-implemented components.
     if (info->WantsOptArgc() || info->WantsContext()) {
-        const char *str = "IDL methods marked with [implicit_jscontext] "
+        const char* str = "IDL methods marked with [implicit_jscontext] "
                           "or [optional_argc] may not be implemented in JS";
         // Throw and warn for good measure.
         JS_ReportError(cx, str);
@@ -1178,7 +1178,7 @@ pre_call_clean_up:
                     }
 
                     // always release the array if it is inout
-                    nsMemory::Free(pp);
+                    free(pp);
                 }
             } else
                 CleanupPointerTypeObject(type, (void**)p);
@@ -1418,7 +1418,7 @@ pre_call_clean_up:
 
                         CleanupPointerArray(datum_type, array_count, pp);
                     }
-                    nsMemory::Free(pp);
+                    free(pp);
                 }
             } else
                 CleanupPointerTypeObject(type, (void**)p);
@@ -1441,7 +1441,7 @@ nsXPCWrappedJSClass::GetInterfaceName()
 }
 
 static void
-FinalizeStub(JSFreeOp *fop, JSObject *obj)
+FinalizeStub(JSFreeOp* fop, JSObject* obj)
 {
 }
 
@@ -1486,7 +1486,7 @@ nsXPCWrappedJSClass::DebugDump(int16_t depth)
         mInfo->GetName(&name);
         XPC_LOG_ALWAYS(("interface name is %s", name));
         if (name)
-            nsMemory::Free(name);
+            free(name);
         char * iid = mIID.ToString();
         XPC_LOG_ALWAYS(("IID number is %s", iid ? iid : "invalid"));
         if (iid)

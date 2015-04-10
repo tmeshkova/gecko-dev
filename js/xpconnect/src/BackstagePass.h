@@ -28,11 +28,11 @@ public:
   NS_DECL_NSIXPCSCRIPTABLE
   NS_DECL_NSICLASSINFO
 
-  virtual nsIPrincipal* GetPrincipal() MOZ_OVERRIDE {
+  virtual nsIPrincipal* GetPrincipal() override {
     return mPrincipal;
   }
 
-  virtual JSObject* GetGlobalJSObject() MOZ_OVERRIDE;
+  virtual JSObject* GetGlobalJSObject() override;
 
   void ForgetGlobalObject() {
     mWrapper = nullptr;
@@ -40,7 +40,7 @@ public:
 
   void SetGlobalObject(JSObject* global);
 
-  explicit BackstagePass(nsIPrincipal *prin) :
+  explicit BackstagePass(nsIPrincipal* prin) :
     mPrincipal(prin)
   {
   }
@@ -49,7 +49,7 @@ private:
   virtual ~BackstagePass() { }
 
   nsCOMPtr<nsIPrincipal> mPrincipal;
-  XPCWrappedNative *mWrapper;
+  XPCWrappedNative* mWrapper;
 };
 
 nsresult

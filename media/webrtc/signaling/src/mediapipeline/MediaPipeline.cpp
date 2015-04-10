@@ -371,7 +371,7 @@ nsresult MediaPipeline::SendPacket(TransportFlow *flow, const void *data,
     if (res == TE_WOULDBLOCK)
       return NS_OK;
 
-    MOZ_MTLOG(ML_ERROR, "Failed write on stream");
+    MOZ_MTLOG(ML_ERROR, "Failed write on stream " << description_);
     return NS_BASE_STREAM_CLOSED;
   }
 
@@ -543,10 +543,10 @@ void MediaPipeline::RtcpPacketReceived(TransportLayer *layer,
   if (!NS_SUCCEEDED(res))
     return;
 
-  MediaPipelineFilter::Result filter_result = MediaPipelineFilter::PASS;
-  if (filter_) {
-    filter_result = filter_->FilterRTCP(inner_data, out_len);
-    if (filter_result == MediaPipelineFilter::FAIL) {
+  // We do not filter RTCP for send pipelines, since the webrtc.org code for
+  // senders already has logic to ignore RRs that do not apply.
+  if (filter_ && direction_ == RECEIVE) {
+    if (!filter_->FilterSenderReport(inner_data, out_len)) {
       MOZ_MTLOG(ML_NOTICE, "Dropping rtcp packet");
       return;
     }
@@ -630,12 +630,12 @@ void MediaPipelineTransmit::AttachToTrack(const std::string& track_id) {
 
   stream_->AddListener(listener_);
 
-  // Is this a gUM mediastream?  If so, also register the Listener directly with
-  // the SourceMediaStream that's attached to the TrackUnion so we can get direct
-  // unqueued (and not resampled) data
-  if (domstream_->AddDirectListener(listener_)) {
-    listener_->direct_connect_ = true;
-  }
+ // // Is this a gUM mediastream?  If so, also register the Listener directly with
+ // // the SourceMediaStream that's attached to the TrackUnion so we can get direct
+ // // unqueued (and not resampled) data
+ // if (domstream_->AddDirectListener(listener_)) {
+ //   listener_->direct_connect_ = true;
+ // }
 
 #ifndef MOZILLA_INTERNAL_API
   // this enables the unit tests that can't fiddle with principals and the like
@@ -1247,7 +1247,7 @@ static void AddTrackAndListener(MediaStream* source,
         listener_(listener),
         completed_(completed) {}
 
-    virtual void Run() MOZ_OVERRIDE {
+    virtual void Run() override {
       StreamTime current_end = mStream->GetBufferEnd();
       TrackTicks current_ticks =
         mStream->TimeToTicksRoundUp(track_rate_, current_end);

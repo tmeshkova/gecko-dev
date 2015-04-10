@@ -8,14 +8,14 @@
 
 #include "Units.h"                      // for ScreenPoint, etc
 #include "mozilla/layers/LayerManagerComposite.h"  // for LayerManagerComposite
-#include "mozilla/Attributes.h"         // for MOZ_FINAL, etc
+#include "mozilla/Attributes.h"         // for final, etc
 #include "mozilla/RefPtr.h"             // for RefCounted
 #include "mozilla/TimeStamp.h"          // for TimeStamp
 #include "mozilla/dom/ScreenOrientation.h"  // for ScreenOrientation
 #include "mozilla/gfx/BasePoint.h"      // for BasePoint
 #include "mozilla/gfx/Matrix.h"         // for Matrix4x4
 #include "mozilla/layers/LayersMessages.h"  // for TargetConfig
-#include "nsAutoPtr.h"                  // for nsRefPtr
+#include "nsRefPtr.h"                   // for nsRefPtr
 #include "nsISupportsImpl.h"            // for LayerManager::AddRef, etc
 
 namespace mozilla {
@@ -67,7 +67,7 @@ struct ViewTransform {
  * short circuit that stuff to directly affect layers as they are composited,
  * for example, off-main thread animation, async video, async pan/zoom.
  */
-class AsyncCompositionManager MOZ_FINAL
+class AsyncCompositionManager final
 {
   friend class AutoResolveRefLayers;
   ~AsyncCompositionManager()

@@ -36,23 +36,23 @@ protected:
   virtual ~EmbedLiteAppBaseChild();
 
   // Embed API ipdl interface
-  virtual bool RecvSetBoolPref(const nsCString&, const bool&) MOZ_OVERRIDE;
-  virtual bool RecvSetCharPref(const nsCString&, const nsCString&) MOZ_OVERRIDE;
-  virtual bool RecvSetIntPref(const nsCString&, const int&) MOZ_OVERRIDE;
-  virtual bool RecvLoadGlobalStyleSheet(const nsCString&, const bool&) MOZ_OVERRIDE;
-  virtual bool RecvLoadComponentManifest(const nsCString&) MOZ_OVERRIDE;
+  virtual bool RecvSetBoolPref(const nsCString&, const bool&) override;
+  virtual bool RecvSetCharPref(const nsCString&, const nsCString&) override;
+  virtual bool RecvSetIntPref(const nsCString&, const int&) override;
+  virtual bool RecvLoadGlobalStyleSheet(const nsCString&, const bool&) override;
+  virtual bool RecvLoadComponentManifest(const nsCString&) override;
 
   // IPDL protocol impl
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  virtual bool RecvPreDestroy() MOZ_OVERRIDE;
+  virtual bool RecvPreDestroy() override;
   virtual bool RecvObserve(const nsCString& topic,
-                           const nsString& data) MOZ_OVERRIDE;
-  virtual bool RecvAddObserver(const nsCString&) MOZ_OVERRIDE;
-  virtual bool RecvRemoveObserver(const nsCString&) MOZ_OVERRIDE;
-  virtual bool RecvAddObservers(InfallibleTArray<nsCString>&& observers) MOZ_OVERRIDE;
-  virtual bool RecvRemoveObservers(InfallibleTArray<nsCString>&& observers) MOZ_OVERRIDE;
-  virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) MOZ_OVERRIDE;
+                           const nsString& data) override;
+  virtual bool RecvAddObserver(const nsCString&) override;
+  virtual bool RecvRemoveObserver(const nsCString&) override;
+  virtual bool RecvAddObservers(InfallibleTArray<nsCString>&& observers) override;
+  virtual bool RecvRemoveObservers(InfallibleTArray<nsCString>&& observers) override;
+  virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) override;
 
 protected:
   MessageLoop* mParentLoop;

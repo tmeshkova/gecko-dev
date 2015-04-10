@@ -10,6 +10,7 @@
 #include "nsRect.h"
 #include "ImageTypes.h"
 #include "nsString.h"
+#include "nsTArray.h"
 #include "StreamBuffer.h" // for TrackID
 
 namespace mozilla {
@@ -102,10 +103,47 @@ public:
   TrackInfo mTrackInfo;
 };
 
+class EncryptionInfo {
+public:
+  struct InitData {
+    template<typename AInitDatas>
+    InitData(const nsAString& aType, AInitDatas&& aInitData)
+      : mType(aType)
+      , mInitData(Forward<AInitDatas>(aInitData))
+    {
+    }
+
+    // Encryption type to be passed to JS. Usually `cenc'.
+    nsString mType;
+
+    // Encryption data.
+    nsTArray<uint8_t> mInitData;
+  };
+  typedef nsTArray<InitData> InitDatas;
+
+  // True if the stream has encryption metadata
+  bool IsEncrypted() const
+  {
+    return !mInitDatas.IsEmpty();
+  }
+
+  template<typename AInitDatas>
+  void AddInitData(const nsAString& aType, AInitDatas&& aInitData)
+  {
+    mInitDatas.AppendElement(InitData(aType, Forward<AInitDatas>(aInitData)));
+  }
+
+  void AddInitData(const EncryptionInfo& aInfo)
+  {
+    mInitDatas.AppendElements(aInfo.mInitDatas);
+  }
+
+  // One 'InitData' per encrypted buffer.
+  InitDatas mInitDatas;
+};
+
 class MediaInfo {
 public:
-  MediaInfo() : mIsEncrypted(false) {}
-
   bool HasVideo() const
   {
     return mVideo.mHasVideo;
@@ -116,16 +154,21 @@ public:
     return mAudio.mHasAudio;
   }
 
+  bool IsEncrypted() const
+  {
+    return mCrypto.IsEncrypted();
+  }
+
   bool HasValidMedia() const
   {
     return HasVideo() || HasAudio();
   }
 
-  bool mIsEncrypted;
-
   // TODO: Store VideoInfo and AudioIndo in arrays to support multi-tracks.
   VideoInfo mVideo;
   AudioInfo mAudio;
+
+  EncryptionInfo mCrypto;
 };
 
 } // namespace mozilla

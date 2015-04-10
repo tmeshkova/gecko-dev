@@ -811,17 +811,20 @@ nsPluginHost::InstantiatePluginInstance(const nsACString& aMimeType, nsIURI* aUR
   nsPluginTagType tagType;
   rv = instanceOwner->GetTagType(&tagType);
   if (NS_FAILED(rv)) {
+    instanceOwner->Destroy();
     return rv;
   }
 
   if (tagType != nsPluginTagType_Embed &&
       tagType != nsPluginTagType_Applet &&
       tagType != nsPluginTagType_Object) {
+    instanceOwner->Destroy();
     return NS_ERROR_FAILURE;
   }
 
   rv = SetUpPluginInstance(aMimeType, aURL, instanceOwner);
   if (NS_FAILED(rv)) {
+    instanceOwner->Destroy();
     return NS_ERROR_FAILURE;
   }
   const bool isAsyncInit = (rv == NS_PLUGIN_INIT_PENDING);
@@ -829,6 +832,7 @@ nsPluginHost::InstantiatePluginInstance(const nsACString& aMimeType, nsIURI* aUR
   nsRefPtr<nsNPAPIPluginInstance> instance;
   rv = instanceOwner->GetInstance(getter_AddRefs(instance));
   if (NS_FAILED(rv)) {
+    instanceOwner->Destroy();
     return rv;
   }
 
@@ -1124,7 +1128,7 @@ nsPluginHost::GetPluginTags(uint32_t* aPluginCount, nsIPluginTag*** aResults)
   }
 
   *aResults = static_cast<nsIPluginTag**>
-                         (nsMemory::Alloc(count * sizeof(**aResults)));
+                         (moz_xmalloc(count * sizeof(**aResults)));
   if (!*aResults)
     return NS_ERROR_OUT_OF_MEMORY;
 
@@ -3505,7 +3509,7 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
     int cntSingleLF = singleLF.Length();
     newBufferLen += cntSingleLF;
 
-    if (!(*outPostData = p = (char*)nsMemory::Alloc(newBufferLen)))
+    if (!(*outPostData = p = (char*)moz_xmalloc(newBufferLen)))
       return NS_ERROR_OUT_OF_MEMORY;
 
     // deal with single LF
@@ -3534,11 +3538,11 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
     // to keep ContentLenHeader+value followed by data
     uint32_t l = sizeof(ContentLenHeader) + sizeof(CRLFCRLF) + 32;
     newBufferLen = dataLen + l;
-    if (!(*outPostData = p = (char*)nsMemory::Alloc(newBufferLen)))
+    if (!(*outPostData = p = (char*)moz_xmalloc(newBufferLen)))
       return NS_ERROR_OUT_OF_MEMORY;
     headersLen = PR_snprintf(p, l,"%s: %ld%s", ContentLenHeader, dataLen, CRLFCRLF);
     if (headersLen == l) { // if PR_snprintf has ate all extra space consider this as an error
-      nsMemory::Free(p);
+      free(p);
       *outPostData = 0;
       return NS_ERROR_FAILURE;
     }
@@ -3638,7 +3642,7 @@ nsPluginHost::CreateTempFileToPost(const char *aPostDataURL, nsIFile **aTmpFile)
         // lets parse it through nsPluginHost::ParsePostBufferToFixHeaders()
         ParsePostBufferToFixHeaders((const char *)buf, br, &parsedBuf, &bw);
         rv = outStream->Write(parsedBuf, bw, &br);
-        nsMemory::Free(parsedBuf);
+        free(parsedBuf);
         if (NS_FAILED(rv) || (bw != br))
           break;
 

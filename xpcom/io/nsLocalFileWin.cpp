@@ -856,7 +856,7 @@ CloseDir(nsDir*& aDir)
 // nsDirEnumerator
 //-----------------------------------------------------------------------------
 
-class nsDirEnumerator MOZ_FINAL
+class nsDirEnumerator final
   : public nsISimpleEnumerator
   , public nsIDirectoryEnumerator
 {
@@ -1745,7 +1745,7 @@ nsLocalFile::GetVersionInfoField(const char* aField, nsAString& aResult)
       }
     }
   }
-  moz_free(ver);
+  free(ver);
 
   return rv;
 }

@@ -36,7 +36,7 @@ namespace mozilla {
 namespace dom {
 namespace indexedDB {
 
-class MOZ_STACK_CLASS LoggingIdString MOZ_FINAL
+class MOZ_STACK_CLASS LoggingIdString final
   : public nsAutoCString
 {
 public:
@@ -75,7 +75,7 @@ private:
   }
 };
 
-class MOZ_STACK_CLASS LoggingString MOZ_FINAL
+class MOZ_STACK_CLASS LoggingString final
   : public nsAutoCString
 {
   static const char kQuote = '\"';
@@ -124,6 +124,9 @@ public:
         break;
       case IDBTransaction::READ_WRITE:
         AppendLiteral("\"readwrite\"");
+        break;
+      case IDBTransaction::READ_WRITE_FLUSH:
+        AppendLiteral("\"readwriteflush\"");
         break;
       case IDBTransaction::VERSION_CHANGE:
         AppendLiteral("\"versionchange\"");
@@ -278,7 +281,7 @@ LoggingHelper(bool aUseProfiler, const char* aFmt, ...)
   PRLogModuleInfo* logModule = IndexedDatabaseManager::GetLoggingModule();
   MOZ_ASSERT(logModule);
 
-  static const PRLogModuleLevel logLevel = PR_LOG_DEBUG;
+  static const PRLogModuleLevel logLevel = PR_LOG_WARNING;
 
   if (PR_LOG_TEST(logModule, logLevel) ||
       (aUseProfiler && profiler_is_active())) {

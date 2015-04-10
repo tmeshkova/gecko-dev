@@ -28,7 +28,6 @@
 #include "nsISocketProvider.h"
 #include "nsISSLSocketControl.h"
 #include "nsIPipe.h"
-#include "nsIProgrammingLanguage.h"
 #include "nsIClassInfoImpl.h"
 #include "nsURLHelper.h"
 #include "nsIDNSService.h"
@@ -2439,7 +2438,7 @@ nsSocketTransport::GetInterfaces(uint32_t *count, nsIID * **array)
 }
 
 NS_IMETHODIMP
-nsSocketTransport::GetHelperForLanguage(uint32_t language, nsISupports **_retval)
+nsSocketTransport::GetScriptableHelper(nsIXPCScriptable **_retval)
 {
     *_retval = nullptr;
     return NS_OK;
@@ -2463,13 +2462,6 @@ NS_IMETHODIMP
 nsSocketTransport::GetClassID(nsCID * *aClassID)
 {
     *aClassID = nullptr;
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSocketTransport::GetImplementationLanguage(uint32_t *aImplementationLanguage)
-{
-    *aImplementationLanguage = nsIProgrammingLanguage::CPLUSPLUS;
     return NS_OK;
 }
 

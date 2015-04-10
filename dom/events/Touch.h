@@ -20,9 +20,9 @@ namespace dom {
 
 class EventTarget;
 
-class Touch MOZ_FINAL : public nsISupports
-                      , public nsWrapperCache
-                      , public WidgetPointerHelper
+class Touch final : public nsISupports
+                  , public nsWrapperCache
+                  , public WidgetPointerHelper
 {
 public:
   static bool PrefEnabled(JSContext* aCx, JSObject* aGlobal);
@@ -54,7 +54,7 @@ public:
 
   bool Equals(Touch* aTouch);
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   EventTarget* GetParentObject();
 

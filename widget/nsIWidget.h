@@ -22,8 +22,8 @@
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/TimeStamp.h"
-#include "Units.h"
 #include "mozilla/gfx/Point.h"
+#include "Units.h"
 
 // forward declarations
 class   nsFontMetrics;
@@ -545,15 +545,15 @@ struct SizeConstraints {
   {
   }
 
-  SizeConstraints(nsIntSize aMinSize,
-                  nsIntSize aMaxSize)
+  SizeConstraints(mozilla::LayoutDeviceIntSize aMinSize,
+                  mozilla::LayoutDeviceIntSize aMaxSize)
   : mMinSize(aMinSize),
     mMaxSize(aMaxSize)
   {
   }
 
-  nsIntSize mMinSize;
-  nsIntSize mMaxSize;
+  mozilla::LayoutDeviceIntSize mMinSize;
+  mozilla::LayoutDeviceIntSize mMaxSize;
 };
 
 // IMEMessage is shared by IMEStateManager and TextComposition.
@@ -877,9 +877,6 @@ class nsIWidget : public nsISupports {
      * @param     aNewParent   new parent 
      */
     NS_IMETHOD SetParent(nsIWidget* aNewParent) = 0;
-
-    NS_IMETHOD RegisterTouchWindow() = 0;
-    NS_IMETHOD UnregisterTouchWindow() = 0;
 
     /**
      * Return the parent Widget of this Widget or nullptr if this is a 
@@ -1691,7 +1688,8 @@ class nsIWidget : public nsISupports {
      * which includes the area for the borders and titlebar. This method
      * should work even when the window is not yet visible.
      */
-    virtual nsIntSize ClientToWindowSize(const nsIntSize& aClientSize) = 0;
+    virtual mozilla::LayoutDeviceIntSize ClientToWindowSize(
+                const mozilla::LayoutDeviceIntSize& aClientSize) = 0;
 
     /**
      * Dispatches an event to the widget
@@ -1706,6 +1704,13 @@ class nsIWidget : public nsISupports {
      * parent process synchronously.
      */
     virtual nsEventStatus DispatchAPZAwareEvent(mozilla::WidgetInputEvent* aEvent) = 0;
+
+    /**
+     * Dispatches an event that must be transformed by APZ first, but is not
+     * actually handled by APZ. If invoked in the child process, it is
+     * forwarded to the parent process synchronously.
+     */
+    virtual nsEventStatus DispatchInputEvent(mozilla::WidgetInputEvent* aEvent) = 0;
 
     /**
      * Enables the dropping of files to a widget (XXX this is temporary)

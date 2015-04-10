@@ -146,8 +146,6 @@ static const uint32_t kMaxICCDuration = 2000; // ms
 // Trigger a CC if the purple buffer exceeds this size when we check it.
 #define NS_CC_PURPLE_LIMIT          200
 
-#define JAVASCRIPT nsIProgrammingLanguage::JAVASCRIPT
-
 // Large value used to specify that a script should run essentially forever
 #define NS_UNLIMITED_SCRIPT_RUNTIME (0x40000000LL << 32)
 
@@ -262,7 +260,7 @@ NeedsGCAfterCC()
     sNeedsGCAfterCC;
 }
 
-class nsJSEnvironmentObserver MOZ_FINAL : public nsIObserver
+class nsJSEnvironmentObserver final : public nsIObserver
 {
   ~nsJSEnvironmentObserver() {}
 public:
@@ -319,7 +317,7 @@ public:
   }
   ~AutoFree() {
     if (mPtr)
-      nsMemory::Free(mPtr);
+      free(mPtr);
   }
   void Invalidate() {
     mPtr = 0;
@@ -2473,7 +2471,7 @@ NS_DOMReadStructuredClone(JSContext* cx,
       if (!key->ReadStructuredClone(reader)) {
         result = nullptr;
       } else {
-        result = key->WrapObject(cx);
+        result = key->WrapObject(cx, JS::NullPtr());
       }
     }
     return result;
@@ -2529,7 +2527,7 @@ NS_DOMReadStructuredClone(JSContext* cx,
     {
       nsRefPtr<MozNDEFRecord> ndefRecord = new MozNDEFRecord(global);
       result = ndefRecord->ReadStructuredClone(cx, reader) ?
-               ndefRecord->WrapObject(cx) : nullptr;
+               ndefRecord->WrapObject(cx, JS::NullPtr()) : nullptr;
     }
     return result;
 #else
@@ -2841,7 +2839,7 @@ mozilla::dom::ShutdownJSEnvironment()
 // to/from nsISupports.
 // When consumed by non-JS (eg, another script language), conversion is done
 // on-the-fly.
-class nsJSArgArray MOZ_FINAL : public nsIJSArgArray {
+class nsJSArgArray final : public nsIJSArgArray {
 public:
   nsJSArgArray(JSContext *aContext, uint32_t argc, JS::Value *argv,
                nsresult *prv);
@@ -2855,7 +2853,7 @@ public:
   NS_DECL_NSIARRAY
 
   // nsIJSArgArray
-  nsresult GetArgs(uint32_t* argc, void** argv) MOZ_OVERRIDE;
+  nsresult GetArgs(uint32_t* argc, void** argv) override;
 
   void ReleaseJSObjects();
 

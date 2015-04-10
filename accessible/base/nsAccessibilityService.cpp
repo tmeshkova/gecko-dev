@@ -136,7 +136,7 @@ MustBeAccessible(nsIContent* aContent, DocAccessible* aDocument)
 ////////////////////////////////////////////////////////////////////////////////
 // Accessible constructors
 
-Accessible*
+static Accessible*
 New_HTMLLink(nsIContent* aContent, Accessible* aContext)
 {
   // Only some roles truly enjoy life as HTMLLinkAccessibles, for details
@@ -150,28 +150,28 @@ New_HTMLLink(nsIContent* aContent, Accessible* aContext)
   return new HTMLLinkAccessible(aContent, aContext->Document());
 }
 
-Accessible* New_HyperText(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HyperText(nsIContent* aContent, Accessible* aContext)
   { return new HyperTextAccessibleWrap(aContent, aContext->Document()); }
 
-Accessible* New_HTMLFigcaption(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLFigcaption(nsIContent* aContent, Accessible* aContext)
   { return new HTMLFigcaptionAccessible(aContent, aContext->Document()); }
 
-Accessible* New_HTMLFigure(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLFigure(nsIContent* aContent, Accessible* aContext)
   { return new HTMLFigureAccessible(aContent, aContext->Document()); }
 
-Accessible* New_HTMLLegend(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLLegend(nsIContent* aContent, Accessible* aContext)
   { return new HTMLLegendAccessible(aContent, aContext->Document()); }
 
-Accessible* New_HTMLOption(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLOption(nsIContent* aContent, Accessible* aContext)
   { return new HTMLSelectOptionAccessible(aContent, aContext->Document()); }
 
-Accessible* New_HTMLOptgroup(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLOptgroup(nsIContent* aContent, Accessible* aContext)
   { return new HTMLSelectOptGroupAccessible(aContent, aContext->Document()); }
 
-Accessible* New_HTMLList(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLList(nsIContent* aContent, Accessible* aContext)
   { return new HTMLListAccessible(aContent, aContext->Document()); }
 
-Accessible*
+static Accessible*
 New_HTMLListitem(nsIContent* aContent, Accessible* aContext)
 {
   // If list item is a child of accessible list then create an accessible for
@@ -183,7 +183,7 @@ New_HTMLListitem(nsIContent* aContent, Accessible* aContext)
   return nullptr;
 }
 
-Accessible*
+static Accessible*
 New_HTMLDefinition(nsIContent* aContent, Accessible* aContext)
 {
   if (aContext->IsList())
@@ -191,16 +191,28 @@ New_HTMLDefinition(nsIContent* aContent, Accessible* aContext)
   return nullptr;
 }
 
-Accessible* New_HTMLLabel(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLLabel(nsIContent* aContent, Accessible* aContext)
   { return new HTMLLabelAccessible(aContent, aContext->Document()); }
 
-Accessible* New_HTMLOutput(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLOutput(nsIContent* aContent, Accessible* aContext)
   { return new HTMLOutputAccessible(aContent, aContext->Document()); }
 
-Accessible* New_HTMLProgress(nsIContent* aContent, Accessible* aContext)
+static Accessible* New_HTMLProgress(nsIContent* aContent, Accessible* aContext)
   { return new HTMLProgressMeterAccessible(aContent, aContext->Document()); }
 
-Accessible*
+static Accessible*
+New_HTMLTableAccessible(nsIContent* aContent, Accessible* aContext)
+  { return new HTMLTableAccessible(aContent, aContext->Document()); }
+
+static Accessible*
+New_HTMLTableRowAccessible(nsIContent* aContent, Accessible* aContext)
+  { return new HTMLTableRowAccessible(aContent, aContext->Document()); }
+
+static Accessible*
+New_HTMLTableCellAccessible(nsIContent* aContent, Accessible* aContext)
+  { return new HTMLTableCellAccessible(aContent, aContext->Document()); }
+
+static Accessible*
 New_HTMLTableHeaderCell(nsIContent* aContent, Accessible* aContext)
 {
   if (aContext->IsTableRow() && aContext->GetContent() == aContent->GetParent())
@@ -208,7 +220,7 @@ New_HTMLTableHeaderCell(nsIContent* aContent, Accessible* aContext)
   return nullptr;
 }
 
-Accessible*
+static Accessible*
 New_HTMLTableHeaderCellIfScope(nsIContent* aContent, Accessible* aContext)
 {
   if (aContext->IsTableRow() && aContext->GetContent() == aContent->GetParent() &&
@@ -333,7 +345,7 @@ nsAccessibilityService::GetRootDocumentAccessible(nsIPresShell* aPresShell,
 static StaticAutoPtr<nsTArray<nsCOMPtr<nsIContent> > > sPendingPlugins;
 static StaticAutoPtr<nsTArray<nsCOMPtr<nsITimer> > > sPluginTimers;
 
-class PluginTimerCallBack MOZ_FINAL : public nsITimerCallback
+class PluginTimerCallBack final : public nsITimerCallback
 {
   ~PluginTimerCallBack() {}
 
@@ -342,7 +354,7 @@ public:
 
   NS_DECL_ISUPPORTS
 
-  NS_IMETHODIMP Notify(nsITimer* aTimer) MOZ_FINAL
+  NS_IMETHODIMP Notify(nsITimer* aTimer) final
   {
     if (!mContent->IsInDoc())
       return NS_OK;
@@ -521,8 +533,9 @@ nsAccessibilityService::ContentRemoved(nsIPresShell* aPresShell,
     // accessibles in subtree then we don't care about the change.
     Accessible* child = document->GetAccessible(aChildNode);
     if (!child) {
-      a11y::TreeWalker walker(document->GetContainerAccessible(aChildNode),
-                              aChildNode, a11y::TreeWalker::eWalkCache);
+      Accessible* container = document->GetContainerAccessible(aChildNode);
+      a11y::TreeWalker walker(container ? container : document, aChildNode,
+                              a11y::TreeWalker::eWalkCache);
       child = walker.NextChild();
     }
 

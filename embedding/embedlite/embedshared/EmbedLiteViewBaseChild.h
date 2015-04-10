@@ -38,31 +38,31 @@ public:
   virtual bool
   ZoomToRect(const uint32_t& aPresShellId,
              const ViewID& aViewId,
-             const CSSRect& aRect) MOZ_OVERRIDE;
+             const CSSRect& aRect) override;
 
   virtual bool
   UpdateZoomConstraints(const uint32_t& aPresShellId,
                         const ViewID& aViewId,
                         const bool& aIsRoot,
-                        const ZoomConstraints& aConstraints) MOZ_OVERRIDE;
+                        const ZoomConstraints& aConstraints) override;
 
-  virtual bool HasMessageListener(const nsAString& aMessageName) MOZ_OVERRIDE;
+  virtual bool HasMessageListener(const nsAString& aMessageName) override;
 
-  virtual bool DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage) MOZ_OVERRIDE;
+  virtual bool DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage) override;
   virtual bool DoSendSyncMessage(const char16_t* aMessageName,
                                  const char16_t* aMessage,
-                                 InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+                                 InfallibleTArray<nsString>* aJSONRetVal) override;
   virtual bool DoCallRpcMessage(const char16_t* aMessageName,
                                 const char16_t* aMessage,
-                                InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+                                InfallibleTArray<nsString>* aJSONRetVal) override;
 
   /**
    * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
    */
-  virtual void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
+  virtual void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
 
-  virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
-  virtual nsIWidget* WebWidget() MOZ_OVERRIDE;
+  virtual nsIWebNavigation* WebNavigation() override;
+  virtual nsIWidget* WebWidget() override;
 
 /*---------TabChildIface---------------*/
 
@@ -84,8 +84,8 @@ public:
 
 /*---------WidgetIface---------------*/
 
-  virtual void ResetInputState() MOZ_OVERRIDE;
-  virtual gfxSize GetGLViewSize() MOZ_OVERRIDE;
+  virtual void ResetInputState() override;
+  virtual gfxSize GetGLViewSize() override;
 
   virtual bool
   SetInputContext(const int32_t& IMEEnabled,
@@ -94,12 +94,12 @@ public:
                   const nsString& inputmode,
                   const nsString& actionHint,
                   const int32_t& cause,
-                  const int32_t& focusChange) MOZ_OVERRIDE;
+                  const int32_t& focusChange) override;
 
   virtual bool
   GetInputContext(int32_t* IMEEnabled,
                   int32_t* IMEOpen,
-                  intptr_t* NativeIMEContext) MOZ_OVERRIDE;
+                  intptr_t* NativeIMEContext) override;
 
 /*---------WidgetIface---------------*/
 
@@ -108,49 +108,50 @@ public:
 protected:
   virtual ~EmbedLiteViewBaseChild();
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
-  virtual bool RecvDestroy() MOZ_OVERRIDE;
-  virtual bool RecvLoadURL(const nsString&) MOZ_OVERRIDE;
-  virtual bool RecvGoBack() MOZ_OVERRIDE;
-  virtual bool RecvGoForward() MOZ_OVERRIDE;
-  virtual bool RecvStopLoad() MOZ_OVERRIDE;
-  virtual bool RecvReload(const bool&) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
+  virtual bool RecvDestroy() override;
+  virtual bool RecvLoadURL(const nsString&) override;
+  virtual bool RecvGoBack() override;
+  virtual bool RecvGoForward() override;
+  virtual bool RecvStopLoad() override;
+  virtual bool RecvReload(const bool&) override;
 
-  virtual bool RecvSetIsActive(const bool&) MOZ_OVERRIDE;
-  virtual bool RecvSetIsFocused(const bool&) MOZ_OVERRIDE;
-  virtual bool RecvSuspendTimeouts() MOZ_OVERRIDE;
-  virtual bool RecvResumeTimeouts() MOZ_OVERRIDE;
-  virtual bool RecvLoadFrameScript(const nsString&) MOZ_OVERRIDE;
-  virtual bool RecvSetViewSize(const gfxSize&) MOZ_OVERRIDE;
+  virtual bool RecvSetIsActive(const bool&) override;
+  virtual bool RecvSetIsFocused(const bool&) override;
+  virtual bool RecvSuspendTimeouts() override;
+  virtual bool RecvResumeTimeouts() override;
+  virtual bool RecvLoadFrameScript(const nsString&) override;
+  virtual bool RecvSetViewSize(const gfxSize&) override;
   virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                       const gfxSize& scrollSize) MOZ_OVERRIDE;
+                                       const gfxSize& scrollSize) override;
 
-  virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
-  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
-  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
+  virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
+  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint) override;
+  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint) override;
   virtual bool RecvHandleLongTap(const nsIntPoint& aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
-                                 const uint64_t& aInputBlockId) MOZ_OVERRIDE;
-  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) MOZ_OVERRIDE;
+                                 const uint64_t& aInputBlockId) override;
+  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) override;
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float& aX,
                               const float& aY,
                               const int32_t& aButton,
                               const int32_t& aClickCount,
                               const int32_t& aModifiers,
-                              const bool& aIgnoreRootScrollFrame) MOZ_OVERRIDE;
-  virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit) MOZ_OVERRIDE;
-  virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) MOZ_OVERRIDE;
-  virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) MOZ_OVERRIDE;
-  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) MOZ_OVERRIDE;
-  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) MOZ_OVERRIDE;
+                              const bool& aIgnoreRootScrollFrame) override;
+  virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit) override;
+  virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) override;
+  virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) override;
+  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) override;
+  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) override;
 
-  virtual bool RecvAddMessageListener(const nsCString&) MOZ_OVERRIDE;
-  virtual bool RecvRemoveMessageListener(const nsCString&) MOZ_OVERRIDE;
-  virtual void RecvAsyncMessage(const nsAString& aMessage, const nsAString& aData) MOZ_OVERRIDE;
-  virtual bool RecvSetGLViewSize(const gfxSize&) MOZ_OVERRIDE;
-  virtual bool RecvAddMessageListeners(InfallibleTArray<nsString>&& messageNames) MOZ_OVERRIDE;
-  virtual bool RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames) MOZ_OVERRIDE;
+  virtual bool RecvAddMessageListener(const nsCString&) override;
+  virtual bool RecvRemoveMessageListener(const nsCString&) override;
+  virtual void RecvAsyncMessage(const nsString& aMessage, const mozilla::dom::ClonedMessageData& aData, InfallibleTArray<mozilla::jsipc::CpowEntry>&& aCpows, const IPC::Principal& aPrincipal) /* FIXME: override */;
+
+  virtual bool RecvSetGLViewSize(const gfxSize&) override;
+  virtual bool RecvAddMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
+  virtual bool RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
   virtual void OnGeckoWindowInitialized() {}
 
 private:

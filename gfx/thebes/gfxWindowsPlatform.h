@@ -64,7 +64,7 @@ class nsIMemoryReporter;
  * not backed by a HDC this will get the HDC for the screen device context
  * instead.
  */
-class MOZ_STACK_CLASS DCFromDrawTarget MOZ_FINAL
+class MOZ_STACK_CLASS DCFromDrawTarget final
 {
 public:
     DCFromDrawTarget(mozilla::gfx::DrawTarget& aDrawTarget);
@@ -118,7 +118,7 @@ public:
 
     virtual already_AddRefed<gfxASurface>
       CreateOffscreenSurface(const IntSize& size,
-                             gfxContentType contentType) MOZ_OVERRIDE;
+                             gfxContentType contentType) override;
 
     virtual mozilla::TemporaryRef<mozilla::gfx::ScaledFont>
       GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont);
@@ -246,6 +246,7 @@ public:
 #endif
     ID3D11Device *GetD3D11Device();
     ID3D11Device *GetD3D11ContentDevice();
+    ID3D11Device *GetD3D11MediaDevice();
 
     mozilla::layers::ReadbackManagerD3D11* GetReadbackManager();
 
@@ -253,7 +254,12 @@ public:
 
     bool IsWARP() { return mIsWARP; }
 
-    virtual already_AddRefed<mozilla::gfx::VsyncSource> CreateHardwareVsyncSource() MOZ_OVERRIDE;
+    bool SupportsApzWheelInput() override {
+      return true;
+    }
+    bool SupportsApzTouchInput() override;
+
+    virtual already_AddRefed<mozilla::gfx::VsyncSource> CreateHardwareVsyncSource() override;
     static mozilla::Atomic<size_t> sD3D11MemoryUsed;
     static mozilla::Atomic<size_t> sD3D9MemoryUsed;
     static mozilla::Atomic<size_t> sD3D9SurfaceImageUsed;
@@ -286,9 +292,11 @@ private:
     nsRefPtr<mozilla::layers::DeviceManagerD3D9> mDeviceManager;
     mozilla::RefPtr<ID3D11Device> mD3D11Device;
     mozilla::RefPtr<ID3D11Device> mD3D11ContentDevice;
+    mozilla::RefPtr<ID3D11Device> mD3D11MediaDevice;
     bool mD3D11DeviceInitialized;
     mozilla::RefPtr<mozilla::layers::ReadbackManagerD3D11> mD3D11ReadbackManager;
     bool mIsWARP;
+    bool mCanInitMediaDevice;
 
     virtual void GetPlatformCMSOutputProfile(void* &mem, size_t &size);
 };

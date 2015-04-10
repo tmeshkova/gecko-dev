@@ -148,17 +148,17 @@ public:
   /**
    * Get the element resolution.
    */
-  virtual gfxSize GetResolution() const = 0;
+  virtual float GetResolution() const = 0;
   /**
    * Set the element resolution.
    */
-  virtual void SetResolution(const gfxSize& aResolution) = 0;
+  virtual void SetResolution(float aResolution) = 0;
   /**
    * Set the element resolution and specify that content should be scaled by
    * the amount of the resolution. This is only meaningful for root scroll
    * frames. See nsIDOMWindowUtils.setResolutionAndScaleTo().
    */
-  virtual void SetResolutionAndScaleTo(const gfxSize& aResolution) = 0;
+  virtual void SetResolutionAndScaleTo(float aResolution) = 0;
   /**
    * Return how much we would try to scroll by in each direction if
    * asked to scroll by one "line" vertically and horizontally.
@@ -208,13 +208,6 @@ public:
    */
   enum ScrollMomentum { NOT_MOMENTUM, SYNTHESIZED_MOMENTUM_EVENT };
   /**
-   * When set to ENABLE_SNAP, additional scrolling will be performed after the
-   * scroll operation to maintain the constraints set by CSS Scroll snapping.
-   * The additional scrolling may include asynchronous smooth scrolls that
-   * continue to animate after the initial scroll position has been set.
-   */
-  enum ScrollSnapMode { DISABLE_SNAP, ENABLE_SNAP };
-  /**
    * @note This method might destroy the frame, pres shell and other objects.
    * Clamps aScrollPosition to GetScrollRange and sets the scroll position
    * to that value.
@@ -225,7 +218,8 @@ public:
    */
   virtual void ScrollTo(nsPoint aScrollPosition, ScrollMode aMode,
                         const nsRect* aRange = nullptr,
-                        ScrollSnapMode aSnap = DISABLE_SNAP) = 0;
+                        nsIScrollbarMediator::ScrollSnapMode aSnap
+                          = nsIScrollbarMediator::DISABLE_SNAP) = 0;
   /**
    * @note This method might destroy the frame, pres shell and other objects.
    * Scrolls to a particular position in integer CSS pixels.
@@ -280,7 +274,8 @@ public:
                         nsIntPoint* aOverflow = nullptr,
                         nsIAtom* aOrigin = nullptr,
                         ScrollMomentum aMomentum = NOT_MOMENTUM,
-                        ScrollSnapMode aSnap = DISABLE_SNAP) = 0;
+                        nsIScrollbarMediator::ScrollSnapMode aSnap
+                          = nsIScrollbarMediator::DISABLE_SNAP) = 0;
 
   /**
    * Perform scroll snapping, possibly resulting in a smooth scroll to

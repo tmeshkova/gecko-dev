@@ -167,8 +167,8 @@ public:
 // nsXBLStreamListener, a helper class used for
 // asynchronous parsing of URLs
 /* Header file */
-class nsXBLStreamListener MOZ_FINAL : public nsIStreamListener,
-                                      public nsIDOMEventListener
+class nsXBLStreamListener final : public nsIStreamListener,
+                                  public nsIDOMEventListener
 {
 public:
   NS_DECL_ISUPPORTS

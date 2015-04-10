@@ -136,7 +136,7 @@ struct IDBObjectStore::StructuredCloneWriteInfo
 
 namespace {
 
-struct MOZ_STACK_CLASS MutableFileData MOZ_FINAL
+struct MOZ_STACK_CLASS MutableFileData final
 {
   nsString type;
   nsString name;
@@ -152,7 +152,7 @@ struct MOZ_STACK_CLASS MutableFileData MOZ_FINAL
   }
 };
 
-struct MOZ_STACK_CLASS BlobOrFileData MOZ_FINAL
+struct MOZ_STACK_CLASS BlobOrFileData final
 {
   uint32_t tag;
   uint64_t size;
@@ -174,7 +174,7 @@ struct MOZ_STACK_CLASS BlobOrFileData MOZ_FINAL
   }
 };
 
-struct MOZ_STACK_CLASS GetAddInfoClosure MOZ_FINAL
+struct MOZ_STACK_CLASS GetAddInfoClosure final
 {
   IDBObjectStore::StructuredCloneWriteInfo& mCloneWriteInfo;
   JS::Handle<JS::Value> mValue;
@@ -585,7 +585,7 @@ public:
                              aFile.mFileInfo.forget());
     MOZ_ASSERT(mutableFile);
 
-    JS::Rooted<JSObject*> result(aCx, mutableFile->WrapObject(aCx));
+    JS::Rooted<JSObject*> result(aCx, mutableFile->WrapObject(aCx, JS::NullPtr()));
     if (NS_WARN_IF(!result)) {
       return false;
     }
@@ -1279,9 +1279,8 @@ IDBObjectStore::AddOrPut(JSContext* aCx,
     }
   }
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  mTransaction->StartRequest(actor, params);
+  BackgroundRequestChild* actor = mTransaction->StartRequest(request, params);
+  MOZ_ASSERT(actor);
 
   if (!fileInfosToKeepAlive.IsEmpty()) {
     nsTArray<nsRefPtr<FileInfo>> fileInfos;
@@ -1365,9 +1364,7 @@ IDBObjectStore::GetAllInternal(bool aKeysOnly,
                  IDB_LOG_STRINGIFY(aLimit));
   }
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  mTransaction->StartRequest(actor, params);
+  mTransaction->StartRequest(request, params);
 
   return request.forget();
 }
@@ -1403,9 +1400,7 @@ IDBObjectStore::Clear(ErrorResult& aRv)
                IDB_LOG_STRINGIFY(mTransaction),
                IDB_LOG_STRINGIFY(this));
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  mTransaction->StartRequest(actor, params);
+  mTransaction->StartRequest(request, params);
 
   return request.forget();
 }
@@ -1501,9 +1496,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(IDBObjectStore)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(IDBObjectStore)
 
 JSObject*
-IDBObjectStore::WrapObject(JSContext* aCx)
+IDBObjectStore::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return IDBObjectStoreBinding::Wrap(aCx, this);
+  return IDBObjectStoreBinding::Wrap(aCx, this, aGivenProto);
 }
 
 nsPIDOMWindow*
@@ -1600,9 +1595,7 @@ IDBObjectStore::Get(JSContext* aCx,
                IDB_LOG_STRINGIFY(this),
                IDB_LOG_STRINGIFY(keyRange));
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  mTransaction->StartRequest(actor, params);
+  mTransaction->StartRequest(request, params);
 
   return request.forget();
 }
@@ -1657,9 +1650,7 @@ IDBObjectStore::DeleteInternal(JSContext* aCx,
                  IDB_LOG_STRINGIFY(keyRange));
   }
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  mTransaction->StartRequest(actor, params);
+  mTransaction->StartRequest(request, params);
 
   return request.forget();
 }
@@ -1899,9 +1890,7 @@ IDBObjectStore::Count(JSContext* aCx,
                IDB_LOG_STRINGIFY(this),
                IDB_LOG_STRINGIFY(keyRange));
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  mTransaction->StartRequest(actor, params);
+  mTransaction->StartRequest(request, params);
 
   return request.forget();
 }

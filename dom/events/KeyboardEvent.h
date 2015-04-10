@@ -36,9 +36,9 @@ public:
                                            const KeyboardEventInit& aParam,
                                            ErrorResult& aRv);
 
-  virtual JSObject* WrapObjectInternal(JSContext* aCx) MOZ_OVERRIDE
+  virtual JSObject* WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
   {
-    return KeyboardEventBinding::Wrap(aCx, this);
+    return KeyboardEventBinding::Wrap(aCx, this, aGivenProto);
   }
 
   bool AltKey();
@@ -55,7 +55,7 @@ public:
   bool IsComposing();
   uint32_t CharCode();
   uint32_t KeyCode();
-  virtual uint32_t Which() MOZ_OVERRIDE;
+  virtual uint32_t Which() override;
   uint32_t Location();
 
   void GetCode(nsAString& aCode);

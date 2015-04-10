@@ -1099,7 +1099,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   border: none;
   background: none;
   min-width: 0;
-  list-style-image: url("chrome://global/skin/icons/question-16.png");
+  list-style-image: url("moz-icon://stock/gtk-dialog-question?size=16");
   cursor: pointer;
 }
 
@@ -1132,11 +1132,6 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   margin-top: 5px;
 }
 
-/* Notification popup */
-#notification-popup {
-  min-width: 280px;
-}
-
 .popup-notification-icon {
   width: 64px;
   height: 64px;
@@ -1149,13 +1144,23 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 
 .popup-notification-icon[popupid="xpinstall-disabled"],
 .popup-notification-icon[popupid="addon-progress"],
-.popup-notification-icon[popupid="addon-install-cancelled"],
 .popup-notification-icon[popupid="addon-install-blocked"],
 .popup-notification-icon[popupid="addon-install-failed"],
+.popup-notification-icon[popupid="addon-install-confirmation"],
 .popup-notification-icon[popupid="addon-install-complete"] {
   list-style-image: url(chrome://mozapps/skin/extensions/extensionGeneric.png);
   width: 32px;
   height: 32px;
+}
+
+.popup-notification-description[popupid="addon-progress"],
+.popup-notification-description[popupid="addon-install-confirmation"] {
+  width: 27em;
+  max-width: 27em;
+}
+
+.addon-install-confirmation-name {
+  font-weight: bold;
 }
 
 .popup-notification-icon[popupid="click-to-play-plugins"] {
@@ -1166,37 +1171,13 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   list-style-image: url(chrome://browser/skin/notification-64.png);
 }
 
-.addon-progress-description {
-  width: 350px;
-  max-width: 350px;
-}
-
-.popup-progress-label,
-.popup-progress-meter {
-  -moz-margin-start: 0;
-  -moz-margin-end: 0;
-}
-
-.popup-progress-cancel {
-  -moz-appearance: none;
-  background: transparent;
-  border: none;
-  padding: 0;
-  margin: 0;
-  -moz-margin-start: 5px;
-  min-height: 0;
-  min-width: 0;
-  list-style-image: url("moz-icon://stock/gtk-cancel?size=menu");
-}
-
 .popup-notification-icon[popupid="indexedDB-permissions-prompt"],
 .popup-notification-icon[popupid*="offline-app-requested"],
 .popup-notification-icon[popupid="offline-app-usage"] {
   list-style-image: url(chrome://global/skin/icons/question-64.png);
 }
 
-.popup-notification-icon[popupid="password-save"],
-.popup-notification-icon[popupid="password-change"] {
+.popup-notification-icon[popupid="password"] {
   list-style-image: url(chrome://mozapps/skin/passwordmgr/key-64.png);
 }
 
@@ -1274,7 +1255,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 
 .default-notification-icon,
 #default-notification-icon {
-  list-style-image: url(chrome://global/skin/icons/information-16.png);
+  list-style-image: url(moz-icon://stock/gtk-dialog-info?size=16);
 }
 
 .identity-notification-icon,
@@ -1293,7 +1274,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 
 .indexedDB-notification-icon,
 #indexedDB-notification-icon {
-  list-style-image: url(chrome://global/skin/icons/question-16.png);
+  list-style-image: url(moz-icon://stock/gtk-dialog-question?size=16);
 }
 
 #password-notification-icon {
@@ -1484,6 +1465,16 @@ notification[value="translation"] menulist > .menulist-dropmarker {
   -moz-image-region: rect(0px, 32px, 16px, 16px);
 }
 
+/* Loop/ Hello browser styles */
+
+notification[value="loop-sharing-notification"] .button-menubutton-button {
+  min-width: 0;
+}
+
+notification[value="loop-sharing-notification"] .messageImage {
+  list-style-image: url(chrome://browser/skin/webRTC-shareScreen-16.png);
+}
+
 #treecolAutoCompleteImage {
   max-width : 36px;
 }
@@ -1619,26 +1610,23 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   list-style-image: url("chrome://browser/skin/Info.png");
 }
 
+%include ../shared/readinglist/readinglist.inc.css
+
 /* Reader mode button */
 
 #reader-mode-button {
-  -moz-appearance: none;
-  padding: 0;
-  list-style-image: url("chrome://browser/skin/reader-mode-16.png");
+  list-style-image: url("chrome://browser/skin/readerMode.svg");
   -moz-image-region: rect(0, 16px, 16px, 0);
 }
 
-#reader-mode-button > .toolbarbutton-icon {
-  width: 16px;
-}
-
-#reader-mode-button:focus {
-  outline: 1px dotted;
+#reader-mode-button:hover,
+#reader-mode-button[readeractive]:hover {
+  -moz-image-region: rect(0, 32px, 16px, 16px);
 }
 
 #reader-mode-button:hover:active,
 #reader-mode-button[readeractive] {
-   -moz-image-region: rect(0, 32px, 16px, 16px);
+  -moz-image-region: rect(0, 48px, 16px, 32px);
 }
 
 /* social share panel */
@@ -1849,15 +1837,15 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 }
 
 /* Tab close button */
-.tab-close-button:not([selected]):not(:hover) {
+.tab-close-button:not([visuallyselected]):not(:hover) {
   background-image: -moz-image-rect(url("chrome://global/skin/icons/close.svg"), 0, 64, 16, 48);
 }
 
-#TabsToolbar[brighttext] .tab-close-button:not([selected]):not(:hover) {
+#TabsToolbar[brighttext] .tab-close-button:not([visuallyselected]):not(:hover) {
   background-image: -moz-image-rect(url("chrome://global/skin/icons/close.svg"), 0, 80, 16, 64);
 }
 
-.tab-close-button:not([selected]):not(:hover):-moz-lwtheme-darktext {
+.tab-close-button:not([visuallyselected]):not(:hover):-moz-lwtheme-darktext {
   background-image: -moz-image-rect(url("chrome://global/skin/icons/close.svg"), 0, 96, 16, 80);
 }
 
@@ -1932,7 +1920,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.png");
 }
 
-.alltabs-item[selected="true"] {
+.alltabs-item[visuallyselected="true"] {
   font-weight: bold;
 }
 

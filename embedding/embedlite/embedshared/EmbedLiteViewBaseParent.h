@@ -29,85 +29,85 @@ public:
 
 protected:
   virtual ~EmbedLiteViewBaseParent();
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   virtual bool
-  RecvInitialized() MOZ_OVERRIDE;
+  RecvInitialized() override;
 
   virtual bool
-  RecvOnLocationChanged(const nsCString& aLocation, const bool& aCanGoBack, const bool& aCanGoForward) MOZ_OVERRIDE;
+  RecvOnLocationChanged(const nsCString& aLocation, const bool& aCanGoBack, const bool& aCanGoForward) override;
 
   virtual bool
-  RecvOnLoadStarted(const nsCString& aLocation) MOZ_OVERRIDE;
+  RecvOnLoadStarted(const nsCString& aLocation) override;
 
   virtual bool
-  RecvOnLoadFinished() MOZ_OVERRIDE;
+  RecvOnLoadFinished() override;
 
   virtual bool
-  RecvOnWindowCloseRequested() MOZ_OVERRIDE;
+  RecvOnWindowCloseRequested() override;
 
   virtual bool
-  RecvOnLoadRedirect() MOZ_OVERRIDE;
+  RecvOnLoadRedirect() override;
 
   virtual bool
-  RecvOnLoadProgress(const int32_t& aProgress, const int32_t& aCurTotal, const int32_t& aMaxTotal) MOZ_OVERRIDE;
+  RecvOnLoadProgress(const int32_t& aProgress, const int32_t& aCurTotal, const int32_t& aMaxTotal) override;
 
   virtual bool
   RecvOnSecurityChanged(
     const nsCString& aStatus,
-    const uint32_t& aState) MOZ_OVERRIDE;
+    const uint32_t& aState) override;
 
   virtual bool
   RecvOnFirstPaint(
     const int32_t& aX,
-    const int32_t& aY) MOZ_OVERRIDE;
+    const int32_t& aY) override;
 
   virtual bool
   RecvOnScrolledAreaChanged(
     const uint32_t& aWidth,
-    const uint32_t& aHeight) MOZ_OVERRIDE;
+    const uint32_t& aHeight) override;
 
   virtual bool
   RecvOnScrollChanged(
     const int32_t& offSetX,
-    const int32_t& offSetY) MOZ_OVERRIDE;
+    const int32_t& offSetY) override;
 
   virtual bool
-  RecvOnTitleChanged(const nsString& aTitle) MOZ_OVERRIDE;
+  RecvOnTitleChanged(const nsString& aTitle) override;
 
   virtual bool RecvAsyncMessage(const nsString& aMessage,
-                                const nsString& aData) MOZ_OVERRIDE;
+                                const nsString& aData) override;
   virtual bool RecvSyncMessage(const nsString& aMessage,
                                const nsString& aJSON,
-                               InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+                               InfallibleTArray<nsString>* aJSONRetVal) override;
   virtual bool RecvRpcMessage(const nsString& aMessage,
                               const nsString& aJSON,
-                              InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+                              InfallibleTArray<nsString>* aJSONRetVal) override;
   virtual bool
   RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                             const ViewID& aViewId,
                             const bool& aIsRoot,
-                            const ZoomConstraints& aConstraints) MOZ_OVERRIDE;
+                            const ZoomConstraints& aConstraints) override;
   virtual bool RecvZoomToRect(const uint32_t& aPresShellId,
                               const ViewID& aViewId,
-                              const CSSRect& aRect) MOZ_OVERRIDE;
-  virtual bool RecvSetBackgroundColor(const nscolor& aColor) MOZ_OVERRIDE;
+                              const CSSRect& aRect) override;
+  virtual bool RecvSetBackgroundColor(const nscolor& aColor) override;
   virtual bool RecvContentReceivedInputBlock(const ScrollableLayerGuid& aGuid,
                                              const uint64_t& aInputBlockId,
-                                             const bool& aPreventDefault) MOZ_OVERRIDE;
+                                             const bool& aPreventDefault) override;
 
   // IME
   virtual bool RecvGetInputContext(int32_t* aIMEEnabled,
                                    int32_t* aIMEOpen,
-                                   intptr_t* aNativeIMEContext) MOZ_OVERRIDE;
+                                   intptr_t* aNativeIMEContext) override;
   virtual bool RecvSetInputContext(const int32_t& aIMEEnabled,
                                    const int32_t& aIMEOpen,
                                    const nsString& aType,
                                    const nsString& aInputmode,
                                    const nsString& aActionHint,
                                    const int32_t& aCause,
-                                   const int32_t& aFocusChange) MOZ_OVERRIDE;
-  virtual bool RecvGetGLViewSize(gfxSize* aSize) MOZ_OVERRIDE;
+                                   const int32_t& aFocusChange) override;
+  virtual bool RecvGetGLViewSize(gfxSize* aSize) override;
 
 private:
   friend class EmbedContentController;

@@ -28,10 +28,12 @@
 #include "mozilla/dom/Response.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/URLSearchParams.h"
+#include "mozilla/Telemetry.h"
 
 #include "InternalRequest.h"
 #include "InternalResponse.h"
 
+#include "nsFormData.h"
 #include "WorkerPrivate.h"
 #include "WorkerRunnable.h"
 #include "WorkerScope.h"
@@ -42,8 +44,8 @@ namespace dom {
 
 using namespace workers;
 
-class WorkerFetchResolver MOZ_FINAL : public FetchDriverObserver,
-                                      public WorkerFeature
+class WorkerFetchResolver final : public FetchDriverObserver,
+                                  public WorkerFeature
 {
   friend class MainThreadFetchRunnable;
   friend class WorkerFetchResponseEndRunnable;
@@ -67,13 +69,13 @@ public:
   }
 
   void
-  OnResponseAvailable(InternalResponse* aResponse) MOZ_OVERRIDE;
+  OnResponseAvailable(InternalResponse* aResponse) override;
 
   void
-  OnResponseEnd() MOZ_OVERRIDE;
+  OnResponseEnd() override;
 
   bool
-  Notify(JSContext* aCx, Status aStatus) MOZ_OVERRIDE
+  Notify(JSContext* aCx, Status aStatus) override
   {
     if (aStatus > Running) {
       CleanUp(aCx);
@@ -126,7 +128,7 @@ private:
   }
 };
 
-class MainThreadFetchResolver MOZ_FINAL : public FetchDriverObserver
+class MainThreadFetchResolver final : public FetchDriverObserver
 {
   nsRefPtr<Promise> mPromise;
   nsRefPtr<Response> mResponse;
@@ -136,7 +138,7 @@ public:
   explicit MainThreadFetchResolver(Promise* aPromise);
 
   void
-  OnResponseAvailable(InternalResponse* aResponse) MOZ_OVERRIDE;
+  OnResponseAvailable(InternalResponse* aResponse) override;
 
 private:
   ~MainThreadFetchResolver();
@@ -230,6 +232,8 @@ FetchRequest(nsIGlobalObject* aGlobal, const RequestOrUSVString& aInput,
       return nullptr;
     }
 
+    Telemetry::Accumulate(Telemetry::FETCH_IS_MAINTHREAD, 1);
+
     nsRefPtr<MainThreadFetchResolver> resolver = new MainThreadFetchResolver(p);
     nsCOMPtr<nsILoadGroup> loadGroup = doc->GetDocumentLoadGroup();
     nsRefPtr<FetchDriver> fetch =
@@ -242,6 +246,8 @@ FetchRequest(nsIGlobalObject* aGlobal, const RequestOrUSVString& aInput,
   } else {
     WorkerPrivate* worker = GetCurrentThreadWorkerPrivate();
     MOZ_ASSERT(worker);
+
+    Telemetry::Accumulate(Telemetry::FETCH_IS_MAINTHREAD, 0);
 
     if (worker->IsServiceWorker()) {
       r->SetSkipServiceWorker();
@@ -283,7 +289,7 @@ MainThreadFetchResolver::~MainThreadFetchResolver()
   NS_ASSERT_OWNINGTHREAD(MainThreadFetchResolver);
 }
 
-class WorkerFetchResponseRunnable MOZ_FINAL : public WorkerRunnable
+class WorkerFetchResponseRunnable final : public WorkerRunnable
 {
   nsRefPtr<WorkerFetchResolver> mResolver;
   // Passed from main thread to worker thread after being initialized.
@@ -297,7 +303,7 @@ public:
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     MOZ_ASSERT(aWorkerPrivate);
     aWorkerPrivate->AssertIsOnWorkerThread();
@@ -319,7 +325,7 @@ public:
   }
 };
 
-class WorkerFetchResponseEndRunnable MOZ_FINAL : public WorkerRunnable
+class WorkerFetchResponseEndRunnable final : public WorkerRunnable
 {
   nsRefPtr<WorkerFetchResolver> mResolver;
 public:
@@ -330,7 +336,7 @@ public:
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     MOZ_ASSERT(aWorkerPrivate);
     aWorkerPrivate->AssertIsOnWorkerThread();
@@ -453,6 +459,16 @@ ExtractFromBlob(const File& aFile, nsIInputStream** aStream,
 }
 
 nsresult
+ExtractFromFormData(nsFormData& aFormData, nsIInputStream** aStream,
+                    nsCString& aContentType)
+{
+  uint64_t unusedContentLength;
+  nsAutoCString unusedCharset;
+  return aFormData.GetSendInfo(aStream, &unusedContentLength,
+                               aContentType, unusedCharset);
+}
+
+nsresult
 ExtractFromUSVString(const nsString& aStr,
                      nsIInputStream** aStream,
                      nsCString& aContentType)
@@ -502,7 +518,7 @@ ExtractFromURLSearchParams(const URLSearchParams& aParams,
 } // anonymous namespace
 
 nsresult
-ExtractByteStreamFromBody(const OwningArrayBufferOrArrayBufferViewOrBlobOrUSVStringOrURLSearchParams& aBodyInit,
+ExtractByteStreamFromBody(const OwningArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams& aBodyInit,
                           nsIInputStream** aStream,
                           nsCString& aContentType)
 {
@@ -517,6 +533,9 @@ ExtractByteStreamFromBody(const OwningArrayBufferOrArrayBufferViewOrBlobOrUSVStr
   } else if (aBodyInit.IsBlob()) {
     const File& blob = aBodyInit.GetAsBlob();
     return ExtractFromBlob(blob, aStream, aContentType);
+  } else if (aBodyInit.IsFormData()) {
+    nsFormData& form = aBodyInit.GetAsFormData();
+    return ExtractFromFormData(form, aStream, aContentType);
   } else if (aBodyInit.IsUSVString()) {
     nsAutoString str;
     str.Assign(aBodyInit.GetAsUSVString());
@@ -531,7 +550,7 @@ ExtractByteStreamFromBody(const OwningArrayBufferOrArrayBufferViewOrBlobOrUSVStr
 }
 
 nsresult
-ExtractByteStreamFromBody(const ArrayBufferOrArrayBufferViewOrBlobOrUSVStringOrURLSearchParams& aBodyInit,
+ExtractByteStreamFromBody(const ArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams& aBodyInit,
                           nsIInputStream** aStream,
                           nsCString& aContentType)
 {
@@ -546,6 +565,9 @@ ExtractByteStreamFromBody(const ArrayBufferOrArrayBufferViewOrBlobOrUSVStringOrU
   } else if (aBodyInit.IsBlob()) {
     const File& blob = aBodyInit.GetAsBlob();
     return ExtractFromBlob(blob, aStream, aContentType);
+  } else if (aBodyInit.IsFormData()) {
+    nsFormData& form = aBodyInit.GetAsFormData();
+    return ExtractFromFormData(form, aStream, aContentType);
   } else if (aBodyInit.IsUSVString()) {
     nsAutoString str;
     str.Assign(aBodyInit.GetAsUSVString());
@@ -560,7 +582,7 @@ ExtractByteStreamFromBody(const ArrayBufferOrArrayBufferViewOrBlobOrUSVStringOrU
 }
 
 namespace {
-class StreamDecoder MOZ_FINAL
+class StreamDecoder final
 {
   nsCOMPtr<nsIUnicodeDecoder> mDecoder;
   nsString mDecoded;
@@ -611,7 +633,7 @@ public:
  * Called on successfully reading the complete stream.
  */
 template <class Derived>
-class ContinueConsumeBodyRunnable MOZ_FINAL : public WorkerRunnable
+class ContinueConsumeBodyRunnable final : public WorkerRunnable
 {
   // This has been addrefed before this runnable is dispatched,
   // released in WorkerRun().
@@ -633,7 +655,7 @@ public:
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     mFetchBody->ContinueConsumeBody(mStatus, mLength, mResult);
     return true;
@@ -642,7 +664,7 @@ public:
 
 // OnStreamComplete always adopts the buffer, utility class to release it in
 // a couple of places.
-class MOZ_STACK_CLASS AutoFreeBuffer MOZ_FINAL {
+class MOZ_STACK_CLASS AutoFreeBuffer final {
   uint8_t* mBuffer;
 
 public:
@@ -652,7 +674,7 @@ public:
 
   ~AutoFreeBuffer()
   {
-    moz_free(mBuffer);
+    free(mBuffer);
   }
 
   void
@@ -675,7 +697,7 @@ public:
   }
 
   bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     mBody->ContinueConsumeBody(NS_ERROR_FAILURE, 0, nullptr);
     return true;
@@ -687,7 +709,7 @@ public:
  * worker, ensure we cleanup properly. Thread agnostic.
  */
 template <class Derived>
-class MOZ_STACK_CLASS AutoFailConsumeBody MOZ_FINAL
+class MOZ_STACK_CLASS AutoFailConsumeBody final
 {
   FetchBody<Derived>* mBody;
 public:
@@ -736,7 +758,7 @@ public:
                    nsISupports* aCtxt,
                    nsresult aStatus,
                    uint32_t aResultLength,
-                   const uint8_t* aResult) MOZ_OVERRIDE
+                   const uint8_t* aResult) override
   {
     MOZ_ASSERT(NS_IsMainThread());
 
@@ -787,7 +809,7 @@ NS_INTERFACE_MAP_BEGIN(ConsumeBodyDoneObserver<Derived>)
 NS_INTERFACE_MAP_END
 
 template <class Derived>
-class BeginConsumeBodyRunnable MOZ_FINAL : public nsRunnable
+class BeginConsumeBodyRunnable final : public nsRunnable
 {
   FetchBody<Derived>* mFetchBody;
 public:
@@ -796,7 +818,7 @@ public:
   { }
 
   NS_IMETHOD
-  Run() MOZ_OVERRIDE
+  Run() override
   {
     mFetchBody->BeginConsumeBodyMainThread();
     return NS_OK;
@@ -804,7 +826,7 @@ public:
 };
 
 template <class Derived>
-class CancelPumpRunnable MOZ_FINAL : public WorkerMainThreadRunnable
+class CancelPumpRunnable final : public WorkerMainThreadRunnable
 {
   FetchBody<Derived>* mBody;
 public:
@@ -814,7 +836,7 @@ public:
   { }
 
   bool
-  MainThreadRun() MOZ_OVERRIDE
+  MainThreadRun() override
   {
     mBody->CancelPump();
     return true;
@@ -823,7 +845,7 @@ public:
 } // anonymous namespace
 
 template <class Derived>
-class FetchBodyFeature MOZ_FINAL : public workers::WorkerFeature
+class FetchBodyFeature final : public workers::WorkerFeature
 {
   // This is addrefed before the feature is created, and is released in ContinueConsumeBody()
   // so we can hold a rawptr.
@@ -837,7 +859,7 @@ public:
   ~FetchBodyFeature()
   { }
 
-  bool Notify(JSContext* aCx, workers::Status aStatus) MOZ_OVERRIDE
+  bool Notify(JSContext* aCx, workers::Status aStatus) override
   {
     MOZ_ASSERT(aStatus > workers::Running);
     mBody->ContinueConsumeBody(NS_BINDING_ABORTED, 0, nullptr);

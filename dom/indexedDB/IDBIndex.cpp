@@ -292,9 +292,7 @@ IDBIndex::GetInternal(bool aKeyOnly,
                  IDB_LOG_STRINGIFY(keyRange));
   }
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  transaction->StartRequest(actor, params);
+  transaction->StartRequest(request, params);
 
   return request.forget();
 }
@@ -375,9 +373,7 @@ IDBIndex::GetAllInternal(bool aKeysOnly,
                  IDB_LOG_STRINGIFY(aLimit));
   }
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  transaction->StartRequest(actor, params);
+  transaction->StartRequest(request, params);
 
   return request.forget();
 }
@@ -527,9 +523,7 @@ IDBIndex::Count(JSContext* aCx,
                IDB_LOG_STRINGIFY(this),
                IDB_LOG_STRINGIFY(keyRange));
 
-  BackgroundRequestChild* actor = new BackgroundRequestChild(request);
-
-  transaction->StartRequest(actor, params);
+  transaction->StartRequest(request, params);
 
   return request.forget();
 }
@@ -568,9 +562,9 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(IDBIndex)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 JSObject*
-IDBIndex::WrapObject(JSContext* aCx)
+IDBIndex::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return IDBIndexBinding::Wrap(aCx, this);
+  return IDBIndexBinding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace indexedDB

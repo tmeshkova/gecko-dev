@@ -14,8 +14,8 @@ using mozilla::ipc::IOThreadChild;
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteContentProcess::EmbedLiteContentProcess(ProcessHandle mParentHandle)
-  : ProcessChild(mParentHandle)
+EmbedLiteContentProcess::EmbedLiteContentProcess(ProcessId parentHandle)
+  : ProcessChild(parentHandle)
 {
   mContent = new EmbedLiteAppProcessChild();
 }
@@ -36,7 +36,7 @@ EmbedLiteContentProcess::Init()
 {
   LOGT();
   mContent->Init(IOThreadChild::message_loop(),
-                 ParentHandle(),
+                 ParentPid(),
                  IOThreadChild::channel());
 
   mXREEmbed.Start();

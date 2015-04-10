@@ -23,19 +23,19 @@ class EmbedLiteAppThreadParent : public PEmbedLiteAppParent
 
 protected:
   // IPDL implementation
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
-  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&, const bool&) MOZ_OVERRIDE;
-  virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
+  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&, const bool&) override;
+  virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*) override;
 
   // IPDL interface
   virtual bool
-  RecvInitialized() MOZ_OVERRIDE;
+  RecvInitialized() override;
 
   virtual bool
-  RecvReadyToShutdown() MOZ_OVERRIDE;
+  RecvReadyToShutdown() override;
 
   virtual bool RecvObserve(const nsCString& topic,
-                           const nsString& data) MOZ_OVERRIDE;
+                           const nsString& data) override;
 
   virtual bool
   RecvCreateWindow(
@@ -44,13 +44,13 @@ protected:
           const uint32_t& chromeFlags,
           const uint32_t& contextFlags,
           uint32_t* createdID,
-          bool* cancel) MOZ_OVERRIDE;
+          bool* cancel) override;
 
   virtual PCompositorParent*
-  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess) MOZ_OVERRIDE;
+  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess) override;
 
   virtual bool
-  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs) MOZ_OVERRIDE;
+  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs) override;
 
 private:
   virtual ~EmbedLiteAppThreadParent();

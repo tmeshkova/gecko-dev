@@ -908,10 +908,8 @@ class Marionette(object):
                 "eForceQuit",
                 "eRestart",
             ]
-            try:
-                self._send_message('quitApplication', flags=restart_flags)
-            except IOError:
-                self.client.close()
+            self._send_message('quitApplication', flags=restart_flags)
+            self.client.close()
         else:
             self.delete_session()
             self.instance.restart(clean=clean)

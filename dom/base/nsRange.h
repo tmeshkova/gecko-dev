@@ -30,9 +30,9 @@ class DOMRectList;
 }
 }
 
-class nsRange MOZ_FINAL : public nsIDOMRange,
-                          public nsStubMutationObserver,
-                          public nsWrapperCache
+class nsRange final : public nsIDOMRange,
+                      public nsStubMutationObserver,
+                      public nsWrapperCache
 {
   typedef mozilla::ErrorResult ErrorResult;
   typedef mozilla::dom::DOMRect DOMRect;
@@ -244,7 +244,7 @@ public:
                                                bool aFlushLayout = true);
 
   nsINode* GetParentObject() const { return mOwner; }
-  virtual JSObject* WrapObject(JSContext* cx) MOZ_OVERRIDE MOZ_FINAL;
+  virtual JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto) override final;
 
 private:
   // no copy's or assigns

@@ -16,8 +16,8 @@
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteCompositorProcessParent MOZ_FINAL : public PCompositorParent,
-                                                   public ShadowLayersManager
+class EmbedLiteCompositorProcessParent final : public PCompositorParent,
+                                               public ShadowLayersManager
 {
   friend class CompositorParent;
 
@@ -29,39 +29,39 @@ public:
   virtual IToplevelProtocol*
   CloneToplevel(const InfallibleTArray<mozilla::ipc::ProtocolFdMapping>& aFds,
                 base::ProcessHandle aPeerProcess,
-                mozilla::ipc::ProtocolCloneContext* aCtx) MOZ_OVERRIDE;
+                mozilla::ipc::ProtocolCloneContext* aCtx) override;
 
-  virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   // FIXME/bug 774388: work out what shutdown protocol we need.
-  virtual bool RecvRequestOverfill() MOZ_OVERRIDE { return true; }
-  virtual bool RecvWillStop() MOZ_OVERRIDE { return true; }
-  virtual bool RecvStop() MOZ_OVERRIDE { return true; }
-  virtual bool RecvPause() MOZ_OVERRIDE { return true; }
-  virtual bool RecvResume() MOZ_OVERRIDE { return true; }
-  virtual bool RecvNotifyChildCreated(const uint64_t& child) MOZ_OVERRIDE;
-  virtual bool RecvAdoptChild(const uint64_t& child) MOZ_OVERRIDE { return false; }
+  virtual bool RecvRequestOverfill() override { return true; }
+  virtual bool RecvWillStop() override { return true; }
+  virtual bool RecvStop() override { return true; }
+  virtual bool RecvPause() override { return true; }
+  virtual bool RecvResume() override { return true; }
+  virtual bool RecvNotifyChildCreated(const uint64_t& child) override;
+  virtual bool RecvAdoptChild(const uint64_t& child) override { return false; }
   virtual bool RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
                                 const nsIntRect& aRect)
   { return true; }
-  virtual bool RecvFlushRendering() MOZ_OVERRIDE { return true; }
+  virtual bool RecvFlushRendering() override { return true; }
   virtual bool RecvNotifyRegionInvalidated(const nsIntRegion& aRegion) { return true; }
-  virtual bool RecvStartFrameTimeRecording(const int32_t& aBufferSize, uint32_t* aOutStartIndex) MOZ_OVERRIDE { return true; }
-  virtual bool RecvStopFrameTimeRecording(const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) MOZ_OVERRIDE  { return true; }
-  virtual bool RecvGetTileSize(int32_t* aWidth, int32_t* aHeight) MOZ_OVERRIDE;
+  virtual bool RecvStartFrameTimeRecording(const int32_t& aBufferSize, uint32_t* aOutStartIndex) override { return true; }
+  virtual bool RecvStopFrameTimeRecording(const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) override  { return true; }
+  virtual bool RecvGetTileSize(int32_t* aWidth, int32_t* aHeight) override;
 
   /**
    * Tells this CompositorParent to send a message when the compositor has received the transaction.
    */
-  virtual bool RecvRequestNotifyAfterRemotePaint() MOZ_OVERRIDE;
+  virtual bool RecvRequestNotifyAfterRemotePaint() override;
 
   virtual PLayerTransactionParent*
     AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                  const uint64_t& aId,
                                  TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                 bool *aSuccess) MOZ_OVERRIDE;
+                                 bool *aSuccess) override;
 
-  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
+  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
 
   virtual void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
                                    const uint64_t& aTransactionId,
@@ -70,16 +70,16 @@ public:
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
                                    uint32_t aPaintSequenceNumber,
-                                   bool aIsRepeatTransaction) MOZ_OVERRIDE;
+                                   bool aIsRepeatTransaction) override;
 
-  virtual void ForceComposite(LayerTransactionParent* aLayerTree) MOZ_OVERRIDE;
+  virtual void ForceComposite(LayerTransactionParent* aLayerTree) override;
   virtual bool SetTestSampleTime(LayerTransactionParent* aLayerTree,
-                                 const TimeStamp& aTime) MOZ_OVERRIDE;
-  virtual void LeaveTestMode(LayerTransactionParent* aLayerTree) MOZ_OVERRIDE;
+                                 const TimeStamp& aTime) override;
+  virtual void LeaveTestMode(LayerTransactionParent* aLayerTree) override;
   virtual void GetAPZTestData(const LayerTransactionParent* aLayerTree,
-                              APZTestData* aOutData) MOZ_OVERRIDE;
+                              APZTestData* aOutData) override;
 
-  virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) MOZ_OVERRIDE;
+  virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) override;
 
   void DidComposite(uint64_t aId);
 

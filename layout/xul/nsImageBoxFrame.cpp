@@ -65,7 +65,7 @@ public:
   nsImageBoxFrameEvent(nsIContent *content, uint32_t message)
     : mContent(content), mMessage(message) {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE;
+  NS_IMETHOD Run() override;
 
 private:
   nsCOMPtr<nsIContent> mContent;
@@ -192,11 +192,9 @@ nsImageBoxFrame::Init(nsIContent*       aContent,
                       nsIFrame*         aPrevInFlow)
 {
   if (!mListener) {
-    nsImageBoxListener *listener = new nsImageBoxListener();
-    NS_ADDREF(listener);
+    nsRefPtr<nsImageBoxListener> listener = new nsImageBoxListener();
     listener->SetFrame(this);
-    listener->QueryInterface(NS_GET_IID(imgINotificationObserver), getter_AddRefs(mListener));
-    NS_RELEASE(listener);
+    mListener = listener.forget();
   }
 
   mSuppressStyleCheck = true;
@@ -433,13 +431,18 @@ nsDisplayXULImage::ConfigureLayer(ImageLayer* aLayer, const nsIntPoint& aOffset)
 }
 
 already_AddRefed<ImageContainer>
-nsDisplayXULImage::GetContainer(LayerManager* aManager, nsDisplayListBuilder* aBuilder)
+nsDisplayXULImage::GetContainer(LayerManager* aManager,
+                                nsDisplayListBuilder* aBuilder)
 {
-  return static_cast<nsImageBoxFrame*>(mFrame)->GetContainer(aManager);
+  uint32_t flags = aBuilder->ShouldSyncDecodeImages()
+                 ? imgIContainer::FLAG_SYNC_DECODE
+                 : imgIContainer::FLAG_NONE;
+
+  return static_cast<nsImageBoxFrame*>(mFrame)->GetContainer(aManager, flags);
 }
 
 already_AddRefed<ImageContainer>
-nsImageBoxFrame::GetContainer(LayerManager* aManager)
+nsImageBoxFrame::GetContainer(LayerManager* aManager, uint32_t aFlags)
 {
   bool hasSubRect = !mUseSrcAttr && (mSubRect.width > 0 || mSubRect.height > 0);
   if (hasSubRect || !mImageRequest) {
@@ -452,9 +455,7 @@ nsImageBoxFrame::GetContainer(LayerManager* aManager)
     return nullptr;
   }
   
-  nsRefPtr<ImageContainer> container;
-  imgCon->GetImageContainer(aManager, getter_AddRefs(container));
-  return container.forget();
+  return imgCon->GetImageContainer(aManager, aFlags);
 }
 
 

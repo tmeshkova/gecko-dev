@@ -9,7 +9,7 @@
 
 #include <stdint.h>                     // for int32_t, uint64_t
 #include "gfxTypes.h"
-#include "mozilla/Attributes.h"         // for MOZ_OVERRIDE
+#include "mozilla/Attributes.h"         // for override
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/layers/ISurfaceAllocator.h"  // for ISurfaceAllocator
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend
@@ -156,15 +156,6 @@ public:
                                          TextureClient* aClientOnBlack,
                                          TextureClient* aClientOnWhite) = 0;
 
-  /**
-   * Tell the compositor side that the shared data has been modified so that
-   * it can react accordingly (upload textures, etc.).
-   */
-  virtual void UpdatedTexture(CompositableClient* aCompositable,
-                              TextureClient* aTexture,
-                              nsIntRegion* aRegion) = 0;
-
-
   virtual void SendFenceHandle(AsyncTransactionTracker* aTracker,
                                PTextureChild* aTexture,
                                const FenceHandle& aFence) = 0;
@@ -173,19 +164,19 @@ public:
 
   void IdentifyTextureHost(const TextureFactoryIdentifier& aIdentifier);
 
-  virtual int32_t GetMaxTextureSize() const MOZ_OVERRIDE
+  virtual int32_t GetMaxTextureSize() const override
   {
     return mTextureFactoryIdentifier.mMaxTextureSize;
   }
 
-  bool IsOnCompositorSide() const MOZ_OVERRIDE { return false; }
+  bool IsOnCompositorSide() const override { return false; }
 
   /**
    * Returns the type of backend that is used off the main thread.
    * We only don't allow changing the backend type at runtime so this value can
    * be queried once and will not change until Gecko is restarted.
    */
-  virtual LayersBackend GetCompositorBackendType() const MOZ_OVERRIDE
+  virtual LayersBackend GetCompositorBackendType() const override
   {
     return mTextureFactoryIdentifier.mParentBackend;
   }

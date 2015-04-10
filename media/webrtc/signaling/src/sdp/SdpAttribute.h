@@ -8,6 +8,7 @@
 #define _SDPATTRIBUTE_H_
 
 #include <algorithm>
+#include <cctype>
 #include <vector>
 #include <ostream>
 #include <sstream>
@@ -147,7 +148,7 @@ public:
   {
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   ConnValue mValue;
 };
@@ -190,7 +191,7 @@ public:
   {
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   Direction mValue;
 };
@@ -262,7 +263,7 @@ public:
     mExtmaps.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<Extmap> mExtmaps;
 };
@@ -307,10 +308,15 @@ public:
   // For use by application programmers. Enforces that it's a known and
   // non-crazy algorithm.
   void
-  PushEntry(const std::string& algorithm_str,
+  PushEntry(std::string algorithm_str,
             const std::vector<uint8_t>& fingerprint,
             bool enforcePlausible = true)
   {
+    std::transform(algorithm_str.begin(),
+                   algorithm_str.end(),
+                   algorithm_str.begin(),
+                   ::tolower);
+
     SdpFingerprintAttributeList::HashAlgorithm algorithm =
         SdpFingerprintAttributeList::kUnknownAlgorithm;
 
@@ -349,7 +355,7 @@ public:
     mFingerprints.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<Fingerprint> mFingerprints;
 
@@ -444,7 +450,7 @@ public:
     }
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<Group> mGroups;
 };
@@ -515,7 +521,7 @@ public:
     mAssertion(assertion),
     mExtensions(extensions) {}
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::string mAssertion;
   std::vector<std::string> mExtensions;
@@ -599,7 +605,7 @@ class SdpImageattrAttributeList : public SdpAttribute
 public:
   SdpImageattrAttributeList() : SdpAttribute(kImageattrAttribute) {}
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -625,7 +631,7 @@ public:
     mMsids.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<Msid> mMsids;
 };
@@ -655,7 +661,7 @@ public:
     mMsidSemantics.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<MsidSemantic> mMsidSemantics;
 };
@@ -681,7 +687,7 @@ public:
   {
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<Candidate> mCandidates;
 };
@@ -706,7 +712,7 @@ public:
   {
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   uint16_t mPort;
   sdp::NetType mNetType;
@@ -777,7 +783,7 @@ public:
     mFeedbacks.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<Feedback> mFeedbacks;
 };
@@ -849,7 +855,7 @@ public:
     mRtpmaps.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   bool
   HasEntry(const std::string& pt) const
@@ -943,11 +949,13 @@ public:
   class H264Parameters : public Parameters
   {
   public:
+    static const uint32_t kDefaultProfileLevelId = 0x420010;
+
     H264Parameters()
         : Parameters(SdpRtpmapAttributeList::kH264),
           packetization_mode(0),
           level_asymmetry_allowed(false),
-          profile_level_id(0),
+          profile_level_id(kDefaultProfileLevelId),
           max_mbps(0),
           max_fs(0),
           max_cpb(0),
@@ -958,13 +966,13 @@ public:
     }
 
     virtual Parameters*
-    Clone() const MOZ_OVERRIDE
+    Clone() const override
     {
       return new H264Parameters(*this);
     }
 
     virtual void
-    Serialize(std::ostream& os) const MOZ_OVERRIDE
+    Serialize(std::ostream& os) const override
     {
       // Note: don't move this, since having an unconditional param up top
       // lets us avoid a whole bunch of conditional streaming of ';' below
@@ -1024,13 +1032,13 @@ public:
     }
 
     virtual Parameters*
-    Clone() const MOZ_OVERRIDE
+    Clone() const override
     {
       return new VP8Parameters(*this);
     }
 
     virtual void
-    Serialize(std::ostream& os) const MOZ_OVERRIDE
+    Serialize(std::ostream& os) const override
     {
       // draft-ietf-payload-vp8-11 says these are mandatory, upper layer
       // needs to ensure they're set properly.
@@ -1081,7 +1089,7 @@ public:
     UniquePtr<Parameters> parameters;
   };
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   void
   PushEntry(const std::string& format, const std::string& parameters_string,
@@ -1127,7 +1135,7 @@ public:
     mSctpmaps.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   bool
   HasEntry(const std::string& pt) const
@@ -1169,7 +1177,7 @@ public:
   {
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   Role mRole;
 };
@@ -1228,7 +1236,7 @@ public:
     mSsrcs.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<Ssrc> mSsrcs;
 };
@@ -1265,7 +1273,7 @@ public:
     mSsrcGroups.push_back(value);
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::vector<SsrcGroup> mSsrcGroups;
 };
@@ -1337,7 +1345,7 @@ class SdpFlagAttribute : public SdpAttribute
 public:
   explicit SdpFlagAttribute(AttributeType type) : SdpAttribute(type) {}
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 };
 
 // Used for any other kind of single-valued attribute not otherwise specialized
@@ -1349,7 +1357,7 @@ public:
   {
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   std::string mValue;
 };
@@ -1363,7 +1371,7 @@ public:
   {
   }
 
-  virtual void Serialize(std::ostream& os) const MOZ_OVERRIDE;
+  virtual void Serialize(std::ostream& os) const override;
 
   uint32_t mValue;
 };

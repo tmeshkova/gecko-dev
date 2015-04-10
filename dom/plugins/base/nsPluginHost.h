@@ -70,10 +70,10 @@ public:
   nsRefPtr<nsInvalidPluginTag> mNext;
 };
 
-class nsPluginHost MOZ_FINAL : public nsIPluginHost,
-                               public nsIObserver,
-                               public nsITimerCallback,
-                               public nsSupportsWeakReference
+class nsPluginHost final : public nsIPluginHost,
+                           public nsIObserver,
+                           public nsITimerCallback,
+                           public nsSupportsWeakReference
 {
   friend class nsPluginTag;
   virtual ~nsPluginHost();

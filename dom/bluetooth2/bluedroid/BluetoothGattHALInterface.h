@@ -18,7 +18,7 @@ BEGIN_BLUETOOTH_NAMESPACE
 
 class BluetoothHALInterface;
 
-class BluetoothGattClientHALInterface MOZ_FINAL
+class BluetoothGattClientHALInterface final
   : public BluetoothGattClientInterface
 {
 public:
@@ -56,19 +56,23 @@ public:
 
   /* Enumerate Attributes */
   void SearchService(int aConnId,
+                     bool aSearchAll,
                      const BluetoothUuid& aUuid,
                      BluetoothGattClientResultHandler* aRes);
   void GetIncludedService(int aConnId,
                           const BluetoothGattServiceId& aServiceId,
+                          bool aFirst,
                           const BluetoothGattServiceId& aStartServiceId,
                           BluetoothGattClientResultHandler* aRes);
   void GetCharacteristic(int aConnId,
                          const BluetoothGattServiceId& aServiceId,
+                         bool aFirst,
                          const BluetoothGattId& aStartCharId,
                          BluetoothGattClientResultHandler* aRes);
   void GetDescriptor(int aConnId,
                      const BluetoothGattServiceId& aServiceId,
                      const BluetoothGattId& aCharId,
+                     bool aFirst,
                      const BluetoothGattId& aDescriptorId,
                      BluetoothGattClientResultHandler* aRes);
 
@@ -155,7 +159,7 @@ private:
 
 // TODO: Add server interface
 
-class BluetoothGattHALInterface MOZ_FINAL
+class BluetoothGattHALInterface final
  : public BluetoothGattInterface
 {
 public:

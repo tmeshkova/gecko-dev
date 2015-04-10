@@ -10,15 +10,35 @@ XPCOMUtils.defineLazyModuleGetter(this, "ReadingList",
 const READINGLIST_COMMAND_ID = "readingListSidebar";
 
 let ReadingListUI = {
+  /**
+   * Frame-script messages we want to listen to.
+   * @type {[string]}
+   */
   MESSAGES: [
     "ReadingList:GetVisibility",
     "ReadingList:ToggleVisibility",
+    "ReadingList:ShowIntro",
   ],
+
+  /**
+   * Add-to-ReadingList toolbar button in the URLbar.
+   * @type {Element}
+   */
+  toolbarButton: null,
+
+  /**
+   * Whether this object is currently registered as a listener with ReadingList.
+   * Used to avoid inadvertantly loading the ReadLingList.jsm module on startup.
+   * @type {Boolean}
+   */
+  listenerRegistered: false,
 
   /**
    * Initialize the ReadingList UI.
    */
   init() {
+    this.toolbarButton = document.getElementById("readinglist-addremove-button");
+
     Preferences.observe("browser.readinglist.enabled", this.updateUI, this);
 
     const mm = window.messageManager;
@@ -38,6 +58,11 @@ let ReadingListUI = {
     const mm = window.messageManager;
     for (let msg of this.MESSAGES) {
       mm.removeMessageListener(msg, this);
+    }
+
+    if (this.listenerRegistered) {
+      ReadingList.removeListener(this);
+      this.listenerRegistered = false;
     }
   },
 
@@ -63,7 +88,18 @@ let ReadingListUI = {
    */
   updateUI() {
     let enabled = this.enabled;
-    if (!enabled) {
+    if (enabled) {
+      // This is a no-op if we're already registered.
+      ReadingList.addListener(this);
+      this.listenerRegistered = true;
+    } else {
+      if (this.listenerRegistered) {
+        // This is safe to call if we're not currently registered, but we don't
+        // want to forcibly load the normally lazy-loaded module on startup.
+        ReadingList.removeListener(this);
+        this.listenerRegistered = false;
+      }
+
       this.hideSidebar();
     }
 
@@ -89,6 +125,11 @@ let ReadingListUI = {
     }
   },
 
+  /**
+   * Re-refresh the ReadingList bookmarks submenu when it opens.
+   *
+   * @param {Element} target - Menu element opening.
+   */
   onReadingListPopupShowing: Task.async(function* (target) {
     if (target.id == "BMB_readingListPopup") {
       // Setting this class in the .xul file messes with the way
@@ -143,7 +184,7 @@ let ReadingListUI = {
       });
 
       target.insertBefore(menuitem, insertPoint);
-    });
+    }, {sort: "addedOn", descending: true});
 
     if (!hasItems) {
       let menuitem = document.createElement("menuitem");
@@ -182,6 +223,146 @@ let ReadingListUI = {
         this.toggleSidebar();
         break;
       }
+
+      case "ReadingList:ShowIntro": {
+        if (this.enabled && !Preferences.get("browser.readinglist.introShown", false)) {
+          Preferences.set("browser.readinglist.introShown", true);
+          this.showSidebar();
+        }
+        break;
+      }
+    }
+  },
+
+  /**
+   * Handles toolbar button styling based on page proxy state changes.
+   *
+   * @see SetPageProxyState()
+   *
+   * @param {string} state - New state. Either "valid" or "invalid".
+   */
+  onPageProxyStateChanged: Task.async(function* (state) {
+    if (!this.toolbarButton) {
+      // nothing to do if we have no button.
+      return;
+    }
+
+    let uri;
+    if (this.enabled && state == "valid") {
+      uri = gBrowser.currentURI;
+      if (uri.schemeIs("about"))
+        uri = ReaderParent.parseReaderUrl(uri.spec);
+      else if (!uri.schemeIs("http") && !uri.schemeIs("https"))
+        uri = null;
+    }
+
+    let msg = {topic: "UpdateActiveItem", url: null};
+    if (!uri) {
+      this.toolbarButton.setAttribute("hidden", true);
+      if (this.isSidebarOpen)
+        document.getElementById("sidebar").contentWindow.postMessage(msg, "*");
+      return;
+    }
+
+    let isInList = yield ReadingList.hasItemForURL(uri);
+
+    if (window.closed) {
+      // Skip updating the UI if the window was closed since our hasItemForURL call.
+      return;
+    }
+
+    if (this.isSidebarOpen) {
+      if (isInList)
+        msg.url = typeof uri == "string" ? uri : uri.spec;
+      document.getElementById("sidebar").contentWindow.postMessage(msg, "*");
+    }
+    this.setToolbarButtonState(isInList);
+  }),
+
+  /**
+   * Set the state of the ReadingList toolbar button in the urlbar.
+   * If the current tab's page is in the ReadingList (active), sets the button
+   * to allow removing the page. Otherwise, sets the button to allow adding the
+   * page (not active).
+   *
+   * @param {boolean} active - True if the button should be active (page is
+   *                           already in the list).
+   */
+  setToolbarButtonState(active) {
+    this.toolbarButton.setAttribute("already-added", active);
+
+    let type = (active ? "remove" : "add");
+    let tooltip = gNavigatorBundle.getString(`readingList.urlbar.${type}`);
+    this.toolbarButton.setAttribute("tooltiptext", tooltip);
+
+    this.toolbarButton.removeAttribute("hidden");
+  },
+
+  /**
+   * Toggle a page (from a browser) in the ReadingList, adding if it's not already added, or
+   * removing otherwise.
+   *
+   * @param {<xul:browser>} browser - Browser with page to toggle.
+   * @returns {Promise} Promise resolved when operation has completed.
+   */
+  togglePageByBrowser: Task.async(function* (browser) {
+    let uri = browser.currentURI;
+    if (uri.spec.startsWith("about:reader?"))
+      uri = ReaderParent.parseReaderUrl(uri.spec);
+    if (!uri)
+      return;
+
+    let item = yield ReadingList.itemForURL(uri);
+    if (item) {
+      yield item.delete();
+    } else {
+      yield ReadingList.addItemFromBrowser(browser, uri);
+    }
+  }),
+
+  /**
+   * Checks if a given item matches the current tab in this window.
+   *
+   * @param {ReadingListItem} item - Item to check
+   * @returns True if match, false otherwise.
+   */
+  isItemForCurrentBrowser(item) {
+    let currentURL = gBrowser.currentURI.spec;
+    if (currentURL.startsWith("about:reader?"))
+      currentURL = ReaderParent.parseReaderUrl(currentURL);
+
+    if (item.url == currentURL || item.resolvedURL == currentURL) {
+      return true;
+    }
+    return false;
+  },
+
+  /**
+   * ReadingList event handler for when an item is added.
+   *
+   * @param {ReadingListItem} item - Item added.
+   */
+  onItemAdded(item) {
+    if (!Services.prefs.getBoolPref("browser.readinglist.sidebarEverOpened")) {
+      SidebarUI.show("readingListSidebar");
+    }
+    if (this.isItemForCurrentBrowser(item)) {
+      this.setToolbarButtonState(true);
+      if (this.isSidebarOpen) {
+        let msg = {topic: "UpdateActiveItem", url: item.url};
+        document.getElementById("sidebar").contentWindow.postMessage(msg, "*");
+      }
+    }
+  },
+
+  /**
+   * ReadingList event handler for when an item is deleted.
+   *
+   * @param {ReadingListItem} item - Item deleted.
+   */
+  onItemDeleted(item) {
+    if (this.isItemForCurrentBrowser(item)) {
+      this.setToolbarButtonState(false);
     }
   },
 };

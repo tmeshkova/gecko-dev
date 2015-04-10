@@ -60,7 +60,7 @@ public:
   virtual void ProcessBlock(AudioNodeStream* aStream,
                             const AudioChunk& aInput,
                             AudioChunk* aOutput,
-                            bool* aFinished) MOZ_OVERRIDE
+                            bool* aFinished) override
   {
     *aOutput = aInput;
 
@@ -85,7 +85,7 @@ public:
     }
   }
 
-  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE
+  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
   {
     return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
   }
@@ -124,9 +124,9 @@ AnalyserNode::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 }
 
 JSObject*
-AnalyserNode::WrapObject(JSContext* aCx)
+AnalyserNode::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return AnalyserNodeBinding::Wrap(aCx, this);
+  return AnalyserNodeBinding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -255,7 +255,7 @@ AnalyserNode::FFTAnalysis()
   if (mWriteIndex == 0) {
     inputBuffer = mBuffer.Elements();
   } else {
-    inputBuffer = static_cast<float*>(moz_malloc(FftSize() * sizeof(float)));
+    inputBuffer = static_cast<float*>(malloc(FftSize() * sizeof(float)));
     if (!inputBuffer) {
       return false;
     }
@@ -280,7 +280,7 @@ AnalyserNode::FFTAnalysis()
   }
 
   if (allocated) {
-    moz_free(inputBuffer);
+    free(inputBuffer);
   }
   return true;
 }

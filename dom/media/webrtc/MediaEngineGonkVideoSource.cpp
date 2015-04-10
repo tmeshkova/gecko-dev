@@ -245,9 +245,13 @@ MediaEngineGonkVideoSource::Start(SourceMediaStream* aStream, TrackID aID)
     }
   }
 
+  // XXX some devices support recording camera frame only in metadata mode.
+  // But GonkCameraSource requests non-metadata recording mode.
+#if ANDROID_VERSION < 21
   if (NS_FAILED(InitDirectMediaBuffer())) {
     return NS_ERROR_FAILURE;
   }
+#endif
 
   return NS_OK;
 }
@@ -476,8 +480,10 @@ void
 MediaEngineGonkVideoSource::StopImpl() {
   MOZ_ASSERT(NS_IsMainThread());
 
-  mCameraSource->stop();
-  mCameraSource = nullptr;
+  if (mCameraSource.get()) {
+    mCameraSource->stop();
+    mCameraSource = nullptr;
+  }
 
   hal::UnregisterScreenConfigurationObserver(this);
   mCameraControl->Stop();
@@ -597,7 +603,7 @@ MediaEngineGonkVideoSource::OnTakePictureComplete(uint8_t* aData, uint32_t aLeng
       : mPhotoDataLength(aLength)
     {
       mCallbacks.SwapElements(aCallbacks);
-      mPhotoData = (uint8_t*) moz_malloc(aLength);
+      mPhotoData = (uint8_t*) malloc(aLength);
       memcpy(mPhotoData, aData, mPhotoDataLength);
       mMimeType = aMimeType;
     }
@@ -768,7 +774,7 @@ MediaEngineGonkVideoSource::RotateImage(layers::Image* aImage, uint32_t aWidth, 
                           dstPtr + (yStride * dstHeight + (uvStride * dstHeight / 2)), uvStride,
                           dstPtr + (yStride * dstHeight), uvStride,
                           0, 0,
-                          aWidth, aHeight,
+                          graphicBuffer->getStride(), aHeight,
                           aWidth, aHeight,
                           static_cast<libyuv::RotationMode>(mRotation),
                           libyuv::FOURCC_NV21);
@@ -790,7 +796,7 @@ MediaEngineGonkVideoSource::RotateImage(layers::Image* aImage, uint32_t aWidth, 
                           dstPtr + (dstWidth * dstHeight), half_width,
                           dstPtr + (dstWidth * dstHeight * 5 / 4), half_width,
                           0, 0,
-                          aWidth, aHeight,
+                          graphicBuffer->getStride(), aHeight,
                           aWidth, aHeight,
                           static_cast<libyuv::RotationMode>(mRotation),
                           ConvertPixelFormatToFOURCC(graphicBuffer->getPixelFormat()));

@@ -118,14 +118,16 @@ public:
 } // namespace mozilla
 
 static void
-TraceWeakMappingChild(JSTracer* aTrc, void** aThingp, JSGCTraceKind aKind);
+TraceWeakMappingChild(JS::CallbackTracer* aTrc, void** aThingp,
+                      JSGCTraceKind aKind);
 
-struct NoteWeakMapChildrenTracer : public JSTracer
+struct NoteWeakMapChildrenTracer : public JS::CallbackTracer
 {
   NoteWeakMapChildrenTracer(JSRuntime* aRt,
                             nsCycleCollectionNoteRootCallback& aCb)
-    : JSTracer(aRt, TraceWeakMappingChild), mCb(aCb), mTracedAny(false),
-      mMap(nullptr), mKey(JS::GCCellPtr::NullPtr()), mKeyDelegate(nullptr)
+    : JS::CallbackTracer(aRt, TraceWeakMappingChild), mCb(aCb),
+      mTracedAny(false), mMap(nullptr), mKey(JS::GCCellPtr::NullPtr()),
+      mKeyDelegate(nullptr)
   {
   }
   nsCycleCollectionNoteRootCallback& mCb;
@@ -136,9 +138,10 @@ struct NoteWeakMapChildrenTracer : public JSTracer
 };
 
 static void
-TraceWeakMappingChild(JSTracer* aTrc, void** aThingp, JSGCTraceKind aKind)
+TraceWeakMappingChild(JS::CallbackTracer* aTrc, void** aThingp,
+                      JSGCTraceKind aKind)
 {
-  MOZ_ASSERT(aTrc->callback == TraceWeakMappingChild);
+  MOZ_ASSERT(aTrc->hasCallback(TraceWeakMappingChild));
   NoteWeakMapChildrenTracer* tracer =
     static_cast<NoteWeakMapChildrenTracer*>(aTrc);
   JS::GCCellPtr thing(*aThingp, aKind);
@@ -368,19 +371,21 @@ JSZoneParticipant::Traverse(void* aPtr, nsCycleCollectionTraversalCallback& aCb)
 }
 
 static void
-NoteJSChildTracerShim(JSTracer* aTrc, void** aThingp, JSGCTraceKind aTraceKind);
+NoteJSChildTracerShim(JS::CallbackTracer* aTrc, void** aThingp,
+                      JSGCTraceKind aTraceKind);
 
-struct TraversalTracer : public JSTracer
+struct TraversalTracer : public JS::CallbackTracer
 {
   TraversalTracer(JSRuntime* aRt, nsCycleCollectionTraversalCallback& aCb)
-    : JSTracer(aRt, NoteJSChildTracerShim, DoNotTraceWeakMaps), mCb(aCb)
+    : JS::CallbackTracer(aRt, NoteJSChildTracerShim, DoNotTraceWeakMaps),
+      mCb(aCb)
   {
   }
   nsCycleCollectionTraversalCallback& mCb;
 };
 
 static void
-NoteJSChild(JSTracer* aTrc, JS::GCCellPtr aThing)
+NoteJSChild(JS::CallbackTracer* aTrc, JS::GCCellPtr aThing)
 {
   TraversalTracer* tracer = static_cast<TraversalTracer*>(aTrc);
 
@@ -427,7 +432,8 @@ NoteJSChild(JSTracer* aTrc, JS::GCCellPtr aThing)
 }
 
 static void
-NoteJSChildTracerShim(JSTracer* aTrc, void** aThingp, JSGCTraceKind aTraceKind)
+NoteJSChildTracerShim(JS::CallbackTracer* aTrc, void** aThingp,
+                      JSGCTraceKind aTraceKind)
 {
   JS::GCCellPtr thing(*aThingp, aTraceKind);
   NoteJSChild(aTrc, thing);
@@ -784,37 +790,37 @@ CycleCollectedJSRuntime::ContextCallback(JSContext* aContext,
 struct JsGcTracer : public TraceCallbacks
 {
   virtual void Trace(JS::Heap<JS::Value>* aPtr, const char* aName,
-                     void* aClosure) const MOZ_OVERRIDE
+                     void* aClosure) const override
   {
     JS_CallValueTracer(static_cast<JSTracer*>(aClosure), aPtr, aName);
   }
   virtual void Trace(JS::Heap<jsid>* aPtr, const char* aName,
-                     void* aClosure) const MOZ_OVERRIDE
+                     void* aClosure) const override
   {
     JS_CallIdTracer(static_cast<JSTracer*>(aClosure), aPtr, aName);
   }
   virtual void Trace(JS::Heap<JSObject*>* aPtr, const char* aName,
-                     void* aClosure) const MOZ_OVERRIDE
+                     void* aClosure) const override
   {
     JS_CallObjectTracer(static_cast<JSTracer*>(aClosure), aPtr, aName);
   }
   virtual void Trace(JS::TenuredHeap<JSObject*>* aPtr, const char* aName,
-                     void* aClosure) const MOZ_OVERRIDE
+                     void* aClosure) const override
   {
     JS_CallTenuredObjectTracer(static_cast<JSTracer*>(aClosure), aPtr, aName);
   }
   virtual void Trace(JS::Heap<JSString*>* aPtr, const char* aName,
-                     void* aClosure) const MOZ_OVERRIDE
+                     void* aClosure) const override
   {
     JS_CallStringTracer(static_cast<JSTracer*>(aClosure), aPtr, aName);
   }
   virtual void Trace(JS::Heap<JSScript*>* aPtr, const char* aName,
-                     void* aClosure) const MOZ_OVERRIDE
+                     void* aClosure) const override
   {
     JS_CallScriptTracer(static_cast<JSTracer*>(aClosure), aPtr, aName);
   }
   virtual void Trace(JS::Heap<JSFunction*>* aPtr, const char* aName,
-                     void* aClosure) const MOZ_OVERRIDE
+                     void* aClosure) const override
   {
     JS_CallFunctionTracer(static_cast<JSTracer*>(aClosure), aPtr, aName);
   }
@@ -854,37 +860,37 @@ CycleCollectedJSRuntime::AddJSHolder(void* aHolder, nsScriptObjectTracer* aTrace
 
 struct ClearJSHolder : TraceCallbacks
 {
-  virtual void Trace(JS::Heap<JS::Value>* aPtr, const char*, void*) const MOZ_OVERRIDE
+  virtual void Trace(JS::Heap<JS::Value>* aPtr, const char*, void*) const override
   {
     *aPtr = JSVAL_VOID;
   }
 
-  virtual void Trace(JS::Heap<jsid>* aPtr, const char*, void*) const MOZ_OVERRIDE
+  virtual void Trace(JS::Heap<jsid>* aPtr, const char*, void*) const override
   {
     *aPtr = JSID_VOID;
   }
 
-  virtual void Trace(JS::Heap<JSObject*>* aPtr, const char*, void*) const MOZ_OVERRIDE
+  virtual void Trace(JS::Heap<JSObject*>* aPtr, const char*, void*) const override
   {
     *aPtr = nullptr;
   }
 
-  virtual void Trace(JS::TenuredHeap<JSObject*>* aPtr, const char*, void*) const MOZ_OVERRIDE
+  virtual void Trace(JS::TenuredHeap<JSObject*>* aPtr, const char*, void*) const override
   {
     *aPtr = nullptr;
   }
 
-  virtual void Trace(JS::Heap<JSString*>* aPtr, const char*, void*) const MOZ_OVERRIDE
+  virtual void Trace(JS::Heap<JSString*>* aPtr, const char*, void*) const override
   {
     *aPtr = nullptr;
   }
 
-  virtual void Trace(JS::Heap<JSScript*>* aPtr, const char*, void*) const MOZ_OVERRIDE
+  virtual void Trace(JS::Heap<JSScript*>* aPtr, const char*, void*) const override
   {
     *aPtr = nullptr;
   }
 
-  virtual void Trace(JS::Heap<JSFunction*>* aPtr, const char*, void*) const MOZ_OVERRIDE
+  virtual void Trace(JS::Heap<JSFunction*>* aPtr, const char*, void*) const override
   {
     *aPtr = nullptr;
   }
@@ -937,7 +943,7 @@ CycleCollectedJSRuntime::SetPendingException(nsIException* aException)
   mPendingException = aException;
 }
 
-nsTArray<nsRefPtr<nsIRunnable>>&
+nsTArray<nsCOMPtr<nsIRunnable>>&
 CycleCollectedJSRuntime::GetPromiseMicroTaskQueue()
 {
   return mPromiseMicroTaskQueue;

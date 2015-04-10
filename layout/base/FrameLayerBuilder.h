@@ -348,6 +348,14 @@ public:
   static Layer* GetDebugOldLayerFor(nsIFrame* aFrame, uint32_t aDisplayItemKey);
 
   /**
+   * Return the layer that all display items of aFrame were assigned to in the
+   * last paint, or nullptr if there was no single layer assigned to all of the
+   * frame's display items (i.e. zero, or more than one).
+   * This function is for testing purposes and not performance sensitive.
+   */
+  static Layer* GetDebugSingleOldLayerForFrame(nsIFrame* aFrame);
+
+  /**
    * Destroy any stored LayerManagerDataProperty and the associated data for
    * aFrame.
    */
@@ -415,7 +423,7 @@ public:
   /**
    * Retained data for a display item.
    */
-  class DisplayItemData MOZ_FINAL {
+  class DisplayItemData final {
   public:
     friend class FrameLayerBuilder;
 

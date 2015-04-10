@@ -26,15 +26,20 @@
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsICancelable.h"
+#include "nsIDocument.h"
+#include "nsILoadInfo.h"
+#include "nsIContentPolicy.h"
 #include "nsIProxyInfo.h"
 #include "nsIProtocolProxyService.h"
-#include "nsIIOService.h"
+#include "nsProxyRelease.h"
 
 #ifdef MOZILLA_INTERNAL_API
 #include "MediaStreamList.h"
 #include "nsIScriptGlobalObject.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/RTCStatsReportBinding.h"
+#include "MediaStreamTrack.h"
+#include "VideoStreamTrack.h"
 #endif
 
 
@@ -44,26 +49,35 @@ using namespace dom;
 
 static const char* logTag = "PeerConnectionMedia";
 
-nsresult LocalSourceStreamInfo::ReplaceTrack(const std::string& oldTrackId,
-                                             DOMMediaStream* aNewStream,
-                                             const std::string& newTrackId)
+nsresult
+PeerConnectionMedia::ReplaceTrack(const std::string& aOldStreamId,
+                                  const std::string& aOldTrackId,
+                                  DOMMediaStream* aNewStream,
+                                  const std::string& aNewStreamId,
+                                  const std::string& aNewTrackId)
 {
-  RefPtr<MediaPipeline> pipeline = mPipelines[oldTrackId];
+  RefPtr<LocalSourceStreamInfo> oldInfo(GetLocalStreamById(aOldStreamId));
 
-  if (!pipeline || !mTracks.count(oldTrackId)) {
-    CSFLogError(logTag, "Failed to find track id %s", oldTrackId.c_str());
+  if (!oldInfo) {
+    CSFLogError(logTag, "Failed to find stream id %s", aOldStreamId.c_str());
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  nsresult rv =
-    static_cast<MediaPipelineTransmit*>(pipeline.get())->ReplaceTrack(
-        aNewStream, newTrackId);
+  nsresult rv = AddTrack(aNewStream, aNewStreamId, aNewTrackId);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  mTracks.erase(oldTrackId);
-  mTracks.insert(newTrackId);
+  RefPtr<LocalSourceStreamInfo> newInfo(GetLocalStreamById(aNewStreamId));
 
-  return NS_OK;
+  if (!newInfo) {
+    CSFLogError(logTag, "Failed to add track id %s", aNewTrackId.c_str());
+    MOZ_ASSERT(false);
+    return NS_ERROR_FAILURE;
+  }
+
+  rv = newInfo->TakePipelineFrom(oldInfo, aOldTrackId, aNewTrackId);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return RemoveLocalTrack(aOldStreamId, aOldTrackId);
 }
 
 static void
@@ -197,13 +211,18 @@ PeerConnectionMedia::PeerConnectionMedia(PeerConnectionImpl *parent)
       mMainThread(mParent->GetMainThread()),
       mSTSThread(mParent->GetSTSThread()),
       mProxyResolveCompleted(false) {
+}
+
+nsresult PeerConnectionMedia::Init(const std::vector<NrIceStunServer>& stun_servers,
+                                   const std::vector<NrIceTurnServer>& turn_servers)
+{
   nsresult rv;
 
   nsCOMPtr<nsIProtocolProxyService> pps =
     do_GetService(NS_PROTOCOLPROXYSERVICE_CONTRACTID, &rv);
   if (NS_FAILED(rv)) {
     CSFLogError(logTag, "%s: Failed to get proxy service: %d", __FUNCTION__, (int)rv);
-    return;
+    return NS_ERROR_FAILURE;
   }
 
   // We use the following URL to find the "default" proxy address for all HTTPS
@@ -213,22 +232,42 @@ PeerConnectionMedia::PeerConnectionMedia(PeerConnectionImpl *parent)
   rv = NS_NewURI(getter_AddRefs(fakeHttpsLocation), "https://example.com");
   if (NS_FAILED(rv)) {
     CSFLogError(logTag, "%s: Failed to set URI: %d", __FUNCTION__, (int)rv);
-    return;
-  }
-
-  nsCOMPtr<nsIIOService> ios = do_GetIOService(&rv);
-  if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "%s: Failed to get IOService: %d",
-                __FUNCTION__, (int)rv);
-    return;
+    return NS_ERROR_FAILURE;
   }
 
   nsCOMPtr<nsIChannel> channel;
-  rv = ios->NewChannelFromURI(fakeHttpsLocation, getter_AddRefs(channel));
+
+#ifdef MOZILLA_INTERNAL_API
+  nsCOMPtr<nsIDocument> principal = mParent->GetWindow()->GetExtantDoc();
+#else
+  // For unit-tests
+  nsCOMPtr<nsIScriptSecurityManager> secMan(
+      do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv));
+  if (NS_FAILED(rv)) {
+    CSFLogError(logTag, "%s: Failed to get IOService: %d",
+        __FUNCTION__, (int)rv);
+    CSFLogError(logTag, "%s: Failed to get securityManager: %d", __FUNCTION__, (int)rv);
+    return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<nsIPrincipal> principal;
+  rv = secMan->GetSystemPrincipal(getter_AddRefs(principal));
+  if (NS_FAILED(rv)) {
+    CSFLogError(logTag, "%s: Failed to get systemPrincipal: %d", __FUNCTION__, (int)rv);
+    return NS_ERROR_FAILURE;
+  }
+#endif
+
+  rv = NS_NewChannel(getter_AddRefs(channel),
+                     fakeHttpsLocation,
+                     principal,
+                     nsILoadInfo::SEC_NORMAL,
+                     nsIContentPolicy::TYPE_OTHER);
+
   if (NS_FAILED(rv)) {
     CSFLogError(logTag, "%s: Failed to get channel from URI: %d",
                 __FUNCTION__, (int)rv);
-    return;
+    return NS_ERROR_FAILURE;
   }
 
   nsRefPtr<ProtocolProxyQueryHandler> handler = new ProtocolProxyQueryHandler(this);
@@ -238,13 +277,9 @@ PeerConnectionMedia::PeerConnectionMedia(PeerConnectionImpl *parent)
                          handler, getter_AddRefs(mProxyRequest));
   if (NS_FAILED(rv)) {
     CSFLogError(logTag, "%s: Failed to resolve protocol proxy: %d", __FUNCTION__, (int)rv);
-    return;
+    return NS_ERROR_FAILURE;
   }
-}
 
-nsresult PeerConnectionMedia::Init(const std::vector<NrIceStunServer>& stun_servers,
-                                   const std::vector<NrIceTurnServer>& turn_servers)
-{
   // TODO(ekr@rtfm.com): need some way to set not offerer later
   // Looks like a bug in the NrIceCtx API.
   mIceCtx = NrIceCtx::Create("PC:" + mParentName,
@@ -255,7 +290,7 @@ nsresult PeerConnectionMedia::Init(const std::vector<NrIceStunServer>& stun_serv
     CSFLogError(logTag, "%s: Failed to create Ice Context", __FUNCTION__);
     return NS_ERROR_FAILURE;
   }
-  nsresult rv;
+
   if (NS_FAILED(rv = mIceCtx->SetStunServers(stun_servers))) {
     CSFLogError(logTag, "%s: Failed to set stun servers", __FUNCTION__);
     return rv;
@@ -293,7 +328,8 @@ nsresult PeerConnectionMedia::Init(const std::vector<NrIceStunServer>& stun_serv
 }
 
 void
-PeerConnectionMedia::UpdateTransports(const JsepSession& session) {
+PeerConnectionMedia::UpdateTransports(const JsepSession& session,
+                                      bool restartGathering) {
 
   auto transports = session.GetTransports();
   for (size_t i = 0; i < transports.size(); ++i) {
@@ -326,8 +362,9 @@ PeerConnectionMedia::UpdateTransports(const JsepSession& session) {
                   NS_DISPATCH_NORMAL);
   }
 
-
-  GatherIfReady();
+  if (restartGathering) {
+    GatherIfReady();
+  }
 }
 
 nsresult PeerConnectionMedia::UpdateMediaPipelines(
@@ -354,6 +391,10 @@ nsresult PeerConnectionMedia::UpdateMediaPipelines(
     }
   }
 
+  for (auto& stream : mRemoteSourceStreams) {
+    stream->StartReceiving();
+  }
+
   return NS_OK;
 }
 
@@ -362,12 +403,15 @@ PeerConnectionMedia::StartIceChecks(const JsepSession& session) {
 
   std::vector<size_t> numComponentsByLevel;
   auto transports = session.GetTransports();
-  for (auto i = transports.begin(); i != transports.end(); ++i) {
-    RefPtr<JsepTransport> transport = *i;
+  for (size_t i = 0; i < transports.size(); ++i) {
+    RefPtr<JsepTransport> transport = transports[i];
     if (transport->mState == JsepTransport::kJsepTransportClosed) {
       CSFLogDebug(logTag, "Transport %s is disabled",
                           transport->mTransportId.c_str());
       numComponentsByLevel.push_back(0);
+      // Make sure the MediaPipelineFactory doesn't try to use these.
+      RemoveTransportFlow(i, false);
+      RemoveTransportFlow(i, true);
     } else {
       CSFLogDebug(logTag, "Transport %s has %u components",
                           transport->mTransportId.c_str(),
@@ -376,7 +420,7 @@ PeerConnectionMedia::StartIceChecks(const JsepSession& session) {
     }
   }
 
-  nsRefPtr<nsIRunnable> runnable(
+  nsCOMPtr<nsIRunnable> runnable(
       WrapRunnable(
         RefPtr<PeerConnectionMedia>(this),
         &PeerConnectionMedia::StartIceChecks_s,
@@ -425,9 +469,10 @@ PeerConnectionMedia::StartIceChecks_s(
       continue;
     }
 
-    if (!stream->HasParsedAttributes()) {
+    if (!aComponentCountByLevel[i]) {
       // Inactive stream. Remove.
-      mIceCtx->RemoveStream(i);
+      mIceCtx->SetStream(i, nullptr);
+      continue;
     }
 
     for (size_t c = aComponentCountByLevel[i]; c < stream->components(); ++c) {
@@ -456,16 +501,17 @@ void
 PeerConnectionMedia::AddIceCandidate_s(const std::string& aCandidate,
                                        const std::string& aMid,
                                        uint32_t aMLine) {
-  if (aMLine >= mIceStreams.size()) {
-    CSFLogError(logTag, "Couldn't process ICE candidate for bogus level %u",
-                aMLine);
+  RefPtr<NrIceMediaStream> stream(mIceCtx->GetStream(aMLine));
+  if (!stream) {
+    CSFLogError(logTag, "No ICE stream for candidate at level %u: %s",
+                        static_cast<unsigned>(aMLine), aCandidate.c_str());
     return;
   }
 
-  nsresult rv = mIceStreams[aMLine]->ParseTrickleCandidate(aCandidate);
+  nsresult rv = stream->ParseTrickleCandidate(aCandidate);
   if (NS_FAILED(rv)) {
     CSFLogError(logTag, "Couldn't process ICE candidate at level %u",
-                aMLine);
+                static_cast<unsigned>(aMLine));
     return;
   }
 }
@@ -486,8 +532,7 @@ PeerConnectionMedia::FlushIceCtxOperationQueueIfReady()
 }
 
 void
-PeerConnectionMedia::PerformOrEnqueueIceCtxOperation(
-    const nsRefPtr<nsIRunnable>& runnable)
+PeerConnectionMedia::PerformOrEnqueueIceCtxOperation(nsIRunnable* runnable)
 {
   ASSERT_ON_THREAD(mMainThread);
 
@@ -502,7 +547,7 @@ void
 PeerConnectionMedia::GatherIfReady() {
   ASSERT_ON_THREAD(mMainThread);
 
-  nsRefPtr<nsIRunnable> runnable(WrapRunnable(
+  nsCOMPtr<nsIRunnable> runnable(WrapRunnable(
         RefPtr<PeerConnectionMedia>(this),
         &PeerConnectionMedia::EnsureIceGathering_s));
 
@@ -525,24 +570,13 @@ PeerConnectionMedia::UpdateIceMediaStream_s(size_t aMLine,
                                             const std::string& aPassword,
                                             const std::vector<std::string>&
                                             aCandidateList) {
-  if (aMLine > mIceStreams.size()) {
-    CSFLogError(logTag, "Missing stream for previous m-line %u, this can "
-                        "happen if we failed to create a stream earlier.",
-                        static_cast<unsigned>(aMLine - 1));
-    return;
-  }
+  RefPtr<NrIceMediaStream> stream(mIceCtx->GetStream(aMLine));
+  if (!stream) {
+    CSFLogDebug(logTag, "%s: Creating ICE media stream=%u components=%u",
+                mParentHandle.c_str(),
+                static_cast<unsigned>(aMLine),
+                static_cast<unsigned>(aComponentCount));
 
-  CSFLogDebug(logTag, "%s: Creating ICE media stream=%u components=%u",
-              mParentHandle.c_str(),
-              static_cast<unsigned>(aMLine),
-              static_cast<unsigned>(aComponentCount));
-  RefPtr<NrIceMediaStream> stream;
-
-  if (mIceStreams.size() == aMLine) {
-    mIceStreams.push_back(nullptr);
-  }
-
-  if (!mIceStreams[aMLine]) {
     std::ostringstream os;
     os << mParentName << " level=" << aMLine;
     stream = mIceCtx->CreateStream(os.str().c_str(),
@@ -558,9 +592,7 @@ PeerConnectionMedia::UpdateIceMediaStream_s(size_t aMLine,
     stream->SignalCandidate.connect(this,
                                     &PeerConnectionMedia::OnCandidateFound_s);
 
-    mIceStreams[aMLine] = stream;
-  } else {
-    stream = mIceStreams[aMLine];
+    mIceCtx->SetStream(aMLine, stream);
   }
 
   if (aHasAttrs && !stream->HasParsedAttributes()) {
@@ -730,7 +762,6 @@ PeerConnectionMedia::ShutdownMediaTransport_s()
 
   disconnect_all();
   mTransportFlows.clear();
-  mIceStreams.clear();
   mIceCtx = nullptr;
 
   mMainThread->Dispatch(WrapRunnable(this, &PeerConnectionMedia::SelfDestruct_m),
@@ -954,7 +985,7 @@ void
 PeerConnectionMedia::AddTransportFlow(int aIndex, bool aRtcp,
                                       const RefPtr<TransportFlow> &aFlow)
 {
-  int index_inner = aIndex * 2 + (aRtcp ? 1 : 0);
+  int index_inner = GetTransportFlowIndex(aIndex, aRtcp);
 
   MOZ_ASSERT(!mTransportFlows[index_inner]);
   mTransportFlows[index_inner] = aFlow;
@@ -965,12 +996,53 @@ PeerConnectionMedia::AddTransportFlow(int aIndex, bool aRtcp,
 }
 
 void
+PeerConnectionMedia::RemoveTransportFlow(int aIndex, bool aRtcp)
+{
+  int index_inner = GetTransportFlowIndex(aIndex, aRtcp);
+  TransportFlow* flow = mTransportFlows[index_inner].forget().take();
+  if (flow) {
+    NS_ProxyRelease(GetSTSThread(), flow);
+  }
+}
+
+void
 PeerConnectionMedia::ConnectDtlsListener_s(const RefPtr<TransportFlow>& aFlow)
 {
   TransportLayer* dtls = aFlow->GetLayer(TransportLayerDtls::ID());
   if (dtls) {
     dtls->SignalStateChange.connect(this, &PeerConnectionMedia::DtlsConnected_s);
   }
+}
+
+nsresult
+LocalSourceStreamInfo::TakePipelineFrom(RefPtr<LocalSourceStreamInfo>& info,
+                                        const std::string& oldTrackId,
+                                        const std::string& newTrackId)
+{
+  if (mPipelines.count(newTrackId)) {
+    CSFLogError(logTag, "%s: Pipeline already exists for %s/%s",
+                __FUNCTION__, mId.c_str(), newTrackId.c_str());
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  RefPtr<MediaPipeline> pipeline(info->ForgetPipelineByTrackId_m(oldTrackId));
+
+  if (!pipeline) {
+    // Replacetrack can potentially happen in the middle of offer/answer, before
+    // the pipeline has been created.
+    CSFLogInfo(logTag, "%s: Replacing track before the pipeline has been "
+                       "created, nothing to do.", __FUNCTION__);
+    return NS_OK;
+  }
+
+  nsresult rv =
+    static_cast<MediaPipelineTransmit*>(pipeline.get())->ReplaceTrack(
+        mMediaStream, newTrackId);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  mPipelines[newTrackId] = pipeline;
+
+  return NS_OK;
 }
 
 #ifdef MOZILLA_INTERNAL_API
@@ -1067,6 +1139,26 @@ SourceStreamInfo::AnyCodecHasPluginID(uint64_t aPluginID)
   return false;
 }
 
+#ifdef MOZILLA_INTERNAL_API
+nsRefPtr<mozilla::dom::VideoStreamTrack>
+SourceStreamInfo::GetVideoTrackByTrackId(const std::string& trackId)
+{
+  nsTArray<nsRefPtr<mozilla::dom::VideoStreamTrack>> videoTracks;
+
+  mMediaStream->GetVideoTracks(videoTracks);
+
+  for (size_t i = 0; i < videoTracks.Length(); ++i) {
+    nsString aTrackId;
+    videoTracks[i]->GetId(aTrackId);
+    if (aTrackId.EqualsIgnoreCase(trackId.c_str())) {
+      return videoTracks[i];
+    }
+  }
+
+  return nullptr;
+}
+#endif
+
 nsresult
 SourceStreamInfo::StorePipeline(
     const std::string& trackId,
@@ -1111,33 +1203,24 @@ RemoteSourceStreamInfo::SyncPipeline(
 }
 
 void
-RemoteSourceStreamInfo::TrackQueued(const std::string& trackId)
+RemoteSourceStreamInfo::StartReceiving()
 {
-  // When tracks start being queued we know the pipelines have been created.
-  mPipelinesCreated = true;
-
-  MOZ_ASSERT(mTracksToQueue.count(trackId) > 0);
-  mTracksToQueue.erase(trackId);
-
-  CSFLogDebug(logTag, "Queued adding of track id %d to MediaStream %p. "
-                      "%zu more tracks to queue.",
-                      GetNumericTrackId(trackId),
-                      GetMediaStream()->GetStream(),
-                      mTracksToQueue.size());
-
-  // If all tracks have been queued for this stream, finish adding them.
-  if (mTracksToQueue.empty()) {
-    SourceMediaStream* source = GetMediaStream()->GetStream()->AsSourceStream();
-    source->FinishAddTracks();
-    source->SetPullEnabled(true);
-    // AdvanceKnownTracksTicksTime(HEAT_DEATH_OF_UNIVERSE) means that in
-    // theory per the API, we can't add more tracks before that
-    // time. However, the impl actually allows it, and it avoids a whole
-    // bunch of locking that would be required (and potential blocking)
-    // if we used smaller values and updated them on each NotifyPull.
-    source->AdvanceKnownTracksTime(STREAM_TIME_MAX);
-    CSFLogDebug(logTag, "Finished adding tracks to MediaStream %p", source);
+  if (mReceiving || mPipelines.empty()) {
+    return;
   }
+
+  mReceiving = true;
+
+  SourceMediaStream* source = GetMediaStream()->GetStream()->AsSourceStream();
+  source->FinishAddTracks();
+  source->SetPullEnabled(true);
+  // AdvanceKnownTracksTicksTime(HEAT_DEATH_OF_UNIVERSE) means that in
+  // theory per the API, we can't add more tracks before that
+  // time. However, the impl actually allows it, and it avoids a whole
+  // bunch of locking that would be required (and potential blocking)
+  // if we used smaller values and updated them on each NotifyPull.
+  source->AdvanceKnownTracksTime(STREAM_TIME_MAX);
+  CSFLogDebug(logTag, "Finished adding tracks to MediaStream %p", source);
 }
 
 RefPtr<MediaPipeline> SourceStreamInfo::GetPipelineByTrackId_m(
@@ -1152,6 +1235,27 @@ RefPtr<MediaPipeline> SourceStreamInfo::GetPipelineByTrackId_m(
   if (mMediaStream) {
     if (mPipelines.count(trackId)) {
       return mPipelines[trackId];
+    }
+  }
+
+  return nullptr;
+}
+
+TemporaryRef<MediaPipeline>
+LocalSourceStreamInfo::ForgetPipelineByTrackId_m(const std::string& trackId)
+{
+  ASSERT_ON_THREAD(mParent->GetMainThread());
+
+  // Refuse to hand out references if we're tearing down.
+  // (Since teardown involves a dispatch to and from STS before MediaPipelines
+  // are released, it is safe to start other dispatches to and from STS with a
+  // RefPtr<MediaPipeline>, since that reference won't be the last one
+  // standing)
+  if (mMediaStream) {
+    if (mPipelines.count(trackId)) {
+      RefPtr<MediaPipeline> pipeline(mPipelines[trackId]);
+      mPipelines.erase(trackId);
+      return pipeline.forget();
     }
   }
 

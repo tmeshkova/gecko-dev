@@ -16,8 +16,8 @@
 namespace mozilla {
 namespace net {
 
-class TLSServerSocket : public nsServerSocket
-                      , public nsITLSServerSocket
+class TLSServerSocket final : public nsServerSocket
+                            , public nsITLSServerSocket
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -26,9 +26,9 @@ public:
 
   // Override methods from nsServerSocket
   virtual void CreateClientTransport(PRFileDesc* clientFD,
-                                     const NetAddr& clientAddr) MOZ_OVERRIDE;
-  virtual nsresult SetSocketDefaults() MOZ_OVERRIDE;
-  virtual nsresult OnSocketListen() MOZ_OVERRIDE;
+                                     const NetAddr& clientAddr) override;
+  virtual nsresult SetSocketDefaults() override;
+  virtual nsresult OnSocketListen() override;
 
   TLSServerSocket();
 

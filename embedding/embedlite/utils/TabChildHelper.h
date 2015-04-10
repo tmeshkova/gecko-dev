@@ -39,27 +39,27 @@ public:
 
   bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
-  virtual nsIWebNavigation* WebNavigation() const MOZ_OVERRIDE;
-  virtual nsIWidget* WebWidget() MOZ_OVERRIDE;
+  virtual nsIWebNavigation* WebNavigation() const override;
+  virtual nsIWidget* WebWidget() override;
 
-  virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope) MOZ_OVERRIDE;
+  virtual bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope) override;
   virtual bool DoSendBlockingMessage(JSContext* aCx,
                                      const nsAString& aMessage,
                                      const mozilla::dom::StructuredCloneData& aData,
                                      JS::Handle<JSObject *> aCpows,
                                      nsIPrincipal* aPrincipal,
                                      InfallibleTArray<nsString>* aJSONRetVal,
-                                     bool aIsSync) MOZ_OVERRIDE;
+                                     bool aIsSync) override;
   virtual bool DoSendAsyncMessage(JSContext* aCx,
                                   const nsAString& aMessage,
                                   const mozilla::dom::StructuredCloneData& aData,
                                   JS::Handle<JSObject *> aCpows,
-                                  nsIPrincipal* aPrincipal) MOZ_OVERRIDE;
-  virtual bool CheckPermission(const nsAString& aPermission) MOZ_OVERRIDE;
+                                  nsIPrincipal* aPrincipal) override;
+  virtual bool CheckPermission(const nsAString& aPermission) override;
   virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
                                        const bool& aIsRoot,
-                                       const mozilla::layers::ZoomConstraints& aConstraints) MOZ_OVERRIDE;
+                                       const mozilla::layers::ZoomConstraints& aConstraints) override;
   void ReportSizeUpdate(const gfxSize& aSize);
 
 protected:

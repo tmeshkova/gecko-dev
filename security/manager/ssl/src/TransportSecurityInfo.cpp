@@ -17,7 +17,6 @@
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
 #include "nsNSSCertHelper.h"
-#include "nsIProgrammingLanguage.h"
 #include "nsIArray.h"
 #include "nsComponentManagerUtils.h"
 #include "nsReadableUtils.h"
@@ -447,8 +446,7 @@ TransportSecurityInfo::GetInterfaces(uint32_t *count, nsIID * **array)
 }
 
 NS_IMETHODIMP
-TransportSecurityInfo::GetHelperForLanguage(uint32_t language,
-                                            nsISupports **_retval)
+TransportSecurityInfo::GetScriptableHelper(nsIXPCScriptable **_retval)
 {
   *_retval = nullptr;
   return NS_OK;
@@ -471,18 +469,10 @@ TransportSecurityInfo::GetClassDescription(char * *aClassDescription)
 NS_IMETHODIMP
 TransportSecurityInfo::GetClassID(nsCID * *aClassID)
 {
-  *aClassID = (nsCID*) nsMemory::Alloc(sizeof(nsCID));
+  *aClassID = (nsCID*) moz_xmalloc(sizeof(nsCID));
   if (!*aClassID)
     return NS_ERROR_OUT_OF_MEMORY;
   return GetClassIDNoAlloc(*aClassID);
-}
-
-NS_IMETHODIMP
-TransportSecurityInfo::GetImplementationLanguage(
-  uint32_t *aImplementationLanguage)
-{
-  *aImplementationLanguage = nsIProgrammingLanguage::CPLUSPLUS;
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -583,7 +573,9 @@ AppendErrorTextUntrusted(PRErrorCode errTrust,
                          nsINSSComponent *component,
                          nsString &returnedMessage)
 {
-  const char *errorID = nullptr;
+  const char* errorID = nullptr;
+  const char* errorID2 = nullptr;
+  const char* errorID3 = nullptr;
   bool isSelfSigned;
   if (NS_SUCCEEDED(ix509->GetIsSelfSigned(&isSelfSigned)) && isSelfSigned) {
     errorID = "certErrorTrust_SelfSigned";
@@ -593,6 +585,8 @@ AppendErrorTextUntrusted(PRErrorCode errTrust,
     switch (errTrust) {
       case SEC_ERROR_UNKNOWN_ISSUER:
         errorID = "certErrorTrust_UnknownIssuer";
+        errorID2 = "certErrorTrust_UnknownIssuer2";
+        errorID3 = "certErrorTrust_UnknownIssuer3";
         break;
       case SEC_ERROR_CA_CERT_INVALID:
         errorID = "certErrorTrust_CaInvalid";
@@ -613,13 +607,18 @@ AppendErrorTextUntrusted(PRErrorCode errTrust,
     }
   }
 
-  nsString formattedString;
-  nsresult rv = component->GetPIPNSSBundleString(errorID, 
-                                                 formattedString);
-  if (NS_SUCCEEDED(rv))
-  {
-    returnedMessage.Append(formattedString);
-    returnedMessage.Append('\n');
+  const char* errorIDs[] = { errorID, errorID2, errorID3 };
+  for (size_t i = 0; i < ArrayLength(errorIDs); i++) {
+    if (!errorIDs[i]) {
+      break;
+    }
+
+    nsString formattedString;
+    nsresult rv = component->GetPIPNSSBundleString(errorIDs[i], formattedString);
+    if (NS_SUCCEEDED(rv)) {
+      returnedMessage.Append(formattedString);
+      returnedMessage.Append('\n');
+    }
   }
 }
 

@@ -293,7 +293,7 @@ public:
       // consumers of ParseStartAndEndTimestamps to add their timestamp offset
       // manually. This allows the ContainerParser to be shared across different
       // timestampOffsets.
-      mParser = new mp4_demuxer::MoofParser(mStream, 0, &mMonitor);
+      mParser = new mp4_demuxer::MoofParser(mStream, 0, /* aIsAudio = */ false, &mMonitor);
       mInitData = new LargeDataBuffer();
     } else if (!mStream || !mParser) {
       return false;
@@ -338,11 +338,11 @@ public:
     return true;
   }
 
-  // Gaps of up to 20ms (marginally longer than a single frame at 60fps) are considered
+  // Gaps of up to 35ms (marginally longer than a single frame at 30fps) are considered
   // to be sequential frames.
   int64_t GetRoundingError()
   {
-    return 20000;
+    return 35000;
   }
 
 private:

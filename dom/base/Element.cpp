@@ -406,26 +406,45 @@ Element::GetBindingURL(nsIDocument *aDocument, css::URLValue **aResult)
 }
 
 JSObject*
-Element::WrapObject(JSContext *aCx)
+Element::WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  JS::Rooted<JSObject*> obj(aCx, nsINode::WrapObject(aCx));
+  JS::Rooted<JSObject*> givenProto(aCx, aGivenProto);
+  JS::Rooted<JSObject*> customProto(aCx);
+
+  if (!givenProto) {
+    // Custom element prototype swizzling.
+    CustomElementData* data = GetCustomElementData();
+    if (data) {
+      // If this is a registered custom element then fix the prototype.
+      nsDocument* document = static_cast<nsDocument*>(OwnerDoc());
+      document->GetCustomPrototype(NodeInfo()->NamespaceID(), data->mType, &customProto);
+      if (customProto &&
+          NodePrincipal()->SubsumesConsideringDomain(nsContentUtils::ObjectPrincipal(customProto))) {
+        // Just go ahead and create with the right proto up front.  Set
+        // customProto to null to flag that we don't need to do any post-facto
+        // proto fixups here.
+        givenProto = customProto;
+        customProto = nullptr;
+      }
+    }
+  }
+
+  JS::Rooted<JSObject*> obj(aCx, nsINode::WrapObject(aCx, givenProto));
   if (!obj) {
     return nullptr;
   }
 
-  // Custom element prototype swizzling.
-  CustomElementData* data = GetCustomElementData();
-  if (obj && data) {
-    // If this is a registered custom element then fix the prototype.
-    JSAutoCompartment ac(aCx, obj);
-    nsDocument* document = static_cast<nsDocument*>(OwnerDoc());
-    JS::Rooted<JSObject*> prototype(aCx);
-    document->GetCustomPrototype(NodeInfo()->NamespaceID(), data->mType, &prototype);
-    if (prototype) {
-      if (!JS_WrapObject(aCx, &prototype) || !JS_SetPrototype(aCx, obj, prototype)) {
-        dom::Throw(aCx, NS_ERROR_FAILURE);
-        return nullptr;
-      }
+  if (customProto) {
+    // We want to set the custom prototype in the compartment where it was
+    // registered. In the case that |obj| and |prototype| are in different
+    // compartments, this will set the prototype on the |obj|'s wrapper and
+    // thus only visible in the wrapper's compartment, since we know obj's
+    // principal does not subsume customProto's in this case.
+    JSAutoCompartment ac(aCx, customProto);
+    JS::Rooted<JSObject*> wrappedObj(aCx, obj);
+    if (!JS_WrapObject(aCx, &wrappedObj) ||
+        !JS_SetPrototype(aCx, wrappedObj, customProto)) {
+      return nullptr;
     }
   }
 
@@ -1104,9 +1123,9 @@ DestinationInsertionPointList::IndexOf(nsIContent* aContent)
 }
 
 JSObject*
-DestinationInsertionPointList::WrapObject(JSContext* aCx)
+DestinationInsertionPointList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return NodeListBinding::Wrap(aCx, this);
+  return NodeListBinding::Wrap(aCx, this, aGivenProto);
 }
 
 already_AddRefed<DestinationInsertionPointList>
@@ -1832,7 +1851,7 @@ Element::IsLabelable() const
 }
 
 bool
-Element::IsInteractiveHTMLContent() const
+Element::IsInteractiveHTMLContent(bool aIgnoreTabindex) const
 {
   return false;
 }
@@ -3167,7 +3186,7 @@ Element::MozRequestPointerLock()
 }
 
 void
-Element::GetAnimationPlayers(nsTArray<nsRefPtr<AnimationPlayer> >& aPlayers)
+Element::GetAnimations(nsTArray<nsRefPtr<AnimationPlayer> >& aAnimations)
 {
   nsIDocument* doc = GetComposedDoc();
   if (doc) {
@@ -3188,8 +3207,8 @@ Element::GetAnimationPlayers(nsTArray<nsRefPtr<AnimationPlayer> >& aPlayers)
          playerIdx < collection->mPlayers.Length();
          playerIdx++) {
       AnimationPlayer* player = collection->mPlayers[playerIdx];
-      if (player->HasCurrentSource() || player->HasInEffectSource()) {
-        aPlayers.AppendElement(player);
+      if (player->IsRelevant()) {
+        aAnimations.AppendElement(player);
       }
     }
   }

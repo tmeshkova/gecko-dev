@@ -15,10 +15,10 @@
 namespace mozilla {
 namespace dom {
 
-class PresentationDeviceManager MOZ_FINAL : public nsIPresentationDeviceManager
-                                          , public nsIPresentationDeviceListener
-                                          , public nsIPresentationDeviceEventListener
-                                          , public nsIObserver
+class PresentationDeviceManager final : public nsIPresentationDeviceManager
+                                      , public nsIPresentationDeviceListener
+                                      , public nsIPresentationDeviceEventListener
+                                      , public nsIObserver
 {
 public:
   NS_DECL_ISUPPORTS

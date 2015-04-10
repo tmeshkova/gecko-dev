@@ -28,8 +28,8 @@
     _(SimdInsertElementI)           \
     _(SimdInsertElementF)           \
     _(SimdSignMaskX4)               \
-    _(SimdGeneralSwizzleI)          \
-    _(SimdGeneralSwizzleF)          \
+    _(SimdGeneralShuffleI)          \
+    _(SimdGeneralShuffleF)          \
     _(SimdSwizzleI)                 \
     _(SimdSwizzleF)                 \
     _(SimdShuffle)                  \
@@ -75,6 +75,7 @@
     _(ApplyArgsGeneric)             \
     _(Bail)                         \
     _(Unreachable)                  \
+    _(EncodeSnapshot)               \
     _(GetDynamicName)               \
     _(FilterArgumentsOrEvalS)       \
     _(FilterArgumentsOrEvalV)       \
@@ -220,11 +221,13 @@
     _(LoadElementV)                 \
     _(LoadElementT)                 \
     _(LoadElementHole)              \
+    _(LoadUnboxedScalar)            \
     _(LoadUnboxedPointerV)          \
     _(LoadUnboxedPointerT)          \
     _(UnboxObjectOrNull)            \
     _(StoreElementV)                \
     _(StoreElementT)                \
+    _(StoreUnboxedScalar)           \
     _(StoreUnboxedPointer)          \
     _(ConvertUnboxedObjectToNative) \
     _(ArrayPopShiftV)               \
@@ -235,14 +238,13 @@
     _(ArrayJoin)                    \
     _(StoreElementHoleV)            \
     _(StoreElementHoleT)            \
-    _(LoadTypedArrayElement)        \
     _(LoadTypedArrayElementHole)    \
     _(LoadTypedArrayElementStatic)  \
-    _(StoreTypedArrayElement)       \
     _(StoreTypedArrayElementHole)   \
     _(StoreTypedArrayElementStatic) \
     _(CompareExchangeTypedArrayElement) \
     _(AtomicTypedArrayElementBinop) \
+    _(AtomicTypedArrayElementBinopForEffect) \
     _(EffectiveAddress)             \
     _(ClampIToUint8)                \
     _(ClampDToUint8)                \
@@ -331,12 +333,15 @@
     _(AsmJSCall)                    \
     _(AsmJSCompareExchangeHeap)     \
     _(AsmJSAtomicBinopHeap)         \
+    _(AsmJSAtomicBinopHeapForEffect)\
     _(RecompileCheck)               \
     _(MemoryBarrier)                \
     _(AssertRangeI)                 \
     _(AssertRangeD)                 \
     _(AssertRangeF)                 \
     _(AssertRangeV)                 \
+    _(AssertResultV)                \
+    _(AssertResultT)                \
     _(LexicalCheck)                 \
     _(ThrowUninitializedLexical)    \
     _(NurseryObject)                \

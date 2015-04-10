@@ -6,8 +6,7 @@
 
 #include "mozilla/layers/SharedBufferManagerParent.h"
 #include "base/message_loop.h"          // for MessageLoop
-#include "base/process.h"               // for ProcessHandle
-#include "base/process_util.h"          // for OpenProcessHandle
+#include "base/process.h"               // for ProcessId
 #include "base/task.h"                  // for CancelableTask, DeleteTask, etc
 #include "base/tracked.h"               // for FROM_HERE
 #include "base/thread.h"
@@ -38,7 +37,7 @@ StaticAutoPtr<Monitor> SharedBufferManagerParent::sManagerMonitor;
 uint64_t SharedBufferManagerParent::sBufferKey(0);
 
 #ifdef MOZ_WIDGET_GONK
-class GrallocReporter MOZ_FINAL : public nsIMemoryReporter
+class GrallocReporter final : public nsIMemoryReporter
 {
 public:
   NS_DECL_ISUPPORTS
@@ -122,7 +121,7 @@ public:
     explicit DeleteSharedBufferManagerParentTask(UniquePtr<SharedBufferManagerParent> aSharedBufferManager)
         : mSharedBufferManager(Move(aSharedBufferManager)) {
     }
-    virtual void Run() MOZ_OVERRIDE {}
+    virtual void Run() override {}
 private:
     UniquePtr<SharedBufferManagerParent> mSharedBufferManager;
 };
@@ -179,29 +178,26 @@ SharedBufferManagerParent::ActorDestroy(ActorDestroyReason aWhy)
 static void
 ConnectSharedBufferManagerInParentProcess(SharedBufferManagerParent* aManager,
                                           Transport* aTransport,
-                                          base::ProcessHandle aOtherProcess)
+                                          base::ProcessId aOtherPid)
 {
-  aManager->Open(aTransport, aOtherProcess, XRE_GetIOMessageLoop(), ipc::ParentSide);
+  aManager->Open(aTransport, aOtherPid, XRE_GetIOMessageLoop(), ipc::ParentSide);
 }
 
-PSharedBufferManagerParent* SharedBufferManagerParent::Create(Transport* aTransport, ProcessId aOtherProcess)
+PSharedBufferManagerParent* SharedBufferManagerParent::Create(Transport* aTransport,
+                                                              ProcessId aOtherPid)
 {
-  ProcessHandle processHandle;
-  if (!base::OpenProcessHandle(aOtherProcess, &processHandle)) {
-    return nullptr;
-  }
   base::Thread* thread = nullptr;
   char thrname[128];
-  base::snprintf(thrname, 128, "BufMgrParent#%d", aOtherProcess);
+  base::snprintf(thrname, 128, "BufMgrParent#%d", aOtherPid);
   thread = new base::Thread(thrname);
 
-  SharedBufferManagerParent* manager = new SharedBufferManagerParent(aTransport, aOtherProcess, thread);
+  SharedBufferManagerParent* manager = new SharedBufferManagerParent(aTransport, aOtherPid, thread);
   if (!thread->IsRunning()) {
     thread->Start();
   }
   thread->message_loop()->PostTask(FROM_HERE,
                                    NewRunnableFunction(ConnectSharedBufferManagerInParentProcess,
-                                                       manager, aTransport, processHandle));
+                                                       manager, aTransport, aOtherPid));
   return manager;
 }
 
@@ -213,7 +209,12 @@ bool SharedBufferManagerParent::RecvAllocateGrallocBuffer(const IntSize& aSize, 
 
   if (aFormat == 0 || aUsage == 0) {
     printf_stderr("SharedBufferManagerParent::RecvAllocateGrallocBuffer -- format and usage must be non-zero");
-    return true;
+    return false;
+  }
+
+  if (aSize.width <= 0 || aSize.height <= 0) {
+    printf_stderr("SharedBufferManagerParent::RecvAllocateGrallocBuffer -- requested gralloc buffer size is invalid");
+    return false;
   }
 
   // If the requested size is too big (i.e. exceeds the commonly used max GL texture size)

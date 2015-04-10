@@ -20,9 +20,9 @@ class nsIDocument;
 namespace mozilla {
 namespace dom {
 
-class DOMParser MOZ_FINAL : public nsIDOMParser,
-                            public nsSupportsWeakReference,
-                            public nsWrapperCache
+class DOMParser final : public nsIDOMParser,
+                        public nsSupportsWeakReference,
+                        public nsWrapperCache
 {
   typedef mozilla::dom::GlobalObject GlobalObject;
 
@@ -75,9 +75,9 @@ public:
     return mOwner;
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
   {
-    return mozilla::dom::DOMParserBinding::Wrap(aCx, this);
+    return mozilla::dom::DOMParserBinding::Wrap(aCx, this, aGivenProto);
   }
 
 private:

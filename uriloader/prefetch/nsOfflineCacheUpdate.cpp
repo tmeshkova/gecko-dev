@@ -115,9 +115,9 @@ LogToConsole(const char * message, nsOfflineCacheUpdateItem * item = nullptr)
 // nsManifestCheck
 //-----------------------------------------------------------------------------
 
-class nsManifestCheck MOZ_FINAL : public nsIStreamListener
-                                , public nsIChannelEventSink
-                                , public nsIInterfaceRequestor
+class nsManifestCheck final : public nsIStreamListener
+                            , public nsIChannelEventSink
+                            , public nsIInterfaceRequestor
 {
 public:
     nsManifestCheck(nsOfflineCacheUpdate *aUpdate,

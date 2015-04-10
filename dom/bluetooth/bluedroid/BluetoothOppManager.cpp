@@ -59,7 +59,10 @@ StaticRefPtr<BluetoothOppManager> sBluetoothOppManager;
 static bool sInShutdown = false;
 }
 
-class mozilla::dom::bluetooth::SendFileBatch {
+BEGIN_BLUETOOTH_NAMESPACE
+
+class BluetoothOppManager::SendFileBatch final
+{
 public:
   SendFileBatch(const nsAString& aDeviceAddress, nsIDOMBlob* aBlob)
     : mDeviceAddress(aDeviceAddress)
@@ -80,7 +83,7 @@ BluetoothOppManager::Observe(nsISupports* aSubject,
   // if state of any volume was changed
   if (!strcmp(aTopic, NS_VOLUME_STATE_CHANGED)) {
     HandleVolumeStateChanged(aSubject);
-    return NS_OK; 
+    return NS_OK;
   }
 
   if (!strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID)) {
@@ -92,7 +95,7 @@ BluetoothOppManager::Observe(nsISupports* aSubject,
   return NS_ERROR_UNEXPECTED;
 }
 
-class SendSocketDataTask : public nsRunnable
+class BluetoothOppManager::SendSocketDataTask final : public nsRunnable
 {
 public:
   SendSocketDataTask(uint8_t* aStream, uint32_t aSize)
@@ -116,7 +119,7 @@ private:
   uint32_t mSize;
 };
 
-class ReadFileTask : public nsRunnable
+class BluetoothOppManager::ReadFileTask final : public nsRunnable
 {
 public:
   ReadFileTask(nsIInputStream* aInputStream,
@@ -161,7 +164,7 @@ private:
   uint32_t mAvailablePacketSize;
 };
 
-class CloseSocketTask : public Task
+class BluetoothOppManager::CloseSocketTask final : public Task
 {
 public:
   CloseSocketTask(BluetoothSocket* aSocket) : mSocket(aSocket)
@@ -169,7 +172,7 @@ public:
     MOZ_ASSERT(aSocket);
   }
 
-  void Run() MOZ_OVERRIDE
+  void Run() override
   {
     MOZ_ASSERT(NS_IsMainThread());
     mSocket->CloseSocket();
@@ -1192,7 +1195,10 @@ BluetoothOppManager::SendPutHeaderRequest(const nsAString& aFileName,
                             (char*)fileName, (len + 1) * 2);
   index += AppendHeaderLength(&req[index], aFileSize);
 
-  SendObexData(req, ObexRequestCode::Put, index);
+  // This is final put packet if file size equals to 0
+  uint8_t opcode = (aFileSize > 0) ? ObexRequestCode::Put
+                                   : ObexRequestCode::PutFinal;
+  SendObexData(req, opcode, index);
 
   delete [] fileName;
   delete [] req;
@@ -1605,3 +1611,5 @@ BluetoothOppManager::Reset()
 {
   MOZ_ASSERT(false);
 }
+
+END_BLUETOOTH_NAMESPACE

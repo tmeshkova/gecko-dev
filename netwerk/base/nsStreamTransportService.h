@@ -12,9 +12,9 @@
 
 class nsIThreadPool;
 
-class nsStreamTransportService MOZ_FINAL : public nsIStreamTransportService
-                                         , public nsIEventTarget
-                                         , public nsIObserver
+class nsStreamTransportService final : public nsIStreamTransportService
+                                     , public nsIEventTarget
+                                     , public nsIObserver
 {
 public:
     NS_DECL_THREADSAFE_ISUPPORTS

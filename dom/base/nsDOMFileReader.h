@@ -30,10 +30,10 @@ class File;
 }
 }
 
-class nsDOMFileReader : public mozilla::dom::FileIOObject,
-                        public nsIDOMFileReader,
-                        public nsIInterfaceRequestor,
-                        public nsSupportsWeakReference
+class nsDOMFileReader final : public mozilla::dom::FileIOObject,
+                              public nsIDOMFileReader,
+                              public nsIInterfaceRequestor,
+                              public nsSupportsWeakReference
 {
   typedef mozilla::ErrorResult ErrorResult;
   typedef mozilla::dom::GlobalObject GlobalObject;
@@ -51,18 +51,18 @@ public:
   NS_DECL_NSIINTERFACEREQUESTOR
 
   // FileIOObject overrides
-  virtual void DoAbort(nsAString& aEvent) MOZ_OVERRIDE;
+  virtual void DoAbort(nsAString& aEvent) override;
 
-  virtual nsresult DoReadData(nsIAsyncInputStream* aStream, uint64_t aCount) MOZ_OVERRIDE;
+  virtual nsresult DoReadData(nsIAsyncInputStream* aStream, uint64_t aCount) override;
 
   virtual nsresult DoOnLoadEnd(nsresult aStatus, nsAString& aSuccessEvent,
-                               nsAString& aTerminationEvent) MOZ_OVERRIDE;
+                               nsAString& aTerminationEvent) override;
 
   nsPIDOMWindow* GetParentObject() const
   {
     return GetOwner();
   }
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL
   static already_AddRefed<nsDOMFileReader>
@@ -131,7 +131,7 @@ protected:
   nsresult GetAsDataURL(nsIDOMBlob *aFile, const char *aFileData, uint32_t aDataLen, nsAString &aResult);
 
   void FreeFileData() {
-    moz_free(mFileData);
+    free(mFileData);
     mFileData = nullptr;
     mDataLen = 0;
   }

@@ -464,7 +464,7 @@ class MOZ_STACK_CLASS nsPresShellEventCB : public EventDispatchingCallback
 public:
   explicit nsPresShellEventCB(PresShell* aPresShell) : mPresShell(aPresShell) {}
 
-  virtual void HandleEvent(EventChainPostVisitor& aVisitor) MOZ_OVERRIDE
+  virtual void HandleEvent(EventChainPostVisitor& aVisitor) override
   {
     if (aVisitor.mPresContext && aVisitor.mEvent->mClass != eBasicEventClass) {
       if (aVisitor.mEvent->message == NS_MOUSE_BUTTON_DOWN ||
@@ -517,7 +517,7 @@ public:
 
   // Fires the "before-first-paint" event so that interested parties (right now, the
   // mobile browser) are aware of it.
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     nsCOMPtr<nsIObserverService> observerService =
       mozilla::services::GetObserverService();
@@ -776,8 +776,7 @@ PresShell::PresShell()
   mPresArenaAllocCount = 0;
 #endif
   mRenderFlags = 0;
-  mXResolution = 1.0;
-  mYResolution = 1.0;
+  mResolution = 1.0;
   mViewportOverridden = false;
 
   mScrollPositionClampingScrollPortSizeSet = false;
@@ -3372,7 +3371,7 @@ AccumulateFrameBounds(nsIFrame* aContainerFrame,
     nsIFrame *f = aFrame;
 
     while (f && f->IsFrameOfType(nsIFrame::eLineParticipant) &&
-           !f->IsTransformed() && !f->IsPositioned()) {
+           !f->IsTransformed() && !f->IsAbsPosContaininingBlock()) {
       prevFrame = f;
       f = prevFrame->GetParent();
     }
@@ -3750,7 +3749,7 @@ PresShell::ScrollFrameRectIntoView(nsIFrame*                aFrame,
       if (parent) {
         int32_t APD = container->PresContext()->AppUnitsPerDevPixel();
         int32_t parentAPD = parent->PresContext()->AppUnitsPerDevPixel();
-        rect = rect.ConvertAppUnitsRoundOut(APD, parentAPD);
+        rect = rect.ScaleToOtherAppUnitsRoundOut(APD, parentAPD);
         rect += extraOffset;
       }
     }
@@ -3800,14 +3799,14 @@ PresShell::GetRectVisibility(nsIFrame* aFrame,
   return nsRectVisibility_kVisible;
 }
 
-class PaintTimerCallBack MOZ_FINAL : public nsITimerCallback
+class PaintTimerCallBack final : public nsITimerCallback
 {
 public:
   explicit PaintTimerCallBack(PresShell* aShell) : mShell(aShell) {}
 
   NS_DECL_ISUPPORTS
 
-  NS_IMETHODIMP Notify(nsITimer* aTimer) MOZ_FINAL
+  NS_IMETHODIMP Notify(nsITimer* aTimer) final
   {
     mShell->SetNextPaintCompressed();
     mShell->AddInvalidateHiddenPresShellObserver(mShell->GetPresContext()->RefreshDriver());
@@ -5516,17 +5515,16 @@ void PresShell::SetIgnoreViewportScrolling(bool aIgnore)
   SetRenderingState(state);
 }
 
-nsresult PresShell::SetResolutionImpl(float aXResolution, float aYResolution, bool aScaleToResolution)
+nsresult PresShell::SetResolutionImpl(float aResolution, bool aScaleToResolution)
 {
-  if (!(aXResolution > 0.0 && aYResolution > 0.0)) {
+  if (!(aResolution > 0.0)) {
     return NS_ERROR_ILLEGAL_VALUE;
   }
-  if (aXResolution == mXResolution && aYResolution == mYResolution) {
+  if (aResolution == mResolution) {
     return NS_OK;
   }
   RenderingState state(this);
-  state.mXResolution = aXResolution;
-  state.mYResolution = aYResolution;
+  state.mResolution = aResolution;
   SetRenderingState(state);
   mScaleToResolution = aScaleToResolution;
 
@@ -5538,12 +5536,12 @@ bool PresShell::ScaleToResolution() const
   return mScaleToResolution;
 }
 
-gfxSize PresShell::GetCumulativeResolution()
+float PresShell::GetCumulativeResolution()
 {
-  gfxSize resolution = GetResolution();
+  float resolution = GetResolution();
   nsPresContext* parentCtx = GetPresContext()->GetParentPresContext();
   if (parentCtx) {
-    resolution = resolution * parentCtx->PresShell()->GetCumulativeResolution();
+    resolution *= parentCtx->PresShell()->GetCumulativeResolution();
   }
   return resolution;
 }
@@ -5560,8 +5558,7 @@ void PresShell::SetRenderingState(const RenderingState& aState)
   }
 
   mRenderFlags = aState.mRenderFlags;
-  mXResolution = aState.mXResolution;
-  mYResolution = aState.mYResolution;
+  mResolution = aState.mResolution;
 }
 
 void PresShell::SynthesizeMouseMove(bool aFromScroll)
@@ -5738,7 +5735,7 @@ PresShell::ProcessSynthMouseMoveEvent(bool aFromScroll)
     nsIFrame* frame = view->GetFrame();
     NS_ASSERTION(frame, "floating views can't be anonymous");
     viewAPD = frame->PresContext()->AppUnitsPerDevPixel();
-    refpoint = mMouseLocation.ConvertAppUnits(APD, viewAPD);
+    refpoint = mMouseLocation.ScaleToOtherAppUnits(APD, viewAPD);
     refpoint -= view->GetOffsetTo(rootView);
     refpoint += view->ViewToWidgetOffset();
   }
@@ -5872,7 +5869,7 @@ PresShell::MarkImagesInSubtreeVisible(nsIFrame* aFrame, const nsRect& aRect)
       } else {
         rect.MoveBy(-aFrame->GetContentRectRelativeToSelf().TopLeft());
       }
-      rect = rect.ConvertAppUnitsRoundOut(
+      rect = rect.ScaleToOtherAppUnitsRoundOut(
         aFrame->PresContext()->AppUnitsPerDevPixel(),
         presShell->GetPresContext()->AppUnitsPerDevPixel());
 
@@ -7368,6 +7365,12 @@ PresShell::HandleEvent(nsIFrame* aFrame,
         frame == mFrameConstructor->GetRootFrame()) {
       nsIFrame* popupFrame =
         nsLayoutUtils::GetPopupFrameForEventCoordinates(rootPresContext, aEvent);
+      // If a remote browser is currently capturing input break out if we
+      // detect a chrome generated popup.
+      if (popupFrame && capturingContent &&
+          EventStateManager::IsRemoteTarget(capturingContent)) {
+        capturingContent = nullptr;
+      }
       // If the popupFrame is an ancestor of the 'frame', the frame should
       // handle the event, otherwise, the popup should handle it.
       if (popupFrame &&
@@ -8636,7 +8639,7 @@ PresShell::GetCurrentItemAndPositionForElement(nsIDOMElement *aCurrentEl,
           nsIFrame* f = do_QueryFrame(scrollFrame);
           int32_t APD = presContext->AppUnitsPerDevPixel();
           int32_t scrollAPD = f->PresContext()->AppUnitsPerDevPixel();
-          scrollAmount = scrollAmount.ConvertAppUnits(scrollAPD, APD);
+          scrollAmount = scrollAmount.ScaleToOtherAppUnits(scrollAPD, APD);
           if (extra > scrollAmount.height) {
             extra = scrollAmount.height;
           }
@@ -9084,8 +9087,6 @@ PresShell::DoReflow(nsIFrame* target, bool aInterruptible)
 #ifdef DEBUG
   mCurrentReflowRoot = target;
 #endif
-
-  target->WillReflow(mPresContext);
 
   // If the target frame is the root of the frame hierarchy, then
   // use all the available space. If it's simply a `reflow root',
@@ -10436,7 +10437,7 @@ static void RecurseIndiTotals(nsPresContext* aPresContext,
     printf("%s - %p   [%d][", name, (void*)aParentFrame, counter->mCount);
     printf("%d", counter->mCounter.GetTotal());
     printf("]\n");
-    nsMemory::Free(name);
+    free(name);
   }
 
   nsIFrame* child = aParentFrame->GetFirstPrincipalChild();
@@ -10456,7 +10457,7 @@ int ReflowCountMgr::DoSingleIndi(PLHashEntry *he, int i, void *arg)
     printf("%s - %p   [%d][", name, (void*)counter->mFrame, counter->mCount);
     printf("%d", counter->mCounter.GetTotal());
     printf("]\n");
-    nsMemory::Free(name);
+    free(name);
   }
   return HT_ENUMERATE_NEXT;
 }

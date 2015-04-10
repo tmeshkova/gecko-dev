@@ -517,7 +517,7 @@ nsDOMClassInfo::RegisterExternalClasses()
     }
 
     rv = nameSpaceManager->RegisterExternalClassName(categoryEntry.get(), *cid);
-    nsMemory::Free(cid);
+    free(cid);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -808,7 +808,7 @@ nsDOMClassInfo::GetInterfaces(uint32_t *aCount, nsIID ***aArray)
     return NS_OK;
   }
 
-  *aArray = static_cast<nsIID **>(nsMemory::Alloc(count * sizeof(nsIID *)));
+  *aArray = static_cast<nsIID **>(moz_xmalloc(count * sizeof(nsIID *)));
   NS_ENSURE_TRUE(*aArray, NS_ERROR_OUT_OF_MEMORY);
 
   uint32_t i;
@@ -829,16 +829,10 @@ nsDOMClassInfo::GetInterfaces(uint32_t *aCount, nsIID ***aArray)
 }
 
 NS_IMETHODIMP
-nsDOMClassInfo::GetHelperForLanguage(uint32_t language, nsISupports **_retval)
+nsDOMClassInfo::GetScriptableHelper(nsIXPCScriptable **_retval)
 {
-  if (language == nsIProgrammingLanguage::JAVASCRIPT) {
-    *_retval = static_cast<nsIXPCScriptable *>(this);
-
-    NS_ADDREF(*_retval);
-  } else {
-    *_retval = nullptr;
-  }
-
+  nsCOMPtr<nsIXPCScriptable> rval = this;
+  rval.forget(_retval);
   return NS_OK;
 }
 
@@ -867,14 +861,6 @@ NS_IMETHODIMP
 nsDOMClassInfo::GetClassIDNoAlloc(nsCID *aClassID)
 {
   return NS_ERROR_NOT_AVAILABLE;
-}
-
-NS_IMETHODIMP
-nsDOMClassInfo::GetImplementationLanguage(uint32_t *aImplLanguage)
-{
-  *aImplLanguage = nsIProgrammingLanguage::CPLUSPLUS;
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -912,7 +898,7 @@ nsDOMClassInfo::PreCreate(nsISupports *nativeObj, JSContext *cx,
 
 NS_IMETHODIMP
 nsDOMClassInfo::AddProperty(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
-                            JSObject *obj, jsid id, jsval *vp,
+                            JSObject *obj, jsid id, JS::Handle<JS::Value> val,
                             bool *_retval)
 {
   NS_WARNING("nsDOMClassInfo::AddProperty Don't call me!");
@@ -1325,7 +1311,7 @@ DefineInterfaceConstants(JSContext *cx, JS::Handle<JSObject*> obj, const nsIID *
   return NS_OK;
 }
 
-class nsDOMConstructor MOZ_FINAL : public nsIDOMDOMConstructor
+class nsDOMConstructor final : public nsIDOMDOMConstructor
 {
 protected:
   nsDOMConstructor(const char16_t* aName,
@@ -2420,7 +2406,8 @@ nsEventTargetSH::PreCreate(nsISupports *nativeObj, JSContext *cx,
 
 NS_IMETHODIMP
 nsEventTargetSH::AddProperty(nsIXPConnectWrappedNative *wrapper, JSContext *cx,
-                             JSObject *obj, jsid id, jsval *vp, bool *_retval)
+                             JSObject *obj, jsid id, JS::Handle<JS::Value> val,
+                             bool *_retval)
 {
   nsEventTargetSH::PreserveWrapper(GetNative(wrapper, obj));
 

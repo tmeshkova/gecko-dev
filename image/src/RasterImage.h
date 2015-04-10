@@ -30,6 +30,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/Pair.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/UniquePtr.h"
@@ -144,11 +145,11 @@ DecodeFlags(uint32_t aFlags)
                    imgIContainer::FLAG_DECODE_NO_COLORSPACE_CONVERSION);
 }
 
-class RasterImage MOZ_FINAL : public ImageResource
-                            , public nsIProperties
-                            , public SupportsWeakPtr<RasterImage>
+class RasterImage final : public ImageResource
+                        , public nsIProperties
+                        , public SupportsWeakPtr<RasterImage>
 #ifdef DEBUG
-                            , public imgIContainerDebug
+                        , public imgIContainerDebug
 #endif
 {
   // (no public constructor - use ImageFactory)
@@ -163,14 +164,14 @@ public:
   NS_DECL_IMGICONTAINERDEBUG
 #endif
 
-  virtual nsresult StartAnimation() MOZ_OVERRIDE;
-  virtual nsresult StopAnimation() MOZ_OVERRIDE;
+  virtual nsresult StartAnimation() override;
+  virtual nsresult StopAnimation() override;
 
   // Methods inherited from Image
   nsresult Init(const char* aMimeType,
-                uint32_t aFlags) MOZ_OVERRIDE;
+                uint32_t aFlags) override;
 
-  virtual void OnSurfaceDiscarded() MOZ_OVERRIDE;
+  virtual void OnSurfaceDiscarded() override;
 
   // Raster-specific methods
   static NS_METHOD WriteToSourceBuffer(nsIInputStream* aIn, void* aClosure,
@@ -181,9 +182,9 @@ public:
   /* The total number of frames in this image. */
   uint32_t GetNumFrames() const { return mFrameCount; }
 
-  virtual size_t SizeOfSourceWithComputedFallback(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
+  virtual size_t SizeOfSourceWithComputedFallback(MallocSizeOf aMallocSizeOf) const override;
   virtual size_t SizeOfDecoded(gfxMemoryLocation aLocation,
-                               MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
+                               MallocSizeOf aMallocSizeOf) const override;
 
   /* Triggers discarding. */
   void Discard();
@@ -241,13 +242,13 @@ public:
                                         nsISupports* aContext,
                                         nsIInputStream* aInStr,
                                         uint64_t aSourceOffset,
-                                        uint32_t aCount) MOZ_OVERRIDE;
+                                        uint32_t aCount) override;
   virtual nsresult OnImageDataComplete(nsIRequest* aRequest,
                                        nsISupports* aContext,
                                        nsresult aStatus,
-                                       bool aLastPart) MOZ_OVERRIDE;
+                                       bool aLastPart) override;
 
-  void NotifyForDecodeOnDrawOnly();
+  void NotifyForDecodeOnlyOnDraw();
 
   /**
    * A hint of the number of bytes of source data that the image contains. If
@@ -297,8 +298,9 @@ private:
 
   TemporaryRef<gfx::SourceSurface> CopyFrame(uint32_t aWhichFrame,
                                              uint32_t aFlags);
-  TemporaryRef<gfx::SourceSurface> GetFrameInternal(uint32_t aWhichFrame,
-                                                    uint32_t aFlags);
+
+  Pair<DrawResult, RefPtr<gfx::SourceSurface>>
+    GetFrameInternal(uint32_t aWhichFrame, uint32_t aFlags);
 
   DrawableFrameRef LookupFrameInternal(uint32_t aFrameNum,
                                        const gfx::IntSize& aSize,
@@ -314,8 +316,9 @@ private:
   size_t SizeOfDecodedWithComputedFallbackIfHeap(gfxMemoryLocation aLocation,
                                                  MallocSizeOf aMallocSizeOf) const;
 
-  already_AddRefed<layers::Image>
-    GetCurrentImage(layers::ImageContainer* aContainer);
+  Pair<DrawResult, nsRefPtr<layers::Image>>
+    GetCurrentImage(layers::ImageContainer* aContainer, uint32_t aFlags);
+
   void UpdateImageContainer();
 
   // We would like to just check if we have a zero lock count, but we can't do
@@ -381,6 +384,10 @@ private: // data
   // the layer system needs it.
   WeakPtr<layers::ImageContainer> mImageContainer;
 
+  // If mImageContainer is non-null, this contains the DrawResult we obtained
+  // the last time we updated it.
+  DrawResult mLastImageContainerDrawResult;
+
 #ifdef DEBUG
   uint32_t                       mFramesNotified;
 #endif
@@ -393,7 +400,7 @@ private: // data
 
   // Boolean flags (clustered together to conserve space):
   bool                       mHasSize:1;       // Has SetSize() been called?
-  bool                       mDecodeOnDraw:1;  // Decoding on draw?
+  bool                       mDecodeOnlyOnDraw:1; // Decoding only on draw?
   bool                       mTransient:1;     // Is the image short-lived?
   bool                       mDiscardable:1;   // Is container discardable?
   bool                       mHasSourceData:1; // Do we have source data?
@@ -466,7 +473,7 @@ protected:
   explicit RasterImage(ProgressTracker* aProgressTracker = nullptr,
                        ImageURL* aURI = nullptr);
 
-  bool ShouldAnimate() MOZ_OVERRIDE;
+  bool ShouldAnimate() override;
 
   friend class ImageFactory;
 };

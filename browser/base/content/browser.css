@@ -46,6 +46,12 @@ searchbar {
   -moz-binding: url("chrome://browser/content/search/search.xml#searchbar");
 }
 
+/* Prevent shrinking the page content to 0 height and width */
+.browserStack > browser {
+  min-height: 25px;
+  min-width: 25px;
+}
+
 .browserStack > browser {
   -moz-binding: url("chrome://browser/content/tabbrowser.xml#tabbrowser-browser");
 }
@@ -899,6 +905,11 @@ notification[value="translation"] {
   -moz-binding: url("chrome://browser/content/translation-infobar.xml#translationbar");
 }
 
+/* Loop/ Hello */
+notification[value="loop-sharing-notification"] .close-icon {
+  display: none;
+}
+
 /* Social */
 /* Note the chatbox 'width' values are duplicated in socialchat.xml */
 chatbox {
@@ -910,7 +921,6 @@ chatbox {
 
 chatbox[large="true"] {
   width: 300px;
-  heigth: 272px;
 }
 
 chatbox[minimized="true"] {

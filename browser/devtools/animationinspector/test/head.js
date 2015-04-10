@@ -85,20 +85,6 @@ function reloadTab() {
 }
 
 /**
- * Simple DOM node accesor function that takes either a node or a string css
- * selector as argument and returns the corresponding node
- * @param {String|DOMNode} nodeOrSelector
- * @return {DOMNode|CPOW} Note that in e10s mode a CPOW object is returned which
- * doesn't implement *all* of the DOMNode's properties
- */
-function getNode(nodeOrSelector) {
-  info("Getting the node for '" + nodeOrSelector + "'");
-  return typeof nodeOrSelector === "string" ?
-    content.document.querySelector(nodeOrSelector) :
-    nodeOrSelector;
-}
-
-/**
  * Get the NodeFront for a given css selector, via the protocol
  * @param {String} selector
  * @param {InspectorPanel} inspector The instance of InspectorPanel currently
@@ -273,6 +259,12 @@ function executeInContent(name, data={}, objects={}, expectResponse=true) {
   }
 }
 
+function onceNextPlayerRefresh(player) {
+  let onRefresh = promise.defer();
+  player.once(player.AUTO_REFRESH_EVENT, onRefresh.resolve);
+  return onRefresh.promise;
+}
+
 /**
  * Simulate a click on the playPause button of a playerWidget.
  */
@@ -293,7 +285,36 @@ let togglePlayPauseButton = Task.async(function*(widget) {
   yield onClicked;
 
   // Wait for the next sate change event to make sure the state is updated
-  yield widget.player.once(widget.player.AUTO_REFRESH_EVENT);
+  yield waitForStateCondition(widget.player, state => {
+    return state.playState === nextState;
+  }, "after clicking the toggle button");
+});
+
+/**
+ * Wait for a player's auto-refresh events and stop when a condition becomes
+ * truthy.
+ * @param {AnimationPlayerFront} player
+ * @param {Function} conditionCheck Will be called over and over again when the
+ * player state changes, passing the state as argument. This method must return
+ * a truthy value to stop waiting.
+ * @param {String} desc If provided, this will be logged with info(...) every
+ * time the state is refreshed, until the condition passes.
+ * @return {Promise} Resolves when the condition passes.
+ */
+let waitForStateCondition = Task.async(function*(player, conditionCheck, desc="") {
+  if (desc) {
+    desc = "(" + desc + ")";
+  }
+  info("Waiting for a player's auto-refresh event " + desc);
+  let def = promise.defer();
+  player.on(player.AUTO_REFRESH_EVENT, function onNewState() {
+    info("State refreshed, checking condition ... " + desc);
+    if (conditionCheck(player.state)) {
+      player.off(player.AUTO_REFRESH_EVENT, onNewState);
+      def.resolve();
+    }
+  });
+  return def.promise;
 });
 
 /**
@@ -301,8 +322,7 @@ let togglePlayPauseButton = Task.async(function*(widget) {
  */
 let getAnimationPlayerState = Task.async(function*(selector, animationIndex=0) {
   let playState = yield executeInContent("Test:GetAnimationPlayerState",
-                                         {animationIndex},
-                                         {node: getNode(selector)});
+                                         {selector, animationIndex});
   return playState;
 });
 

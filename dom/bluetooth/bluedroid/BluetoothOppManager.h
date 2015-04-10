@@ -29,11 +29,15 @@ BEGIN_BLUETOOTH_NAMESPACE
 
 class BluetoothSocket;
 class ObexHeaderSet;
-class SendFileBatch;
 
 class BluetoothOppManager : public BluetoothSocketObserver
                           , public BluetoothProfileManagerBase
 {
+  class CloseSocketTask;
+  class ReadFileTask;
+  class SendFileBatch;
+  class SendSocketDataTask;
+
 public:
   BT_DECL_PROFILE_MGR_BASE
   virtual void GetName(nsACString& aName)
@@ -67,10 +71,10 @@ public:
   // The following functions are inherited from BluetoothSocketObserver
   void ReceiveSocketData(
     BluetoothSocket* aSocket,
-    nsAutoPtr<mozilla::ipc::UnixSocketRawData>& aMessage) MOZ_OVERRIDE;
-  virtual void OnSocketConnectSuccess(BluetoothSocket* aSocket) MOZ_OVERRIDE;
-  virtual void OnSocketConnectError(BluetoothSocket* aSocket) MOZ_OVERRIDE;
-  virtual void OnSocketDisconnect(BluetoothSocket* aSocket) MOZ_OVERRIDE;
+    nsAutoPtr<mozilla::ipc::UnixSocketRawData>& aMessage) override;
+  virtual void OnSocketConnectSuccess(BluetoothSocket* aSocket) override;
+  virtual void OnSocketConnectError(BluetoothSocket* aSocket) override;
+  virtual void OnSocketDisconnect(BluetoothSocket* aSocket) override;
 
 protected:
   virtual ~BluetoothOppManager();

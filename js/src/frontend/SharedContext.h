@@ -146,7 +146,7 @@ class Directives
 
   public:
     explicit Directives(bool strict) : strict_(strict), asmJS_(false) {}
-    template <typename ParseHandler> explicit Directives(ParseContext<ParseHandler> *parent);
+    template <typename ParseHandler> explicit Directives(ParseContext<ParseHandler>* parent);
 
     void setStrict() { strict_ = true; }
     bool strict() const { return strict_; }
@@ -154,15 +154,15 @@ class Directives
     void setAsmJS() { asmJS_ = true; }
     bool asmJS() const { return asmJS_; }
 
-    Directives &operator=(Directives rhs) {
+    Directives& operator=(Directives rhs) {
         strict_ = rhs.strict_;
         asmJS_ = rhs.asmJS_;
         return *this;
     }
-    bool operator==(const Directives &rhs) const {
+    bool operator==(const Directives& rhs) const {
         return strict_ == rhs.strict_ && asmJS_ == rhs.asmJS_;
     }
-    bool operator!=(const Directives &rhs) const {
+    bool operator!=(const Directives& rhs) const {
         return !(*this == rhs);
     }
 };
@@ -176,7 +176,7 @@ class Directives
 class SharedContext
 {
   public:
-    ExclusiveContext *const context;
+    ExclusiveContext* const context;
     AnyContextFlags anyCxFlags;
     bool strictScript;
     bool localStrict;
@@ -184,7 +184,7 @@ class SharedContext
 
     // If it's function code, funbox must be non-nullptr and scopeChain must be
     // nullptr. If it's global code, funbox must be nullptr.
-    SharedContext(ExclusiveContext *cx, Directives directives, bool extraWarnings)
+    SharedContext(ExclusiveContext* cx, Directives directives, bool extraWarnings)
       : context(cx),
         anyCxFlags(),
         strictScript(directives.strict()),
@@ -192,11 +192,9 @@ class SharedContext
         extraWarnings(extraWarnings)
     {}
 
-    virtual ObjectBox *toObjectBox() = 0;
-    inline bool isGlobalSharedContext() { return toObjectBox() == nullptr; }
+    virtual ObjectBox* toObjectBox() = 0;
     inline bool isFunctionBox() { return toObjectBox() && toObjectBox()->isFunctionBox(); }
-    inline GlobalSharedContext *asGlobalSharedContext();
-    inline FunctionBox *asFunctionBox();
+    inline FunctionBox* asFunctionBox();
 
     bool hasExplicitUseStrict()        const { return anyCxFlags.hasExplicitUseStrict; }
     bool bindingsAccessedDynamically() const { return anyCxFlags.bindingsAccessedDynamically; }
@@ -224,33 +222,21 @@ class SharedContext
         return strict() || extraWarnings;
     }
 
-    bool isDotVariable(JSAtom *atom) const {
+    bool isDotVariable(JSAtom* atom) const {
         return atom == context->names().dotGenerator || atom == context->names().dotGenRVal;
     }
 };
 
 class GlobalSharedContext : public SharedContext
 {
-  private:
-    const RootedObject scopeChain_; /* scope chain object for the script */
-
   public:
-    GlobalSharedContext(ExclusiveContext *cx, JSObject *scopeChain,
+    GlobalSharedContext(ExclusiveContext* cx,
                         Directives directives, bool extraWarnings)
-      : SharedContext(cx, directives, extraWarnings),
-        scopeChain_(cx, scopeChain)
+      : SharedContext(cx, directives, extraWarnings)
     {}
 
-    ObjectBox *toObjectBox() { return nullptr; }
-    JSObject *scopeChain() const { return scopeChain_; }
+    ObjectBox* toObjectBox() { return nullptr; }
 };
-
-inline GlobalSharedContext *
-SharedContext::asGlobalSharedContext()
-{
-    MOZ_ASSERT(isGlobalSharedContext());
-    return static_cast<GlobalSharedContext*>(this);
-}
 
 class FunctionBox : public ObjectBox, public SharedContext
 {
@@ -277,12 +263,12 @@ class FunctionBox : public ObjectBox, public SharedContext
     FunctionContextFlags funCxFlags;
 
     template <typename ParseHandler>
-    FunctionBox(ExclusiveContext *cx, ObjectBox* traceListHead, JSFunction *fun,
-                ParseContext<ParseHandler> *pc, Directives directives,
+    FunctionBox(ExclusiveContext* cx, ObjectBox* traceListHead, JSFunction* fun,
+                ParseContext<ParseHandler>* pc, Directives directives,
                 bool extraWarnings, GeneratorKind generatorKind);
 
-    ObjectBox *toObjectBox() { return this; }
-    JSFunction *function() const { return &object->as<JSFunction>(); }
+    ObjectBox* toObjectBox() { return this; }
+    JSFunction* function() const { return &object->as<JSFunction>(); }
 
     GeneratorKind generatorKind() const { return GeneratorKindFromBits(generatorKindBits_); }
     bool isGenerator() const { return generatorKind() != NotGenerator; }
@@ -323,7 +309,7 @@ class FunctionBox : public ObjectBox, public SharedContext
         return useAsm || insideUseAsm;
     }
 
-    void setStart(const TokenStream &tokenStream) {
+    void setStart(const TokenStream& tokenStream) {
         bufStart = tokenStream.currentToken().pos.begin;
         startLine = tokenStream.getLineno();
         startColumn = tokenStream.getColumn();
@@ -339,7 +325,7 @@ class FunctionBox : public ObjectBox, public SharedContext
     }
 };
 
-inline FunctionBox *
+inline FunctionBox*
 SharedContext::asFunctionBox()
 {
     MOZ_ASSERT(isFunctionBox());
@@ -434,9 +420,9 @@ struct StmtInfoBase {
 
     // Compile-time scope chain node for this scope.  Only set if
     // isNestedScope.
-    Rooted<NestedScopeObject *> staticScope;
+    Rooted<NestedScopeObject*> staticScope;
 
-    explicit StmtInfoBase(ExclusiveContext *cx)
+    explicit StmtInfoBase(ExclusiveContext* cx)
         : isBlockScope(false), isNestedScope(false), isForLetBlock(false),
           label(cx), staticScope(cx)
     {}
@@ -470,7 +456,7 @@ struct StmtInfoBase {
 // Push the C-stack-allocated struct at stmt onto the StmtInfoPC stack.
 template <class ContextT>
 void
-PushStatement(ContextT *ct, typename ContextT::StmtInfo *stmt, StmtType type)
+PushStatement(ContextT* ct, typename ContextT::StmtInfo* stmt, StmtType type)
 {
     stmt->type = type;
     stmt->isBlockScope = false;
@@ -490,7 +476,7 @@ PushStatement(ContextT *ct, typename ContextT::StmtInfo *stmt, StmtType type)
 
 template <class ContextT>
 void
-FinishPushNestedScope(ContextT *ct, typename ContextT::StmtInfo *stmt, NestedScopeObject &staticScope)
+FinishPushNestedScope(ContextT* ct, typename ContextT::StmtInfo* stmt, NestedScopeObject& staticScope)
 {
     stmt->isNestedScope = true;
     stmt->downScope = ct->topScopeStmt;
@@ -504,9 +490,9 @@ FinishPushNestedScope(ContextT *ct, typename ContextT::StmtInfo *stmt, NestedSco
 // template matching work.
 template <class ContextT>
 void
-FinishPopStatement(ContextT *ct)
+FinishPopStatement(ContextT* ct)
 {
-    typename ContextT::StmtInfo *stmt = ct->topStmt;
+    typename ContextT::StmtInfo* stmt = ct->topStmt;
     ct->topStmt = stmt->down;
     if (stmt->linksScope()) {
         ct->topScopeStmt = stmt->downScope;
@@ -532,8 +518,8 @@ FinishPopStatement(ContextT *ct)
  * found. Otherwise return null.
  */
 template <class ContextT>
-typename ContextT::StmtInfo *
-LexicalLookup(ContextT *ct, HandleAtom atom, int *slotp, typename ContextT::StmtInfo *stmt);
+typename ContextT::StmtInfo*
+LexicalLookup(ContextT* ct, HandleAtom atom, int* slotp, typename ContextT::StmtInfo* stmt);
 
 } // namespace frontend
 

@@ -1,12 +1,13 @@
 $inherits:
   from: 'tasks/builds/b2g_desktop_base.yml'
   variables:
+    build_name: 'b2g-desktop'
     build_type: 'debug'
 
 task:
   scopes:
       - 'docker-worker:cache:workspace-b2g-desktop-objects-debug'
-
+  workerType: b2g-desktop-debug
   extra:
     treeherder:
       collection:

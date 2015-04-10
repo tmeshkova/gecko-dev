@@ -31,6 +31,10 @@ using namespace android;
 using namespace mozilla;
 using namespace mozilla::dom;
 
+#ifndef MOZ_WIDGET_GONK
+NS_IMPL_ISUPPORTS_INHERITED0(TestGonkCameraHardware, GonkCameraHardware);
+#endif
+
 static void
 CopyFaceFeature(int32_t (&aDst)[2], bool aExists, const DOMPoint* aSrc)
 {
@@ -228,7 +232,7 @@ public:
   { }
 
   NS_IMETHOD
-  Run() MOZ_OVERRIDE
+  Run() override
   {
     if (NS_WARN_IF(!mTestHw)) {
       return NS_ERROR_INVALID_ARG;
@@ -301,7 +305,7 @@ TestGonkCameraHardware::~TestGonkCameraHardware()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       if (mTestHw->mDomListener) {
         mTestHw->mDomListener = nullptr;
@@ -356,7 +360,7 @@ TestGonkCameraHardware::Init()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       nsresult rv = mJSTestWrapper->InitCamera();
       if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -394,7 +398,7 @@ TestGonkCameraHardware::AutoFocus()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->AutoFocus();
     }
@@ -420,7 +424,7 @@ TestGonkCameraHardware::StartFaceDetection()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->StartFaceDetection();
     }
@@ -446,7 +450,7 @@ TestGonkCameraHardware::StopFaceDetection()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->StopFaceDetection();
     }
@@ -472,7 +476,7 @@ TestGonkCameraHardware::TakePicture()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->TakePicture();
     }
@@ -498,7 +502,7 @@ TestGonkCameraHardware::CancelTakePicture()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->CancelTakePicture();
     }
@@ -521,7 +525,7 @@ TestGonkCameraHardware::StartPreview()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->StartPreview();
     }
@@ -547,7 +551,7 @@ TestGonkCameraHardware::StopPreview()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->StopPreview();
     }
@@ -568,7 +572,7 @@ public:
 
 protected:
   NS_IMETHOD
-  RunImpl() MOZ_OVERRIDE
+  RunImpl() override
   {
     if (NS_WARN_IF(!mParams)) {
       return NS_ERROR_INVALID_ARG;
@@ -591,7 +595,7 @@ public:
 
 protected:
   NS_IMETHOD
-  RunImpl() MOZ_OVERRIDE
+  RunImpl() override
   {
     if (NS_WARN_IF(!mParams)) {
       return NS_ERROR_INVALID_ARG;
@@ -633,6 +637,7 @@ TestGonkCameraHardware::PullParameters(GonkCameraParameters& aParams)
   return NS_OK;
 }
 
+#ifdef MOZ_WIDGET_GONK
 int
 TestGonkCameraHardware::PushParameters(const CameraParameters& aParams)
 {
@@ -658,6 +663,7 @@ TestGonkCameraHardware::PullParameters(CameraParameters& aParams)
   String8 s(NS_LossyConvertUTF16toASCII(as).get());
   aParams.unflatten(s);
 }
+#endif
 
 int
 TestGonkCameraHardware::StartRecording()
@@ -671,7 +677,7 @@ TestGonkCameraHardware::StartRecording()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->StartRecording();
     }
@@ -697,7 +703,7 @@ TestGonkCameraHardware::StopRecording()
 
   protected:
     NS_IMETHOD
-    RunImpl() MOZ_OVERRIDE
+    RunImpl() override
     {
       return mJSTestWrapper->StopRecording();
     }

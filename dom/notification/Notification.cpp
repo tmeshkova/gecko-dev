@@ -35,7 +35,7 @@
 namespace mozilla {
 namespace dom {
 
-class NotificationStorageCallback MOZ_FINAL : public nsINotificationStorageCallback
+class NotificationStorageCallback final : public nsINotificationStorageCallback
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -64,7 +64,7 @@ public:
                     const nsAString& aIcon,
                     const nsAString& aData,
                     const nsAString& aBehavior,
-                    JSContext* aCx) MOZ_OVERRIDE
+                    JSContext* aCx) override
   {
     MOZ_ASSERT(!aID.IsEmpty());
 
@@ -89,7 +89,7 @@ public:
     notification->SetStoredState(true);
 
     JSAutoCompartment ac(aCx, mGlobal);
-    JS::Rooted<JSObject*> element(aCx, notification->WrapObject(aCx));
+    JS::Rooted<JSObject*> element(aCx, notification->WrapObject(aCx, JS::NullPtr()));
     NS_ENSURE_TRUE(element, NS_ERROR_FAILURE);
 
     JS::Rooted<JSObject*> notifications(aCx, mNotifications);
@@ -99,7 +99,7 @@ public:
     return NS_OK;
   }
 
-  NS_IMETHOD Done(JSContext* aCx) MOZ_OVERRIDE
+  NS_IMETHOD Done(JSContext* aCx) override
   {
     JSAutoCompartment ac(aCx, mGlobal);
     JS::Rooted<JS::Value> result(aCx, JS::ObjectValue(*mNotifications));
@@ -823,9 +823,9 @@ Notification::Get(const GlobalObject& aGlobal,
 }
 
 JSObject*
-Notification::WrapObject(JSContext* aCx)
+Notification::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return mozilla::dom::NotificationBinding::Wrap(aCx, this);
+  return mozilla::dom::NotificationBinding::Wrap(aCx, this, aGivenProto);
 }
 
 void

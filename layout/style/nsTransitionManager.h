@@ -65,7 +65,7 @@ struct ElementPropertyTransition : public dom::Animation
   double CurrentValuePortion() const;
 };
 
-class CSSTransitionPlayer MOZ_FINAL : public dom::AnimationPlayer
+class CSSTransitionPlayer final : public dom::AnimationPlayer
 {
 public:
  explicit CSSTransitionPlayer(dom::AnimationTimeline* aTimeline)
@@ -74,24 +74,24 @@ public:
   }
 
   virtual CSSTransitionPlayer*
-  AsCSSTransitionPlayer() MOZ_OVERRIDE { return this; }
+  AsCSSTransitionPlayer() override { return this; }
 
-  virtual dom::AnimationPlayState PlayStateFromJS() const MOZ_OVERRIDE;
-  virtual void PlayFromJS() MOZ_OVERRIDE;
+  virtual dom::AnimationPlayState PlayStateFromJS() const override;
+  virtual void PlayFromJS() override;
 
   // A variant of Play() that avoids posting style updates since this method
   // is expected to be called whilst already updating style.
-  void PlayFromStyle() { DoPlay(); }
+  void PlayFromStyle() { DoPlay(AnimationPlayer::LimitBehavior::Continue); }
 
 protected:
   virtual ~CSSTransitionPlayer() { }
 
-  virtual css::CommonAnimationManager* GetAnimationManager() const MOZ_OVERRIDE;
+  virtual css::CommonAnimationManager* GetAnimationManager() const override;
 };
 
 } // namespace mozilla
 
-class nsTransitionManager MOZ_FINAL
+class nsTransitionManager final
   : public mozilla::css::CommonAnimationManager
 {
 public:
@@ -104,10 +104,12 @@ public:
   typedef mozilla::AnimationPlayerCollection AnimationPlayerCollection;
 
   static AnimationPlayerCollection*
-  GetAnimationsForCompositor(nsIContent* aContent, nsCSSProperty aProperty)
+  GetAnimationsForCompositor(nsIContent* aContent, nsCSSProperty aProperty,
+                             mozilla::GetCompositorAnimationOptions aFlags
+                               = mozilla::GetCompositorAnimationOptions(0))
   {
     return mozilla::css::CommonAnimationManager::GetAnimationsForCompositor(
-      aContent, nsGkAtoms::transitionsProperty, aProperty);
+      aContent, nsGkAtoms::transitionsProperty, aProperty, aFlags);
   }
 
   /**
@@ -128,6 +130,15 @@ public:
                            nsStyleContext *aOldStyleContext,
                            nsRefPtr<nsStyleContext>* aNewStyleContext /* inout */);
 
+  void UpdateCascadeResultsWithTransitions(
+         AnimationPlayerCollection* aTransitions);
+  void UpdateCascadeResultsWithAnimations(
+         AnimationPlayerCollection* aAnimations);
+  void UpdateCascadeResultsWithAnimationsToBeDestroyed(
+         const AnimationPlayerCollection* aAnimations);
+  void UpdateCascadeResults(AnimationPlayerCollection* aTransitions,
+                            AnimationPlayerCollection* aAnimations);
+
   void SetInAnimationOnlyStyleUpdate(bool aInAnimationOnlyUpdate) {
     mInAnimationOnlyStyleUpdate = aInAnimationOnlyUpdate;
   }
@@ -137,23 +148,23 @@ public:
   }
 
   virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
-    MOZ_MUST_OVERRIDE MOZ_OVERRIDE;
+    MOZ_MUST_OVERRIDE override;
   virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
-    MOZ_MUST_OVERRIDE MOZ_OVERRIDE;
+    MOZ_MUST_OVERRIDE override;
 
   // nsARefreshObserver
-  virtual void WillRefresh(mozilla::TimeStamp aTime) MOZ_OVERRIDE;
+  virtual void WillRefresh(mozilla::TimeStamp aTime) override;
 
   void FlushTransitions(FlushFlags aFlags);
 
 protected:
-  virtual nsIAtom* GetAnimationsAtom() MOZ_OVERRIDE {
+  virtual nsIAtom* GetAnimationsAtom() override {
     return nsGkAtoms::transitionsProperty;
   }
-  virtual nsIAtom* GetAnimationsBeforeAtom() MOZ_OVERRIDE {
+  virtual nsIAtom* GetAnimationsBeforeAtom() override {
     return nsGkAtoms::transitionsOfBeforeProperty;
   }
-  virtual nsIAtom* GetAnimationsAfterAtom() MOZ_OVERRIDE {
+  virtual nsIAtom* GetAnimationsAfterAtom() override {
     return nsGkAtoms::transitionsOfAfterProperty;
   }
 

@@ -105,6 +105,9 @@ addMessageListener("MixedContent:ReenableProtection", function() {
 });
 
 addMessageListener("SecondScreen:tab-mirror", function(message) {
+  if (!Services.prefs.getBoolPref("browser.casting.enabled")) {
+    return;
+  }
   let app = SimpleServiceDiscovery.findAppForService(message.data.service);
   if (app) {
     let width = content.innerWidth;
@@ -160,6 +163,27 @@ let handleContentContextMenu = function (event) {
   let charSet = doc.characterSet;
   let baseURI = doc.baseURI;
   let referrer = doc.referrer;
+  let referrerPolicy = doc.referrerPolicy;
+
+  // Media related cache info parent needs for saving
+  let contentType = null;
+  let contentDisposition = null;
+  if (event.target.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
+      event.target instanceof Ci.nsIImageLoadingContent &&
+      event.target.currentURI) {
+    try {
+      let imageCache = Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools)
+                                                       .getImgCacheForDocument(doc);
+      let props =
+        imageCache.findEntryProperties(event.target.currentURI);
+      if (props) {
+        contentType = props.get("type", Ci.nsISupportsCString).data;
+        contentDisposition = props.get("content-disposition", Ci.nsISupportsCString).data;
+      }
+    } catch (e) {
+      Cu.reportError(e);
+    }
+  }
 
   if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
     let editFlags = SpellCheckHelper.isEditable(event.target, content);
@@ -174,7 +198,8 @@ let handleContentContextMenu = function (event) {
     let principal = doc.nodePrincipal;
     sendSyncMessage("contextmenu",
                     { editFlags, spellInfo, customMenuItems, addonInfo,
-                      principal, docLocation, charSet, baseURI, referrer },
+                      principal, docLocation, charSet, baseURI, referrer,
+                      referrerPolicy, contentType, contentDisposition },
                     { event, popupNode: event.target });
   }
   else {
@@ -191,6 +216,9 @@ let handleContentContextMenu = function (event) {
       docLocation: docLocation,
       charSet: charSet,
       referrer: referrer,
+      referrerPolicy: referrerPolicy,
+      contentType: contentType,
+      contentDisposition: contentDisposition,
     };
   }
 }
@@ -474,19 +502,27 @@ let AboutHomeListener = {
 AboutHomeListener.init(this);
 
 let AboutReaderListener = {
-  _savedArticle: null,
+
+  _articlePromise: null,
 
   init: function() {
     addEventListener("AboutReaderContentLoaded", this, false, true);
+    addEventListener("DOMContentLoaded", this, false);
     addEventListener("pageshow", this, false);
     addEventListener("pagehide", this, false);
-    addMessageListener("Reader:SavedArticleGet", this);
+    addMessageListener("Reader:ParseDocument", this);
+    addMessageListener("Reader:PushState", this);
   },
 
   receiveMessage: function(message) {
     switch (message.name) {
-      case "Reader:SavedArticleGet":
-        sendAsyncMessage("Reader:SavedArticleData", { article: this._savedArticle });
+      case "Reader:ParseDocument":
+        this._articlePromise = ReaderMode.parseDocument(content.document).catch(Cu.reportError);
+        content.document.location = "about:reader?url=" + encodeURIComponent(message.data.url);
+        break;
+
+      case "Reader:PushState":
+        this.updateReaderButton();
         break;
     }
   },
@@ -509,7 +545,8 @@ let AboutReaderListener = {
         if (content.document.body) {
           // Update the toolbar icon to show the "reader active" icon.
           sendAsyncMessage("Reader:UpdateReaderButton");
-          new AboutReader(global, content);
+          new AboutReader(global, content, this._articlePromise);
+          this._articlePromise = null;
         }
         break;
 
@@ -518,33 +555,25 @@ let AboutReaderListener = {
         break;
 
       case "pageshow":
-        if (!ReaderMode.isEnabledForParseOnLoad || this.isAboutReader) {
-          return;
+        // If a page is loaded from the bfcache, we won't get a "DOMContentLoaded"
+        // event, so we need to rely on "pageshow" in this case.
+        if (aEvent.persisted) {
+          this.updateReaderButton();
         }
-
-        // Reader mode is disabled until proven enabled.
-        this._savedArticle = null;
-
-        ReaderMode.parseDocument(content.document).then(article => {
-          // Do nothing if there is no article, or if the content window has been destroyed.
-          if (article === null || content === null) {
-            return;
-          }
-
-          // The loaded page may have changed while we were parsing the document.
-          // Make sure we've got the current one.
-          let url = Services.io.newURI(content.document.documentURI, null, null).spec;
-          if (article.url !== url) {
-            return;
-          }
-
-          this._savedArticle = article;
-          sendAsyncMessage("Reader:UpdateReaderButton", { isArticle: true });
-
-        }).catch(e => Cu.reportError("Error parsing document: " + e));
         break;
+      case "DOMContentLoaded":
+        this.updateReaderButton();
+        break;
+
     }
-  }
+  },
+  updateReaderButton: function() {
+    if (!ReaderMode.isEnabledForParseOnLoad || this.isAboutReader) {
+      return;
+    }
+    let isArticle = ReaderMode.isProbablyReaderable(content.document);
+    sendAsyncMessage("Reader:UpdateReaderButton", { isArticle: isArticle });
+  },
 };
 AboutReaderListener.init();
 
@@ -672,7 +701,7 @@ let ClickEventHandler = {
     let json = { button: event.button, shiftKey: event.shiftKey,
                  ctrlKey: event.ctrlKey, metaKey: event.metaKey,
                  altKey: event.altKey, href: null, title: null,
-                 bookmark: false };
+                 bookmark: false, referrerPolicy: ownerDoc.referrerPolicy };
 
     if (href) {
       json.href = href;
@@ -1014,12 +1043,12 @@ addEventListener("pageshow", function(event) {
 });
 
 let PageMetadataMessenger = {
-  init: function() {
+  init() {
     addMessageListener("PageMetadata:GetPageData", this);
     addMessageListener("PageMetadata:GetMicrodata", this);
   },
-  receiveMessage: function(aMessage) {
-    switch(aMessage.name) {
+  receiveMessage(message) {
+    switch(message.name) {
       case "PageMetadata:GetPageData": {
         let result = PageMetadata.getData(content.document);
         sendAsyncMessage("PageMetadata:PageDataResult", result);
@@ -1027,7 +1056,7 @@ let PageMetadataMessenger = {
       }
 
       case "PageMetadata:GetMicrodata": {
-        let target = aMessage.objects;
+        let target = message.objects.target;
         let result = PageMetadata.getMicrodata(content.document, target);
         sendAsyncMessage("PageMetadata:MicrodataResult", result);
         break;
@@ -1122,4 +1151,9 @@ addMessageListener("ContextMenu:MediaCommand", (message) => {
         media.mozRequestFullScreen();
       break;
   }
+});
+
+addMessageListener("ContextMenu:Canvas:ToDataURL", (message) => {
+  let dataURL = message.objects.target.toDataURL();
+  sendAsyncMessage("ContextMenu:Canvas:ToDataURL:Result", { dataURL });
 });

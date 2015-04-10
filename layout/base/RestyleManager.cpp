@@ -332,12 +332,12 @@ ApplyRenderingChangeToTree(nsPresContext* aPresContext,
                            nsIFrame* aFrame,
                            nsChangeHint aChange)
 {
-  // We check StylePosition()->HasTransformStyle() in addition to checking
+  // We check StyleDisplay()->HasTransformStyle() in addition to checking
   // IsTransformed() since we can get here for some frames that don't support
   // CSS transforms.
   NS_ASSERTION(!(aChange & nsChangeHint_UpdateTransformLayer) ||
                aFrame->IsTransformed() ||
-               aFrame->StylePosition()->HasTransformStyle(),
+               aFrame->StyleDisplay()->HasTransformStyle(),
                "Unexpected UpdateTransformLayer hint");
 
   nsIPresShell *shell = aPresContext->PresShell();
@@ -742,7 +742,7 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
           // It's because we need to set this state on each affected frame
           // that we can't coalesce nsChangeHint_AddOrRemoveTransform hints up
           // to ancestors (i.e. it can't be an inherited change hint).
-          if (cont->IsPositioned()) {
+          if (cont->IsAbsPosContaininingBlock()) {
             // If a transform has been added, we'll be taking this path,
             // but we may be taking this path even if a transform has been
             // removed. It's OK to add the bit even if it's not needed.
@@ -1238,10 +1238,10 @@ RestyleManager::GetMaxAnimationGenerationForFrame(nsIFrame* aFrame)
   nsCSSPseudoElements::Type pseudoType =
     aFrame->StyleContext()->GetPseudoType();
   AnimationPlayerCollection* transitions =
-    aFrame->PresContext()->TransitionManager()->GetAnimationPlayers(
+    aFrame->PresContext()->TransitionManager()->GetAnimations(
       content->AsElement(), pseudoType, false /* don't create */);
   AnimationPlayerCollection* animations =
-    aFrame->PresContext()->AnimationManager()->GetAnimationPlayers(
+    aFrame->PresContext()->AnimationManager()->GetAnimations(
       content->AsElement(), pseudoType, false /* don't create */);
 
   return std::max(transitions ? transitions->mAnimationGeneration : 0,
@@ -2605,7 +2605,7 @@ ElementRestyler::AddLayerChangesForAnimation()
       // nsChangeHint_UpdateTransformLayer, ApplyRenderingChangeToTree would
       // complain that we're updating a transform layer without a transform).
       if (layerInfo[i].mLayerType == nsDisplayItem::TYPE_TRANSFORM &&
-          !mFrame->StylePosition()->HasTransformStyle()) {
+          !mFrame->StyleDisplay()->HasTransformStyle()) {
         continue;
       }
       NS_UpdateHint(hint, layerInfo[i].mChangeHint);
@@ -3023,10 +3023,17 @@ ElementRestyler::ComputeRestyleResultFromNewContext(nsIFrame* aSelf,
     return eRestyleResult_Continue;
   }
 
-  if (oldContext->IsInlineDescendantOfRuby() !=
-        aNewContext->IsInlineDescendantOfRuby()) {
-    LOG_RESTYLE_CONTINUE("NS_STYLE_IS_INLINE_DESCENDANT_OF_RUBY differes"
+  if (oldContext->ShouldSuppressLineBreak() !=
+        aNewContext->ShouldSuppressLineBreak()) {
+    LOG_RESTYLE_CONTINUE("NS_STYLE_SUPPRESS_LINEBREAK differs"
                          "between old and new style contexts");
+    return eRestyleResult_Continue;
+  }
+
+  if (oldContext->IsInDisplayNoneSubtree() !=
+        aNewContext->IsInDisplayNoneSubtree()) {
+    LOG_RESTYLE_CONTINUE("NS_STYLE_IN_DISPLAY_NONE_SUBTREE differs between old"
+                         " and new style contexts");
     return eRestyleResult_Continue;
   }
 

@@ -32,8 +32,8 @@ class ArchiveRequest;
 /**
  * This is the ArchiveReader object
  */
-class ArchiveReader MOZ_FINAL : public nsISupports,
-                                public nsWrapperCache
+class ArchiveReader final : public nsISupports,
+                            public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -51,7 +51,7 @@ public:
     return mWindow;
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   already_AddRefed<ArchiveRequest> GetFilenames();
   already_AddRefed<ArchiveRequest> GetFile(const nsAString& filename);

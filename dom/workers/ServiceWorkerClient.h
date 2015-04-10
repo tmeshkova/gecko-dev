@@ -22,7 +22,7 @@ class ServiceWorkerWindowClient;
 
 // Used as a container object for information needed to create
 // client objects.
-class ServiceWorkerClientInfo MOZ_FINAL
+class ServiceWorkerClientInfo final
 {
   friend class ServiceWorkerClient;
   friend class ServiceWorkerWindowClient;
@@ -31,7 +31,8 @@ public:
   explicit ServiceWorkerClientInfo(nsIDocument* aDoc);
 
 private:
-  uint64_t mClientId;
+  nsString mClientId;
+  uint64_t mWindowId;
   nsString mUrl;
 
   // Window Clients
@@ -51,6 +52,7 @@ public:
                       const ServiceWorkerClientInfo& aClientInfo)
     : mOwner(aOwner),
       mId(aClientInfo.mClientId),
+      mWindowId(aClientInfo.mWindowId),
       mUrl(aClientInfo.mUrl)
   {
     MOZ_ASSERT(aOwner);
@@ -60,6 +62,11 @@ public:
   GetParentObject() const
   {
     return mOwner;
+  }
+
+  void GetId(nsString& aRetval) const
+  {
+    aRetval = mId;
   }
 
   void
@@ -73,7 +80,7 @@ public:
               const Optional<Sequence<JS::Value>>& aTransferable,
               ErrorResult& aRv);
 
-  JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
+  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
 protected:
   virtual ~ServiceWorkerClient()
@@ -81,7 +88,8 @@ protected:
 
 private:
   nsCOMPtr<nsISupports> mOwner;
-  uint64_t mId;
+  nsString mId;
+  uint64_t mWindowId;
   nsString mUrl;
 };
 

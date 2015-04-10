@@ -66,8 +66,9 @@ static const uint32_t FREE_BLOCK_SCAN_LIMIT = 16;
 // size limits).
 static MediaCache* gMediaCache;
 
-class MediaCacheFlusher MOZ_FINAL : public nsIObserver,
-                                      public nsSupportsWeakReference {
+class MediaCacheFlusher final : public nsIObserver,
+                                public nsSupportsWeakReference
+{
   MediaCacheFlusher() {}
   ~MediaCacheFlusher();
 public:

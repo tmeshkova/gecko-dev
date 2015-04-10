@@ -3,7 +3,7 @@
 # see <gecko>/testing/taskcluster/tasks/job_flags.yml
 
 $inherits:
-  from: tasks/branches/base_job_flags.yml
+  from: tasks/branches/mozilla-central/job_flags.yml
 
 builds:
   flame-kk:

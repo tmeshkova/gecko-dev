@@ -61,9 +61,9 @@ ServiceWorkerRegistration::DisconnectFromOwner()
 }
 
 JSObject*
-ServiceWorkerRegistration::WrapObject(JSContext* aCx)
+ServiceWorkerRegistration::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return ServiceWorkerRegistrationBinding::Wrap(aCx, this);
+  return ServiceWorkerRegistrationBinding::Wrap(aCx, this, aGivenProto);
 }
 
 already_AddRefed<workers::ServiceWorker>
@@ -101,7 +101,7 @@ ServiceWorkerRegistration::GetActive()
 
 namespace {
 
-class UnregisterCallback MOZ_FINAL : public nsIServiceWorkerUnregisterCallback
+class UnregisterCallback final : public nsIServiceWorkerUnregisterCallback
 {
   nsRefPtr<Promise> mPromise;
 
@@ -115,7 +115,7 @@ public:
   }
 
   NS_IMETHODIMP
-  UnregisterSucceeded(bool aState) MOZ_OVERRIDE
+  UnregisterSucceeded(bool aState) override
   {
     AssertIsOnMainThread();
     mPromise->MaybeResolve(aState);
@@ -123,7 +123,7 @@ public:
   }
 
   NS_IMETHODIMP
-  UnregisterFailed() MOZ_OVERRIDE
+  UnregisterFailed() override
   {
     AssertIsOnMainThread();
 

@@ -36,6 +36,7 @@
 #include "mozilla/dom/WakeLock.h"
 #include "mozilla/dom/power/PowerManagerService.h"
 #include "mozilla/dom/CellBroadcast.h"
+#include "mozilla/dom/IccManager.h"
 #include "mozilla/dom/MobileMessageManager.h"
 #include "mozilla/dom/ServiceWorkerContainer.h"
 #include "mozilla/dom/Telephony.h"
@@ -53,7 +54,6 @@
 #include "nsIMobileIdentityService.h"
 #endif
 #ifdef MOZ_B2G_RIL
-#include "mozilla/dom/IccManager.h"
 #include "mozilla/dom/MobileConnectionArray.h"
 #endif
 #include "nsIIdleObserver.h"
@@ -70,6 +70,7 @@
 #include "mozIApplication.h"
 #include "WidgetUtils.h"
 #include "mozIThirdPartyUtil.h"
+#include "nsINetworkInterceptController.h"
 
 #ifdef MOZ_MEDIA_NAVIGATOR
 #include "mozilla/dom/MediaDevices.h"
@@ -177,6 +178,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Navigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBatteryManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPowerManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCellBroadcast)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mIccManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMobileMessageManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTelephony)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVoicemail)
@@ -184,7 +186,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Navigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mConnection)
 #ifdef MOZ_B2G_RIL
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMobileConnections)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mIccManager)
 #endif
 #ifdef MOZ_B2G_BT
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBluetooth)
@@ -200,6 +201,9 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Navigator)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCachedResolveResults)
+#ifdef MOZ_EME
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaKeySystemAccessManager)
+#endif
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -250,6 +254,11 @@ Navigator::Invalidate()
     mCellBroadcast = nullptr;
   }
 
+  if (mIccManager) {
+    mIccManager->Shutdown();
+    mIccManager = nullptr;
+  }
+
   if (mMobileMessageManager) {
     mMobileMessageManager->Shutdown();
     mMobileMessageManager = nullptr;
@@ -276,11 +285,6 @@ Navigator::Invalidate()
 #ifdef MOZ_B2G_RIL
   if (mMobileConnections) {
     mMobileConnections = nullptr;
-  }
-
-  if (mIccManager) {
-    mIccManager->Shutdown();
-    mIccManager = nullptr;
   }
 #endif
 
@@ -313,6 +317,13 @@ Navigator::Invalidate()
   }
 
   mServiceWorkerContainer = nullptr;
+
+#ifdef MOZ_EME
+  if (mMediaKeySystemAccessManager) {
+    mMediaKeySystemAccessManager->Shutdown();
+    mMediaKeySystemAccessManager = nullptr;
+  }
+#endif
 }
 
 //*****************************************************************************
@@ -950,7 +961,7 @@ Navigator::GetGeolocation(ErrorResult& aRv)
   return mGeolocation;
 }
 
-class BeaconStreamListener MOZ_FINAL : public nsIStreamListener
+class BeaconStreamListener final : public nsIStreamListener
 {
     ~BeaconStreamListener() {}
 
@@ -1071,9 +1082,9 @@ Navigator::SendBeacon(const nsAString& aUrl,
     return false;
   }
 
+  nsIDocShell* docShell = mWindow->GetDocShell();
   nsCOMPtr<nsIPrivateBrowsingChannel> pbChannel = do_QueryInterface(channel);
   if (pbChannel) {
-    nsIDocShell* docShell = mWindow->GetDocShell();
     nsCOMPtr<nsILoadContext> loadContext = do_QueryInterface(docShell);
     if (loadContext) {
       rv = pbChannel->SetPrivate(loadContext->UsePrivateBrowsing());
@@ -1206,6 +1217,9 @@ Navigator::SendBeacon(const nsAString& aUrl,
 
   rv = cors->Init(channel, true);
   NS_ENSURE_SUCCESS(rv, false);
+
+  nsCOMPtr<nsINetworkInterceptController> interceptController = do_QueryInterface(docShell);
+  cors->SetInterceptController(interceptController);
 
   // Start a preflight if cross-origin and content type is not whitelisted
   rv = secMan->CheckSameOriginURI(documentURI, uri, false);
@@ -1707,8 +1721,6 @@ Navigator::GetMozVoicemail(ErrorResult& aRv)
   return mVoicemail;
 }
 
-#ifdef MOZ_B2G_RIL
-
 IccManager*
 Navigator::GetMozIccManager(ErrorResult& aRv)
 {
@@ -1724,7 +1736,6 @@ Navigator::GetMozIccManager(ErrorResult& aRv)
 
   return mIccManager;
 }
-#endif // MOZ_B2G_RIL
 
 #ifdef MOZ_GAMEPAD
 void
@@ -1982,8 +1993,8 @@ Navigator::OnNavigation()
   }
 
 #ifdef MOZ_MEDIA_NAVIGATOR
-  // Inform MediaManager in case there are live streams or pending callbacks.
-  MediaManager *manager = MediaManager::Get();
+  // If MediaManager is open let it inform any live streams or pending callbacks
+  MediaManager *manager = MediaManager::GetIfExists();
   if (manager) {
     manager->OnNavigation(mWindow->WindowID());
   }
@@ -2234,9 +2245,9 @@ Navigator::GetOwnPropertyNames(JSContext* aCx, nsTArray<nsString>& aNames,
 }
 
 JSObject*
-Navigator::WrapObject(JSContext* cx)
+Navigator::WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return NavigatorBinding::Wrap(cx, this);
+  return NavigatorBinding::Wrap(cx, this, aGivenProto);
 }
 
 /* static */
@@ -2331,7 +2342,7 @@ Navigator::HasDataStoreSupport(nsIPrincipal* aPrincipal)
 
 // A WorkerMainThreadRunnable to synchronously dispatch the call of
 // HasDataStoreSupport() from the worker thread to the main thread.
-class HasDataStoreSupportRunnable MOZ_FINAL
+class HasDataStoreSupportRunnable final
   : public workers::WorkerMainThreadRunnable
 {
 public:
@@ -2347,7 +2358,7 @@ public:
 
 protected:
   virtual bool
-  MainThreadRun() MOZ_OVERRIDE
+  MainThreadRun() override
   {
     workers::AssertIsOnMainThread();
 
@@ -2627,64 +2638,19 @@ Navigator::RequestMediaKeySystemAccess(const nsAString& aKeySystem,
                                        ErrorResult& aRv)
 {
   nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(mWindow);
-  nsRefPtr<Promise> p = Promise::Create(go, aRv);
+  nsRefPtr<Promise> promise = Promise::Create(go, aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
 
-  if (!Preferences::GetBool("media.eme.enabled", false)) {
-    // EME disabled by user, send notification to chrome so UI can
-    // inform user.
-    MediaKeySystemAccess::NotifyObservers(mWindow, aKeySystem,
-                                          MediaKeySystemStatus::Api_disabled);
-    p->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-    return p.forget();
+  if (!mMediaKeySystemAccessManager) {
+    mMediaKeySystemAccessManager = new MediaKeySystemAccessManager(mWindow);
   }
 
-  if (aKeySystem.IsEmpty() ||
-      (aOptions.WasPassed() && aOptions.Value().IsEmpty())) {
-    p->MaybeReject(NS_ERROR_DOM_INVALID_ACCESS_ERR);
-    return p.forget();
-  }
-
-  // Parse keysystem, split it out into keySystem prefix, and version suffix.
-  nsAutoString keySystem;
-  int32_t minCdmVersion = NO_CDM_VERSION;
-  if (!ParseKeySystem(aKeySystem,
-                      keySystem,
-                      minCdmVersion)) {
-    // Invalid keySystem string, or unsupported keySystem. Send notification
-    // to chrome to show a failure notice.
-    MediaKeySystemAccess::NotifyObservers(mWindow, aKeySystem, MediaKeySystemStatus::Cdm_not_supported);
-    p->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-    return p.forget();
-  }
-
-  MediaKeySystemStatus status = MediaKeySystemAccess::GetKeySystemStatus(keySystem, minCdmVersion);
-  if (status != MediaKeySystemStatus::Available) {
-    if (status != MediaKeySystemStatus::Error) {
-      // Failed due to user disabling something, send a notification to
-      // chrome, so we can show some UI to explain how the user can rectify
-      // the situation.
-      MediaKeySystemAccess::NotifyObservers(mWindow, keySystem, status);
-    }
-    p->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-    return p.forget();
-  }
-
-  // TODO: Wait (async) until the CDM is downloaded, if it's not already.
-
-  if (!aOptions.WasPassed() ||
-      MediaKeySystemAccess::IsSupported(keySystem, aOptions.Value())) {
-    nsRefPtr<MediaKeySystemAccess> access(new MediaKeySystemAccess(mWindow, keySystem));
-    p->MaybeResolve(access);
-    return p.forget();
-  }
-
-  p->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-
-  return p.forget();
+  mMediaKeySystemAccessManager->Request(promise, aKeySystem, aOptions);
+  return promise.forget();
 }
+
 #endif
 
 } // namespace dom

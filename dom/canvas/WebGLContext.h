@@ -197,42 +197,42 @@ public:
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(WebGLContext,
                                                            nsIDOMWebGLRenderingContext)
 
-    virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE = 0;
+    virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override = 0;
 
     NS_DECL_NSIDOMWEBGLRENDERINGCONTEXT
 
     // nsICanvasRenderingContextInternal
 #ifdef DEBUG
-    virtual int32_t GetWidth() const MOZ_OVERRIDE;
-    virtual int32_t GetHeight() const MOZ_OVERRIDE;
+    virtual int32_t GetWidth() const override;
+    virtual int32_t GetHeight() const override;
 #endif
-    NS_IMETHOD SetDimensions(int32_t width, int32_t height) MOZ_OVERRIDE;
+    NS_IMETHOD SetDimensions(int32_t width, int32_t height) override;
     NS_IMETHOD InitializeWithSurface(nsIDocShell*, gfxASurface*, int32_t,
-                                     int32_t) MOZ_OVERRIDE
+                                     int32_t) override
     {
         return NS_ERROR_NOT_IMPLEMENTED;
     }
 
-    NS_IMETHOD Reset() MOZ_OVERRIDE {
+    NS_IMETHOD Reset() override {
         /* (InitializeWithSurface) */
         return NS_ERROR_NOT_IMPLEMENTED;
     }
 
     virtual void GetImageBuffer(uint8_t** out_imageBuffer,
-                                int32_t* out_format) MOZ_OVERRIDE;
+                                int32_t* out_format) override;
     NS_IMETHOD GetInputStream(const char* mimeType,
                               const char16_t* encoderOptions,
-                              nsIInputStream** out_stream) MOZ_OVERRIDE;
+                              nsIInputStream** out_stream) override;
 
     mozilla::TemporaryRef<mozilla::gfx::SourceSurface>
-    GetSurfaceSnapshot(bool* out_premultAlpha) MOZ_OVERRIDE;
+    GetSurfaceSnapshot(bool* out_premultAlpha) override;
 
-    NS_IMETHOD SetIsOpaque(bool) MOZ_OVERRIDE { return NS_OK; };
-    bool GetIsOpaque() MOZ_OVERRIDE { return false; }
+    NS_IMETHOD SetIsOpaque(bool) override { return NS_OK; };
+    bool GetIsOpaque() override { return false; }
     NS_IMETHOD SetContextOptions(JSContext* cx,
-                                 JS::Handle<JS::Value> options) MOZ_OVERRIDE;
+                                 JS::Handle<JS::Value> options) override;
 
-    NS_IMETHOD SetIsIPC(bool) MOZ_OVERRIDE {
+    NS_IMETHOD SetIsIPC(bool) override {
         return NS_ERROR_NOT_IMPLEMENTED;
     }
 
@@ -241,9 +241,9 @@ public:
      * that a refresh has occurred. Callers must ensure an observer is removed
      * before it is destroyed.
      */
-    virtual void DidRefresh() MOZ_OVERRIDE;
+    virtual void DidRefresh() override;
 
-    NS_IMETHOD Redraw(const gfxRect&) MOZ_OVERRIDE {
+    NS_IMETHOD Redraw(const gfxRect&) override {
         return NS_ERROR_NOT_IMPLEMENTED;
     }
 
@@ -302,11 +302,11 @@ public:
 
     already_AddRefed<CanvasLayer>
     GetCanvasLayer(nsDisplayListBuilder* builder, CanvasLayer* oldLayer,
-                   LayerManager* manager) MOZ_OVERRIDE;
+                   LayerManager* manager) override;
 
     // Note that 'clean' here refers to its invalidation state, not the
     // contents of the buffer.
-    void MarkContextClean() MOZ_OVERRIDE { mInvalidated = false; }
+    void MarkContextClean() override { mInvalidated = false; }
 
     gl::GLContext* GL() const { return gl; }
 
@@ -815,9 +815,8 @@ public:
         UniformMatrix2fv_base(loc, transpose, value.Length(),
                               value.Elements());
     }
-    void UniformMatrix2fv_base(WebGLUniformLocation* loc,
-                               WebGLboolean transpose, size_t arrayLength,
-                               const float* data);
+    void UniformMatrix2fv_base(WebGLUniformLocation* loc, bool transpose,
+                               size_t arrayLength, const float* data);
 
     void UniformMatrix3fv(WebGLUniformLocation* loc, WebGLboolean transpose,
                           const dom::Float32Array& value)
@@ -830,9 +829,8 @@ public:
     {
         UniformMatrix3fv_base(loc, transpose, value.Length(), value.Elements());
     }
-    void UniformMatrix3fv_base(WebGLUniformLocation* loc,
-                               WebGLboolean transpose, size_t arrayLength,
-                               const float* data);
+    void UniformMatrix3fv_base(WebGLUniformLocation* loc, bool transpose,
+                               size_t arrayLength, const float* data);
 
     void UniformMatrix4fv(WebGLUniformLocation* loc, WebGLboolean transpose,
                           const dom::Float32Array& value)
@@ -840,15 +838,14 @@ public:
         value.ComputeLengthAndData();
         UniformMatrix4fv_base(loc, transpose, value.Length(), value.Data());
     }
-    void UniformMatrix4fv(WebGLUniformLocation* loc, WebGLboolean transpose,
+    void UniformMatrix4fv(WebGLUniformLocation* loc, bool transpose,
                           const dom::Sequence<float>& value)
     {
         UniformMatrix4fv_base(loc, transpose, value.Length(),
                               value.Elements());
     }
-    void UniformMatrix4fv_base(WebGLUniformLocation* loc,
-                               WebGLboolean transpose, size_t arrayLength,
-                               const float* data);
+    void UniformMatrix4fv_base(WebGLUniformLocation* loc, bool transpose,
+                               size_t arrayLength, const float* data);
 
     void UseProgram(WebGLProgram* prog);
 
@@ -864,10 +861,13 @@ public:
                                     GLuint* out_rawLoc,
                                     GLsizei* out_numElementsToUpload);
     bool ValidateUniformMatrixArraySetter(WebGLUniformLocation* loc,
-                                          uint8_t setterDims, GLenum setterType,
+                                          uint8_t setterCols,
+                                          uint8_t setterRows,
+                                          GLenum setterType,
                                           size_t setterArraySize,
                                           bool setterTranspose,
-                                          const char* info, GLuint* out_rawLoc,
+                                          const char* info,
+                                          GLuint* out_rawLoc,
                                           GLsizei* out_numElementsToUpload);
     void ValidateProgram(WebGLProgram* prog);
     bool ValidateUniformLocation(const char* info, WebGLUniformLocation* loc);
@@ -926,13 +926,12 @@ protected:
     WebGLRefPtr<WebGLBuffer> mBoundTransformFeedbackBuffer;
     WebGLRefPtr<WebGLBuffer> mBoundUniformBuffer;
 
-    UniquePtr<WebGLRefPtr<WebGLBuffer>[]> mBoundUniformBuffers;
-    UniquePtr<WebGLRefPtr<WebGLBuffer>[]> mBoundTransformFeedbackBuffers;
+    nsTArray<WebGLRefPtr<WebGLBuffer>> mBoundUniformBuffers;
+    nsTArray<WebGLRefPtr<WebGLBuffer>> mBoundTransformFeedbackBuffers;
 
     WebGLRefPtr<WebGLBuffer>& GetBufferSlotByTarget(GLenum target);
     WebGLRefPtr<WebGLBuffer>& GetBufferSlotByTargetIndexed(GLenum target,
                                                            GLuint index);
-    bool ValidateBufferUsageEnum(GLenum target, const char* info);
 
 // -----------------------------------------------------------------------------
 // Queries (WebGL2ContextQueries.cpp)
@@ -965,6 +964,7 @@ private:
     realGLboolean mDitherEnabled;
     realGLboolean mRasterizerDiscardEnabled;
     realGLboolean mScissorTestEnabled;
+    realGLboolean mStencilTestEnabled;
 
     bool ValidateCapabilityEnum(GLenum cap, const char* info);
     realGLboolean* GetStateTrackingSlot(GLenum cap);
@@ -1388,6 +1388,8 @@ private:
     virtual bool ValidateBufferTarget(GLenum target, const char* info) = 0;
     virtual bool ValidateBufferIndexedTarget(GLenum target, const char* info) = 0;
     virtual bool ValidateBufferForTarget(GLenum target, WebGLBuffer* buffer, const char* info) = 0;
+    virtual bool ValidateBufferUsageEnum(GLenum usage, const char* info) = 0;
+    virtual bool ValidateUniformMatrixTranspose(bool transpose, const char* info) = 0;
 
 protected:
     int32_t MaxTextureSizeForTarget(TexTarget target) const {
@@ -1529,17 +1531,26 @@ protected:
     uint64_t mLastUseIndex;
 
     bool mNeedsFakeNoAlpha;
+    bool mNeedsFakeNoStencil;
 
     struct ScopedMaskWorkaround {
         WebGLContext& mWebGL;
-        const bool mNeedsChange;
+        const bool mFakeNoAlpha;
+        const bool mFakeNoStencil;
 
-        static bool NeedsChange(WebGLContext& webgl) {
+        static bool ShouldFakeNoAlpha(WebGLContext& webgl) {
             // We should only be doing this if we're about to draw to the backbuffer, but
             // the backbuffer needs to have this fake-no-alpha workaround.
             return !webgl.mBoundDrawFramebuffer &&
                    webgl.mNeedsFakeNoAlpha &&
                    webgl.mColorWriteMask[3] != false;
+        }
+
+        static bool ShouldFakeNoStencil(WebGLContext& webgl) {
+            // We should only be doing this if we're about to draw to the backbuffer.
+            return !webgl.mBoundDrawFramebuffer &&
+                   webgl.mNeedsFakeNoStencil &&
+                   webgl.mStencilTestEnabled;
         }
 
         explicit ScopedMaskWorkaround(WebGLContext& webgl);
@@ -1581,6 +1592,7 @@ public:
     friend class WebGLBuffer;
     friend class WebGLSampler;
     friend class WebGLShader;
+    friend class WebGLSync;
     friend class WebGLTransformFeedback;
     friend class WebGLUniformLocation;
     friend class WebGLVertexArray;
@@ -1666,7 +1678,7 @@ WebGLContext::ValidateObject(const char* info, ObjectType* object)
 }
 
 // Listen visibilitychange and memory-pressure event for context lose/restore
-class WebGLObserver MOZ_FINAL
+class WebGLObserver final
     : public nsIObserver
     , public nsIDOMEventListener
 {

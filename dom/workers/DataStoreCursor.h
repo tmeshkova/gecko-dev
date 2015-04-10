@@ -22,7 +22,7 @@ namespace workers {
 
 class WorkerDataStore;
 
-class WorkerDataStoreCursor MOZ_FINAL
+class WorkerDataStoreCursor final
 {
 public:
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WorkerDataStoreCursor)
@@ -35,7 +35,7 @@ public:
   static already_AddRefed<WorkerDataStoreCursor> Constructor(GlobalObject& aGlobal,
                                                              ErrorResult& aRv);
 
-  bool WrapObject(JSContext *aCx, JS::MutableHandle<JSObject*> aReflector);
+  bool WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector);
 
   // WebIDL (public APIs)
 

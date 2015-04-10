@@ -26,7 +26,7 @@ namespace mozilla {
   }
 }
 
-class nsTranslationNodeList MOZ_FINAL : public nsITranslationNodeList
+class nsTranslationNodeList final : public nsITranslationNodeList
 {
 public:
   nsTranslationNodeList()
@@ -54,8 +54,8 @@ private:
   uint32_t mLength;
 };
 
-class nsDOMWindowUtils MOZ_FINAL : public nsIDOMWindowUtils,
-                                   public nsSupportsWeakReference
+class nsDOMWindowUtils final : public nsIDOMWindowUtils,
+                               public nsSupportsWeakReference
 {
   typedef mozilla::widget::TextEventDispatcher
     TextEventDispatcher;

@@ -12,8 +12,8 @@
 #include "nsString.h"
 #include "nsIIPCSerializableURI.h"
 
-class nsMozIconURI MOZ_FINAL : public nsIMozIconURI
-                             , public nsIIPCSerializableURI
+class nsMozIconURI final : public nsIMozIconURI
+                         , public nsIIPCSerializableURI
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS

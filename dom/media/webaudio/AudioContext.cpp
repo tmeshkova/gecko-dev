@@ -116,12 +116,12 @@ AudioContext::~AudioContext()
 }
 
 JSObject*
-AudioContext::WrapObject(JSContext* aCx)
+AudioContext::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   if (mIsOffline) {
-    return OfflineAudioContextBinding::Wrap(aCx, this);
+    return OfflineAudioContextBinding::Wrap(aCx, this, aGivenProto);
   } else {
-    return AudioContextBinding::Wrap(aCx, this);
+    return AudioContextBinding::Wrap(aCx, this, aGivenProto);
   }
 }
 
@@ -300,7 +300,8 @@ AudioContext::CreateMediaElementSource(HTMLMediaElement& aMediaElement,
     return nullptr;
   }
 #endif
-  nsRefPtr<DOMMediaStream> stream = aMediaElement.MozCaptureStream(aRv);
+  nsRefPtr<DOMMediaStream> stream = aMediaElement.MozCaptureStream(aRv,
+                                                                   mDestination->Stream()->Graph());
   if (aRv.Failed()) {
     return nullptr;
   }

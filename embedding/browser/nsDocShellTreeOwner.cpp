@@ -964,7 +964,7 @@ nsDocShellTreeOwner::GetOwnerRequestor()
 ///////////////////////////////////////////////////////////////////////////////
 // DefaultTooltipTextProvider
 
-class DefaultTooltipTextProvider MOZ_FINAL : public nsITooltipTextProvider
+class DefaultTooltipTextProvider final : public nsITooltipTextProvider
 {
 public:
     DefaultTooltipTextProvider();
@@ -1452,9 +1452,15 @@ ChromeTooltipListener::sTooltipCallback(nsITimer *aTimer,
       if (textFound) {
         nsString tipText(tooltipText);
         LayoutDeviceIntPoint screenDot = widget->WidgetToScreenOffset();
-        self->ShowTooltip(self->mMouseScreenX - screenDot.x,
-                          self->mMouseScreenY - screenDot.y,
-                          tipText);
+        double scaleFactor = 1.0;
+        if (shell->GetPresContext()) {
+          scaleFactor = double(nsPresContext::AppUnitsPerCSSPixel())/
+          shell->GetPresContext()->DeviceContext()->AppUnitsPerDevPixelAtUnitFullZoom();
+        }
+        // ShowTooltip expects widget-relative position.
+        self->ShowTooltip(self->mMouseScreenX - screenDot.x / scaleFactor,
+          self->mMouseScreenY - screenDot.y / scaleFactor,
+          tipText);
       }
     }
 

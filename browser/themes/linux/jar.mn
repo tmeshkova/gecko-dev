@@ -90,9 +90,10 @@ browser.jar:
   skin/classic/browser/session-restore.svg                  (../shared/incontent-icons/session-restore.svg)
   skin/classic/browser/tab-crashed.svg                      (../shared/incontent-icons/tab-crashed.svg)
   skin/classic/browser/welcome-back.svg                     (../shared/incontent-icons/welcome-back.svg)
-  skin/classic/browser/reader-mode-16.png             (../shared/reader/reader-mode-16.png)
+  skin/classic/browser/readerMode.svg                       (../shared/reader/readerMode.svg)
+  skin/classic/browser/readinglist/icons.svg          (../shared/readinglist/icons.svg)
   skin/classic/browser/readinglist/readinglist-icon.svg (../shared/readinglist/readinglist-icon.svg)
-  skin/classic/browser/readinglist/sidebar.css        (../shared/readinglist/sidebar.css)
+* skin/classic/browser/readinglist/sidebar.css        (readinglist/sidebar.css)
   skin/classic/browser/webRTC-shareDevice-16.png
   skin/classic/browser/webRTC-shareDevice-64.png
   skin/classic/browser/webRTC-sharingDevice-16.png    (../shared/webrtc/webRTC-sharingDevice-16.png)
@@ -136,10 +137,6 @@ browser.jar:
   skin/classic/browser/downloads/downloads.css        (downloads/downloads.css)
   skin/classic/browser/feeds/feedIcon.png             (feeds/feedIcon.png)
   skin/classic/browser/feeds/feedIcon16.png           (feeds/feedIcon16.png)
-  skin/classic/browser/feeds/videoFeedIcon.png        (feeds/feedIcon.png)
-  skin/classic/browser/feeds/videoFeedIcon16.png      (feeds/feedIcon16.png)
-  skin/classic/browser/feeds/audioFeedIcon.png        (feeds/feedIcon.png)
-  skin/classic/browser/feeds/audioFeedIcon16.png      (feeds/feedIcon16.png)
   skin/classic/browser/feeds/subscribe.css            (feeds/subscribe.css)
   skin/classic/browser/feeds/subscribe-ui.css         (feeds/subscribe-ui.css)
 * skin/classic/browser/newtab/newTab.css              (newtab/newTab.css)
@@ -178,6 +175,7 @@ browser.jar:
   skin/classic/browser/preferences/in-content/favicon.ico     (../shared/incontentprefs/favicon.ico)
   skin/classic/browser/preferences/in-content/icons.svg       (../shared/incontentprefs/icons.svg)
   skin/classic/browser/preferences/in-content/search.css      (../shared/incontentprefs/search.css)
+  skin/classic/browser/preferences/in-content/default-profile-image.svg   (../shared/incontentprefs/default-profile-image.svg)
   skin/classic/browser/preferences/applications.css   (preferences/applications.css)
   skin/classic/browser/preferences/aboutPermissions.css (preferences/aboutPermissions.css)
   skin/classic/browser/preferences/search.css         (preferences/search.css)
@@ -261,6 +259,8 @@ browser.jar:
   skin/classic/browser/devtools/command-console@2x.png        (../shared/devtools/images/command-console@2x.png)
   skin/classic/browser/devtools/command-eyedropper.png        (../shared/devtools/images/command-eyedropper.png)
   skin/classic/browser/devtools/command-eyedropper@2x.png     (../shared/devtools/images/command-eyedropper@2x.png)
+  skin/classic/browser/devtools/command-rulers.png            (../shared/devtools/images/command-rulers.png)
+  skin/classic/browser/devtools/command-rulers@2x.png         (../shared/devtools/images/command-rulers@2x.png)
   skin/classic/browser/devtools/alerticon-warning.png (../shared/devtools/images/alerticon-warning.png)
   skin/classic/browser/devtools/alerticon-warning@2x.png      (../shared/devtools/images/alerticon-warning@2x.png)
 * skin/classic/browser/devtools/ruleview.css          (../shared/devtools/ruleview.css)
@@ -313,6 +313,10 @@ browser.jar:
   skin/classic/browser/devtools/debugger-pause@2x.png     (../shared/devtools/images/debugger-pause@2x.png)
   skin/classic/browser/devtools/debugger-play.png      (../shared/devtools/images/debugger-play.png)
   skin/classic/browser/devtools/debugger-play@2x.png      (../shared/devtools/images/debugger-play@2x.png)
+  skin/classic/browser/devtools/fast-forward.png       (../shared/devtools/images/fast-forward.png)
+  skin/classic/browser/devtools/fast-forward@2x.png    (../shared/devtools/images/fast-forward@2x.png)
+  skin/classic/browser/devtools/rewind.png             (../shared/devtools/images/rewind.png)
+  skin/classic/browser/devtools/rewind@2x.png          (../shared/devtools/images/rewind@2x.png)
   skin/classic/browser/devtools/debugger-step-in.png   (../shared/devtools/images/debugger-step-in.png)
   skin/classic/browser/devtools/debugger-step-in@2x.png   (../shared/devtools/images/debugger-step-in@2x.png)
   skin/classic/browser/devtools/debugger-step-out.png  (../shared/devtools/images/debugger-step-out.png)
@@ -427,3 +431,8 @@ browser.jar:
 #endif
   skin/classic/browser/warning16.png                        (../shared/warning16.png)
   skin/classic/browser/warning16@2x.png                     (../shared/warning16@2x.png)
+
+% override chrome://browser/skin/feeds/audioFeedIcon.png              chrome://browser/skin/feeds/feedIcon.png
+% override chrome://browser/skin/feeds/audioFeedIcon16.png            chrome://browser/skin/feeds/feedIcon16.png
+% override chrome://browser/skin/feeds/videoFeedIcon.png              chrome://browser/skin/feeds/feedIcon.png
+% override chrome://browser/skin/feeds/videoFeedIcon16.png            chrome://browser/skin/feeds/feedIcon16.png

@@ -19,7 +19,7 @@ namespace dom {
 class BroadcastChannelParent;
 class ClonedMessageData;
 
-class BroadcastChannelService MOZ_FINAL
+class BroadcastChannelService final
 {
 public:
   NS_INLINE_DECL_REFCOUNTING(BroadcastChannelService)
@@ -32,7 +32,8 @@ public:
   void PostMessage(BroadcastChannelParent* aParent,
                    const ClonedMessageData& aData,
                    const nsAString& aOrigin,
-                   const nsAString& aChannel);
+                   const nsAString& aChannel,
+                   bool aPrivateBrowsing);
 
 private:
   BroadcastChannelService();

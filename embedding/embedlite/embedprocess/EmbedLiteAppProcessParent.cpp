@@ -51,7 +51,7 @@ namespace mozilla {
 namespace embedlite {
 
 // Temporary manager which allows to call InitLog
-class EmbedLiteAppProcessParentManager MOZ_FINAL : public mozilla::layers::LayerManager
+class EmbedLiteAppProcessParentManager final : public mozilla::layers::LayerManager
 {
 public:
   explicit EmbedLiteAppProcessParentManager()
@@ -134,15 +134,13 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   std::vector<std::string> extraArgs;
   extraArgs.push_back("-embedlite");
   mSubprocess->LaunchAndWaitForProcessHandle(extraArgs);
-  Open(mSubprocess->GetChannel(), mSubprocess->GetOwnedChildProcessHandle());
+  Open(mSubprocess->GetChannel(), base::GetProcId(mSubprocess->GetChildProcessHandle()));
 }
 
 EmbedLiteAppProcessParent::~EmbedLiteAppProcessParent()
 {
   LOGT();
   MOZ_COUNT_DTOR(EmbedLiteAppProcessParent);
-  if (OtherProcess())
-    base::CloseProcessHandle(OtherProcess());
 
   mApp->ChildReadyToDestroy();
 }
@@ -151,41 +149,32 @@ void
 EmbedLiteAppProcessParent::OnChannelConnected(int32_t pid)
 {
   LOGT();
-  ProcessHandle handle;
-  if (!base::OpenPrivilegedProcessHandle(pid, &handle)) {
-    NS_WARNING("Can't open handle to child process.");
-  }
-  else {
-    // we need to close the existing handle before setting a new one.
-    base::CloseProcessHandle(OtherProcess());
-    SetOtherProcess(handle);
+  SetOtherProcessId(pid);
 
 #if defined(ANDROID) || defined(LINUX)
-    // Check nice preference
-    int32_t nice = Preferences::GetInt("dom.ipc.content.nice", 0);
+  // Check nice preference
+  int32_t nice = Preferences::GetInt("dom.ipc.content.nice", 0);
 
-    // Environment variable overrides preference
-    char* relativeNicenessStr = getenv("MOZ_CHILD_PROCESS_RELATIVE_NICENESS");
-    if (relativeNicenessStr) {
-      nice = atoi(relativeNicenessStr);
-    }
-
-    /* make the GUI thread have higher priority on single-cpu devices */
-    nsCOMPtr<nsIPropertyBag2> infoService = do_GetService(NS_SYSTEMINFO_CONTRACTID);
-    if (infoService) {
-      int32_t cpus;
-      nsresult rv = infoService->GetPropertyAsInt32(NS_LITERAL_STRING("cpucount"), &cpus);
-      if (NS_FAILED(rv)) {
-        cpus = 1;
-      }
-      if (nice != 0 && cpus == 1) {
-        setpriority(PRIO_PROCESS, pid, getpriority(PRIO_PROCESS, pid) + nice);
-      }
-    }
-#endif
+  // Environment variable overrides preference
+  char* relativeNicenessStr = getenv("MOZ_CHILD_PROCESS_RELATIVE_NICENESS");
+  if (relativeNicenessStr) {
+    nice = atoi(relativeNicenessStr);
   }
-}
 
+  /* make the GUI thread have higher priority on single-cpu devices */
+  nsCOMPtr<nsIPropertyBag2> infoService = do_GetService(NS_SYSTEMINFO_CONTRACTID);
+  if (infoService) {
+    int32_t cpus;
+    nsresult rv = infoService->GetPropertyAsInt32(NS_LITERAL_STRING("cpucount"), &cpus);
+    if (NS_FAILED(rv)) {
+      cpus = 1;
+    }
+    if (nice != 0 && cpus == 1) {
+      setpriority(PRIO_PROCESS, pid, getpriority(PRIO_PROCESS, pid) + nice);
+    }
+  }
+#endif
+}
 
 bool
 EmbedLiteAppProcessParent::RecvInitialized()

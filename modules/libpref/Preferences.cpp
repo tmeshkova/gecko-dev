@@ -126,8 +126,8 @@ public:
   PrefChangedFunc mCallback;
 };
 
-class ValueObserver MOZ_FINAL : public nsIObserver,
-                                public ValueObserverHashKey
+class ValueObserver final : public nsIObserver,
+                            public ValueObserverHashKey
 {
   ~ValueObserver() {
     Preferences::RemoveObserver(this, mPrefName.get());
@@ -258,7 +258,7 @@ Preferences::SizeOfIncludingThisAndOtherStuff(mozilla::MallocSizeOf aMallocSizeO
   return n;
 }
 
-class PreferenceServiceReporter MOZ_FINAL : public nsIMemoryReporter
+class PreferenceServiceReporter final : public nsIMemoryReporter
 {
   ~PreferenceServiceReporter() {}
 
@@ -763,11 +763,9 @@ Preferences::GetBranch(const char *aPrefRoot, nsIPrefBranch **_retval)
 
   if ((nullptr != aPrefRoot) && (*aPrefRoot != '\0')) {
     // TODO: - cache this stuff and allow consumers to share branches (hold weak references I think)
-    nsPrefBranch* prefBranch = new nsPrefBranch(aPrefRoot, false);
-    if (!prefBranch)
-      return NS_ERROR_OUT_OF_MEMORY;
-
-    rv = CallQueryInterface(prefBranch, _retval);
+    nsRefPtr<nsPrefBranch> prefBranch = new nsPrefBranch(aPrefRoot, false);
+    prefBranch.forget(_retval);
+    rv = NS_OK;
   } else {
     // special case caching the default root
     nsCOMPtr<nsIPrefBranch> root(sRootBranch);

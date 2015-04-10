@@ -31,13 +31,6 @@ nsStyleImage::GetSubImage(uint8_t aIndex) const
 }
 
 bool
-nsStylePosition::HasTransform(const nsIFrame* aContextFrame) const
-{
-  NS_ASSERTION(aContextFrame->StylePosition() == this, "unexpected aContextFrame");
-  return HasTransformStyle() && aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms);
-}
-
-bool
 nsStyleText::HasTextShadow() const
 {
   return mTextShadow;
@@ -47,6 +40,14 @@ nsCSSShadowArray*
 nsStyleText::GetTextShadow() const
 {
   return mTextShadow;
+}
+
+bool
+nsStyleText::NewlineIsSignificant(const nsIFrame* aContextFrame) const
+{
+  NS_ASSERTION(aContextFrame->StyleText() == this, "unexpected aContextFrame");
+  return NewlineIsSignificantStyle() &&
+    !aContextFrame->StyleContext()->ShouldSuppressLineBreak();
 }
 
 bool
@@ -123,24 +124,31 @@ nsStyleDisplay::IsFloating(const nsIFrame* aContextFrame) const
   return IsFloatingStyle() && !aContextFrame->IsSVGText();
 }
 
+// If you change this function, also change the corresponding block in
+// nsCSSFrameConstructor::ConstructFrameFromItemInternal that references
+// this function in comments.
 bool
-nsStyleDisplay::IsPositioned(const nsIFrame* aContextFrame) const
+nsStyleDisplay::HasTransform(const nsIFrame* aContextFrame) const
+{
+  NS_ASSERTION(aContextFrame->StyleDisplay() == this, "unexpected aContextFrame");
+  return HasTransformStyle() && aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms);
+}
+
+bool
+nsStyleDisplay::IsFixedPosContainingBlock(const nsIFrame* aContextFrame) const
+{
+  return (HasTransform(aContextFrame) || HasPerspectiveStyle() ||
+          !aContextFrame->StyleSVGReset()->mFilters.IsEmpty()) &&
+      !aContextFrame->IsSVGText();
+}
+
+bool
+nsStyleDisplay::IsAbsPosContainingBlock(const nsIFrame* aContextFrame) const
 {
   NS_ASSERTION(aContextFrame->StyleDisplay() == this,
                "unexpected aContextFrame");
-  if (aContextFrame->IsSVGText()) {
-    return false;
-  }
-  if (IsAbsolutelyPositionedStyle() ||
-      IsRelativelyPositionedStyle()) {
-    return true;
-  }
-  const nsStylePosition* position = aContextFrame->StylePosition();
-  if (position->HasTransform(aContextFrame) ||
-      position->HasPerspectiveStyle()) {
-    return true;
-  }
-  return false;
+  return ((IsAbsolutelyPositionedStyle() || IsRelativelyPositionedStyle()) &&
+          !aContextFrame->IsSVGText()) || IsFixedPosContainingBlock(aContextFrame);
 }
 
 bool
