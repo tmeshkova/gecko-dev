@@ -313,7 +313,7 @@ void*
 EmbedLiteView::GetPlatformImage(int* width, int* height)
 {
   NS_ENSURE_TRUE(mViewImpl, nullptr);
-  void* aImage;
+  void* aImage = 0;
   mViewImpl->GetPlatformImage(&aImage, width, height);
   return aImage;
 }
