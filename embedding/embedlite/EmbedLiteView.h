@@ -71,6 +71,9 @@ public:
                                        const gfxSize& aScrollableSize) { return false; }
   // Some GL Context implementations require Platform GL context to be active and valid
   virtual bool RequestCurrentGLContext() { return false; }
+
+  // Will be always called from the compositor thread.
+  virtual void DrawUnderlay() {}
 };
 
 class EmbedLiteApp;

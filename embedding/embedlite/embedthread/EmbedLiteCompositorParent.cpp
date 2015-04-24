@@ -288,6 +288,14 @@ EmbedLiteCompositorParent::ResumeRendering()
   static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Resume();
 }
 
+void mozilla::embedlite::EmbedLiteCompositorParent::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
+{
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  if (view) {
+    view->GetListener()->DrawUnderlay();
+  }
+}
+
 } // namespace embedlite
 } // namespace mozilla
 
