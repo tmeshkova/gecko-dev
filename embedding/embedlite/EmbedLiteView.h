@@ -7,6 +7,7 @@
 #define MOZ_VIEW_EMBED_H
 
 #include "mozilla/RefPtr.h"
+#include "mozilla/WidgetUtils.h"
 #include "nsStringGlue.h"
 #include "gfxMatrix.h"
 #include "nsRect.h"
@@ -127,6 +128,9 @@ public:
 
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
+
+  // Set screen rotation and GL world transform offset and simple rotation are allowed (orientation change)
+  virtual void SetScreenRotation(mozilla::ScreenRotation rotation, gfxMatrix matrix);
 
   virtual void ScheduleUpdate();
 

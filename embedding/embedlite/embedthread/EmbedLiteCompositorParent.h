@@ -8,6 +8,7 @@
 
 #define COMPOSITOR_PERFORMANCE_WARNING
 
+#include "mozilla/WidgetUtils.h"
 #include "mozilla/layers/CompositorParent.h"
 #include "mozilla/layers/CompositorChild.h"
 #include "Layers.h"
@@ -32,7 +33,7 @@ public:
   bool RenderToContext(gfx::DrawTarget* aTarget);
   bool RenderGL();
   void SetSurfaceSize(int width, int height);
-  void SetWorldTransform(gfx::Matrix);
+  void SetScreenRotation(const mozilla::ScreenRotation& rotation, const gfx::Matrix& matrix);
   void SetClipping(const gfxRect& aClipRect);
   void* GetPlatformImage(int* width, int* height);
   virtual void SuspendRendering();
@@ -57,6 +58,8 @@ private:
 
   uint32_t mId;
   gfx::Matrix mWorldTransform;
+  mozilla::ScreenRotation mRotation;
+  bool mUseScreenRotation;
   nsIntRect mActiveClipping;
   CancelableTask* mCurrentCompositeTask;
   gfx::IntSize mLastViewSize;
