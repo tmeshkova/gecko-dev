@@ -7,6 +7,7 @@
 #define MOZ_VIEW_EMBED_H
 
 #include "mozilla/RefPtr.h"
+#include "mozilla/WidgetUtils.h"
 #include "nsStringGlue.h"
 #include "gfxMatrix.h"
 #include "nsRect.h"
@@ -113,6 +114,9 @@ public:
 
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
+
+  // Set screen rotation (orientation change).
+  virtual void SetScreenRotation(mozilla::ScreenRotation rotation);
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.

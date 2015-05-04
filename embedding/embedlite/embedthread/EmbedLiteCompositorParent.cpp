@@ -17,6 +17,8 @@
 #include "gfxUtils.h"
 #include "nsRefreshDriver.h"
 
+#include "math.h"
+
 #include "GLContext.h"                  // for GLContext
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
 #include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
@@ -40,6 +42,8 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
                                                      uint32_t id)
   : CompositorParent(aWidget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
   , mId(id)
+  , mRotation(ROTATION_0)
+  , mUseScreenRotation(false)
   , mCurrentCompositeTask(nullptr)
   , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
   , mInitialPaintCount(0)
@@ -117,8 +121,18 @@ EmbedLiteCompositorParent::UpdateTransformState()
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
-  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+
+  CompositorOGL *compositor = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor());
+  NS_ENSURE_TRUE(compositor, );
+
+  GLContext* context = compositor->gl();
   NS_ENSURE_TRUE(context, );
+
+  if (mUseScreenRotation) {
+    LOGNI("SetScreenRotation is not fully implemented");
+    // compositor->SetScreenRotation(mRotation);
+    // state->mLayerManager->SetWorldTransform(mWorldTransform);
+  }
 
   if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
     context->ResizeOffscreen(mLastViewSize);
@@ -225,6 +239,38 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   mLastViewSize.SizeTo(width, height);
   SetEGLSurfaceSize(width, height);
+}
+
+void EmbedLiteCompositorParent::SetScreenRotation(const mozilla::ScreenRotation &rotation)
+{
+  if (mRotation != rotation) {
+    gfx::Matrix rotationMartix;
+    switch (rotation) {
+    case mozilla::ROTATION_90:
+        // Pi / 2
+        rotationMartix.Rotate(M_PI_2l);
+        rotationMartix.Translate(0.0, -mLastViewSize.height);
+        break;
+    case mozilla::ROTATION_270:
+        // 3 / 2 * Pi
+        rotationMartix.Rotate(M_PI_2l * 3);
+        rotationMartix.Translate(-mLastViewSize.width, 0.0);
+        break;
+    case mozilla::ROTATION_180:
+        // Pi
+        rotationMartix.Rotate(M_PIl);
+        rotationMartix.Translate(-mLastViewSize.width, -mLastViewSize.height);
+        break;
+    default:
+        break;
+    }
+
+    mWorldTransform = rotationMartix;
+    mRotation = rotation;
+    mUseScreenRotation = true;
+    CancelCurrentCompositeTask();
+    ScheduleRenderOnCompositorThread();
+  }
 }
 
 void*

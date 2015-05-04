@@ -7,6 +7,7 @@
 #define MOZ_VIEW_EMBED_BASE_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteViewParent.h"
+#include "mozilla/WidgetUtils.h"
 #include "EmbedLiteViewIface.h"
 #include "GLDefs.h"
 
@@ -122,6 +123,11 @@ private:
 
   ScreenIntSize mViewSize;
   gfxSize mGLViewPortSize;
+
+  // Cache initial values.
+  mozilla::ScreenRotation mRotation;
+  bool mPendingRotation;
+
   MessageLoop* mUILoop;
   int mLastIMEState;
 
