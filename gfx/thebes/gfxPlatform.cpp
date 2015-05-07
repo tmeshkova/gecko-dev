@@ -2219,15 +2219,18 @@ InitLayersAccelerationPrefs()
     }
 #endif
 
-    if (Preferences::GetBool("media.hardware-video-decoding.enabled", false) &&
+    if (gfxInfo != nullptr) {
+      if (Preferences::GetBool("media.hardware-video-decoding.enabled", false) &&
 #ifdef XP_WIN
-        Preferences::GetBool("media.windows-media-foundation.use-dxva", true) &&
+          Preferences::GetBool("media.windows-media-foundation.use-dxva", true) &&
 #endif
-        NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING,
-                                               &status))) {
-      if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
+          NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING,
+                                                 &status)) &&
+          status == nsIGfxInfo::FEATURE_STATUS_OK) {
         sLayersSupportsHardwareVideoDecoding = true;
       }
+    } else {
+      sLayersSupportsHardwareVideoDecoding = true;
     }
 
     sLayersAccelerationPrefsInitialized = true;
