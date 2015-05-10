@@ -15,6 +15,10 @@
 #include "nsStringGlue.h"
 #include "EmbedLiteAppThreadChild.h"
 
+#if defined(ACCESSIBILITY)
+#include "nsAccessibilityService.h"
+#endif
+
 using namespace mozilla::embedlite;
 
 EmbedLiteXulAppInfo::EmbedLiteXulAppInfo()
