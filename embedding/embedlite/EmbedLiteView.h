@@ -117,6 +117,7 @@ public:
 
   // Set screen rotation (orientation change).
   virtual void SetScreenRotation(mozilla::ScreenRotation rotation);
+  virtual void ScheduleUpdate();
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
