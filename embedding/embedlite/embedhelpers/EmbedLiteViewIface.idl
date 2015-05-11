@@ -30,6 +30,7 @@ interface EmbedLiteViewIface
     void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
     void SetViewSize(in int32_t aWidth, in int32_t aHeight);
     void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
+    void ScheduleUpdate();
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);
     void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);

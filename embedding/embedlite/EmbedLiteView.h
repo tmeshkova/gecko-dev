@@ -125,6 +125,8 @@ public:
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
 
+  virtual void ScheduleUpdate();
+
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
   // and do communication between UI and Content child via json messages.
