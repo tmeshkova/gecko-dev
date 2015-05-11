@@ -64,6 +64,9 @@ public:
   virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
   virtual bool SendAsyncScrollDOMEvent(const gfxRect& aContentRect,
                                        const gfxSize& aScrollableSize) { return false; }
+
+  // Will be always called from the compositor thread.
+  virtual void DrawOverlay(const nsIntRect& aRect) {}
 };
 
 class EmbedLiteApp;
