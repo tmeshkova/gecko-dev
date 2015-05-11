@@ -74,6 +74,9 @@ public:
 
   // Will be always called from the compositor thread.
   virtual void DrawUnderlay() {}
+
+  // Will be always called from the compositor thread.
+  virtual void DrawOverlay(const nsIntRect& aRect) {}
 };
 
 class EmbedLiteApp;

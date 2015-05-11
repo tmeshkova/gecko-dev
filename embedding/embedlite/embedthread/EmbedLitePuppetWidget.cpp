@@ -577,5 +577,12 @@ EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, nsInt
   parent->DrawWindowUnderlay(aManager, aRect);
 }
 
+void EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
+{
+  EmbedLiteCompositorParent* parent =
+    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
+  parent->DrawWindowOverlay(aManager, aRect);
+}
+
 }  // namespace widget
 }  // namespace mozilla

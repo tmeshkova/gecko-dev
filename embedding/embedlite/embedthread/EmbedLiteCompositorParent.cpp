@@ -296,6 +296,14 @@ void mozilla::embedlite::EmbedLiteCompositorParent::DrawWindowUnderlay(LayerMana
   }
 }
 
+void EmbedLiteCompositorParent::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
+{
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  if (view) {
+    view->GetListener()->DrawOverlay(aRect);
+  }
+}
+
 } // namespace embedlite
 } // namespace mozilla
 

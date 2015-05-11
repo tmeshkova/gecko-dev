@@ -39,6 +39,7 @@ public:
   virtual void ResumeRendering();
 
   void DrawWindowUnderlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
+  void DrawWindowOverlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
 
 protected:
   virtual ~EmbedLiteCompositorParent();
