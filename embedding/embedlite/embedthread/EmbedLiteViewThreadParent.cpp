@@ -400,6 +400,15 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 }
 
 NS_IMETHODIMP
+EmbedLiteViewThreadParent::ScheduleUpdate()
+{
+  if (mCompositor) {
+    mCompositor->ScheduleRenderOnCompositorThread();
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::ResumeRendering()
 {
   if (mCompositor) {

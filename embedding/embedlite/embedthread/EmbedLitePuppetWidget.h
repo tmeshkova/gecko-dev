@@ -150,6 +150,23 @@ public:
   virtual nsIntRect GetNaturalBounds();
   virtual bool HasGLContext();
 
+  /**
+   * Called before the LayerManager draws the layer tree.
+   *
+   * Always called from the compositing thread. Puppet Widget passes the call
+   * forward to the EmbedLiteCompositorParent.
+   */
+  virtual void DrawWindowUnderlay(LayerManagerComposite* aManager, nsIntRect aRect);
+
+
+  /**
+   * Called after the LayerManager draws the layer tree
+   *
+   * Always called from the compositing thread. Puppet Widget passes the call
+   * forward to the EmbedLiteCompositorParent.
+   */
+  virtual void DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect);
+
   NS_IMETHOD         SetParent(nsIWidget* aNewParent);
   virtual nsIWidget *GetParent(void);
 

@@ -71,6 +71,12 @@ public:
                                        const gfxSize& aScrollableSize) { return false; }
   // Some GL Context implementations require Platform GL context to be active and valid
   virtual bool RequestCurrentGLContext() { return false; }
+
+  // Will be always called from the compositor thread.
+  virtual void DrawUnderlay() {}
+
+  // Will be always called from the compositor thread.
+  virtual void DrawOverlay(const nsIntRect& aRect) {}
 };
 
 class EmbedLiteApp;
@@ -121,6 +127,8 @@ public:
 
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
+
+  virtual void ScheduleUpdate();
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
