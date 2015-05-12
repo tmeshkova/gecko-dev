@@ -68,7 +68,7 @@ EmbedLiteViewThreadParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
   UpdateScrollController();
   if (mCompositor)
     if (mPendingRotation) {
-      mCompositor->SetScreenRotation(mRotation, mWorldTransform);
+      mCompositor->SetScreenRotation(mRotation);
       mPendingRotation = false;
     }
     mCompositor->SetSurfaceSize(mGLViewPortSize.width, mGLViewPortSize.height);
@@ -415,13 +415,12 @@ EmbedLiteViewThreadParent::ScheduleUpdate()
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetScreenRotation(const mozilla::ScreenRotation& rotation, const gfx::Matrix& matrix)
+EmbedLiteViewThreadParent::SetScreenRotation(const mozilla::ScreenRotation& rotation)
 {
-  mWorldTransform = matrix;
   mRotation = rotation;
 
   if (mCompositor) {
-    mCompositor->SetScreenRotation(rotation, matrix);
+    mCompositor->SetScreenRotation(rotation);
   } else {
     mPendingRotation = true;
   }

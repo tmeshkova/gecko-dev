@@ -33,7 +33,7 @@ public:
   bool RenderToContext(gfx::DrawTarget* aTarget);
   bool RenderGL();
   void SetSurfaceSize(int width, int height);
-  void SetScreenRotation(const mozilla::ScreenRotation& rotation, const gfx::Matrix& matrix);
+  void SetScreenRotation(const mozilla::ScreenRotation& rotation);
   void SetClipping(const gfxRect& aClipRect);
   void* GetPlatformImage(int* width, int* height);
   virtual void SuspendRendering();

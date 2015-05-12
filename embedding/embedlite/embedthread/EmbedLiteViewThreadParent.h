@@ -123,7 +123,6 @@ private:
   gfxSize mGLViewPortSize;
 
   // Cache initial values.
-  gfx::Matrix mWorldTransform;
   mozilla::ScreenRotation mRotation;
   bool mPendingRotation;
 
