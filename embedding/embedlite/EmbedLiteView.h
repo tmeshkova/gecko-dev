@@ -64,6 +64,9 @@ public:
   virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
   virtual bool SendAsyncScrollDOMEvent(const gfxRect& aContentRect,
                                        const gfxSize& aScrollableSize) { return false; }
+
+  // Will be always called from the compositor thread.
+  virtual void DrawOverlay(const nsIntRect& aRect) {}
 };
 
 class EmbedLiteApp;
@@ -117,6 +120,7 @@ public:
 
   // Set screen rotation (orientation change).
   virtual void SetScreenRotation(mozilla::ScreenRotation rotation);
+  virtual void ScheduleUpdate();
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.

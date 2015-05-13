@@ -423,6 +423,15 @@ EmbedLiteViewBaseParent::SetScreenRotation(const mozilla::ScreenRotation& rotati
 }
 
 NS_IMETHODIMP
+EmbedLiteViewBaseParent::ScheduleUpdate()
+{
+  if (mCompositor) {
+    mCompositor->ScheduleRenderOnCompositorThread();
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteViewBaseParent::ResumeRendering()
 {
   if (mCompositor) {

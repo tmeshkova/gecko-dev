@@ -35,6 +35,7 @@ interface EmbedLiteViewIface
     void SetViewSize(in int32_t aWidth, in int32_t aHeight);
     void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
     void SetScreenRotation([const] in ScreenRotation rotation);
+    void ScheduleUpdate();
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);
     void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
