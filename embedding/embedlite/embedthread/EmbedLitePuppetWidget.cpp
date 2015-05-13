@@ -566,7 +566,9 @@ EmbedLitePuppetWidget::GetNaturalBounds()
 bool
 EmbedLitePuppetWidget::HasGLContext()
 {
-  return true;
+  EmbedLiteCompositorParent* parent =
+    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
+  return parent->RequestGLContext();
 }
 
 void
