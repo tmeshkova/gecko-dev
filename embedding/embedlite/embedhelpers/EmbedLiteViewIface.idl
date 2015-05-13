@@ -7,6 +7,7 @@
 
 %{C++
 #include "mozilla/gfx/Matrix.h"
+#include "mozilla/WidgetUtils.h"
 #include "gfxRect.h"
 #include "InputData.h"
 %}
@@ -17,6 +18,7 @@ class nsString;
 %}
 [ref] native nsStringTArrayRef(nsTArray<nsString>);
 [ref] native gfxMatrix(mozilla::gfx::Matrix);
+[ref] native ScreenRotation(mozilla::ScreenRotation);
 [ref] native gfxRect(gfxRect);
 [ref] native nsIntPoint(nsIntPoint);
 [ref] native nsIntRect(nsIntRect);
@@ -30,6 +32,7 @@ interface EmbedLiteViewIface
     void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
     void SetViewSize(in int32_t aWidth, in int32_t aHeight);
     void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
+    void SetScreenRotation([const] in ScreenRotation rotation);
     void ScheduleUpdate();
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);
