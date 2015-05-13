@@ -584,6 +584,14 @@ EmbedLitePuppetWidget::HasGLContext()
 }
 
 void
+EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
+{
+  EmbedLiteCompositorParent* parent =
+    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
+  parent->DrawWindowUnderlay(aManager, aRect);
+}
+
+void
 EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
   EmbedLiteCompositorParent* parent =
