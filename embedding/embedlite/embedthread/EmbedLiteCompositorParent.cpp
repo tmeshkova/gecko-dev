@@ -335,6 +335,14 @@ bool EmbedLiteCompositorParent::RequestGLContext()
   return view ? view->GetListener()->RequestCurrentGLContext() : false;
 }
 
+void EmbedLiteCompositorParent::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
+{
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  if (view) {
+    view->GetListener()->DrawUnderlay();
+  }
+}
+
 void EmbedLiteCompositorParent::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
