@@ -329,6 +329,12 @@ EmbedLiteCompositorParent::ResumeRendering()
   static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Resume();
 }
 
+bool EmbedLiteCompositorParent::RequestGLContext()
+{
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  return view ? view->GetListener()->RequestCurrentGLContext() : false;
+}
+
 void EmbedLiteCompositorParent::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
