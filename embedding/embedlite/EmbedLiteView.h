@@ -71,6 +71,8 @@ public:
   // Will be always called from the compositor thread.
   virtual void DrawOverlay(const nsIntRect& aRect) {}
 
+  // Some GL Context implementations require Platform GL context to be active and valid
+  virtual bool RequestCurrentGLContext() { return false; }
 };
 
 class EmbedLiteApp;

@@ -248,18 +248,18 @@ void EmbedLiteCompositorParent::SetScreenRotation(const mozilla::ScreenRotation 
     switch (rotation) {
     case mozilla::ROTATION_90:
         // Pi / 2
-        rotationMartix.Rotate(M_PI_2l);
-        rotationMartix.Translate(0.0, -mLastViewSize.height);
+        rotationMartix.PreRotate(M_PI_2l);
+        rotationMartix.PreTranslate(0.0, -mLastViewSize.height);
         break;
     case mozilla::ROTATION_270:
         // 3 / 2 * Pi
-        rotationMartix.Rotate(M_PI_2l * 3);
-        rotationMartix.Translate(-mLastViewSize.width, 0.0);
+        rotationMartix.PreRotate(M_PI_2l * 3);
+        rotationMartix.PreTranslate(-mLastViewSize.width, 0.0);
         break;
     case mozilla::ROTATION_180:
         // Pi
-        rotationMartix.Rotate(M_PIl);
-        rotationMartix.Translate(-mLastViewSize.width, -mLastViewSize.height);
+        rotationMartix.PreRotate(M_PIl);
+        rotationMartix.PreTranslate(-mLastViewSize.width, -mLastViewSize.height);
         break;
     default:
         break;

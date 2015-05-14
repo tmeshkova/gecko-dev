@@ -68,7 +68,7 @@ EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
   UpdateScrollController();
   if (mCompositor) {
     if (mPendingRotation) {
-      mCompositor->SetScreenRotation(mRotation, mWorldTransform);
+      mCompositor->SetScreenRotation(mRotation);
       mPendingRotation = false;
     }
     mCompositor->SetSurfaceSize(mGLViewPortSize.width, mGLViewPortSize.height);
