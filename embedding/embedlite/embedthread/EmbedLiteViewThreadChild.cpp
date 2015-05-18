@@ -252,6 +252,14 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId, const bool& 
     NS_ERROR("SetVisibility failed.\n");
   }
 
+  nsAutoCString initialUrl;
+  rv = Preferences::GetDefaultCString("browser.newtab.url", &initialUrl);
+  if (NS_SUCCEEDED(rv) && !initialUrl.IsEmpty()) {
+    mWebNavigation->LoadURI(NS_ConvertUTF8toUTF16(initialUrl).get(),
+                            nsIWebNavigation::LOAD_FLAGS_BYPASS_HISTORY,
+                            0, 0, 0);
+  }
+
   mHelper = new TabChildHelper(this);
   unused << SendInitialized();
 }
