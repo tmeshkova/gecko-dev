@@ -164,7 +164,10 @@ EmbedLiteCompositorParent::Invalidate()
   UpdateTransformState();
 
   if (view->GetListener() && !view->GetListener()->Invalidate()) {
-    mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL);
+    // Replace CompositorParent::CompositeCallback with EmbedLiteCompositorParent::RenderGL
+    // in mCurrentCompositeTask (NB: actually EmbedLiteCompositorParent::mCurrentCompositorParent
+    // overshadows CompositorParent::mCurrentCompositorTask. Beware!).
+    mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL, TimeStamp::Now());
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
     return true;
   }
@@ -188,8 +191,9 @@ bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
   return true;
 }
 
-bool EmbedLiteCompositorParent::RenderGL()
+bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
 {
+  mLastCompose = aScheduleTime;
   if (mCurrentCompositeTask) {
     mCurrentCompositeTask->Cancel();
     mCurrentCompositeTask = nullptr;

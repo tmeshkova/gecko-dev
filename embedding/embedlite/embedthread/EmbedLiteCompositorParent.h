@@ -55,7 +55,7 @@ protected:
 private:
   bool Invalidate();
   void UpdateTransformState();
-  bool RenderGL();
+  bool RenderGL(TimeStamp aScheduleTime);
 
   uint32_t mId;
   gfx::Matrix mWorldTransform;
