@@ -45,6 +45,12 @@ pref("layers.use-deprecated-textures", false);
 pref("layers.enable-tiles", true);
 pref("layers.async-pan-zoom.enabled", true);
 pref("font.size.inflation.disabledInMasterProcess", true);
+// We want to limit layers for two reasons:
+// 1) We can't scroll smoothly if we have to many draw calls
+// 2) Pages that have too many layers consume too much memory and crash.
+// By limiting the number of layers on mobile we're making the main thread
+// work harder keep scrolling smooth and memory low.
+pref("layers.max-active", 20);
 
 // APZC preferences.
 
