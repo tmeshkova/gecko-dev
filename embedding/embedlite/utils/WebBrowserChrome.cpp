@@ -571,8 +571,10 @@ NS_IMETHODIMP WebBrowserChrome::GetTitle(char16_t** aTitle)
 NS_IMETHODIMP WebBrowserChrome::SetTitle(const char16_t* aTitle)
 {
   // Store local title
-  mTitle = aTitle;
-  mListener->OnTitleChanged(mTitle.get());
+  mTitle.Assign(nsDependentString(aTitle));
+  if (mListener) {
+      mListener->OnTitleChanged(mTitle.get());
+  }
   return NS_OK;
 }
 
