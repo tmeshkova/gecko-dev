@@ -357,3 +357,7 @@ pref("full-screen-api.content-only", true);
 // the window, the window size doesn't change. This pref has no effect when
 // running in actual Metro mode, as the widget will already be fullscreen then.
 pref("full-screen-api.ignore-widgets", true);
+
+// URL for content loaded initnially into the view after it's created. The URL
+// won't be added to browsing history.
+pref("browser.newtab.url", "about:blank");
