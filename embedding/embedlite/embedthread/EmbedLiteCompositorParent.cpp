@@ -339,6 +339,34 @@ void EmbedLiteCompositorParent::DrawWindowOverlay(LayerManagerComposite *aManage
   }
 }
 
+void EmbedLiteCompositorParent::ClearCompositorSurface(nscolor aColor)
+{
+  CancelCurrentCompositeTask();
+  const CompositorParent::LayerTreeState* state = GetIndirectShadowTree(RootLayerTreeId());
+  MOZ_ASSERT(state && state->mLayerManager);
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  if (context) {
+    CompositorLoop()->PostTask(FROM_HERE, NewRunnableFunction(&ClearCompositorSurfaceImpl, context, aColor));
+  } else {
+    NS_WARNING("Trying to clear content of compositor without GL context!");
+  }
+}
+
+void EmbedLiteCompositorParent::ClearCompositorSurfaceImpl(GLContext* aContext, nscolor aColor)
+{
+  MOZ_ASSERT(CompositorParent::IsInCompositorThread());
+  if (aContext->MakeCurrent()) {
+    LOGT("color: %x", aColor);
+    float r = NS_GET_R(aColor) / 255;
+    float g = NS_GET_G(aColor) / 255;
+    float b = NS_GET_B(aColor) / 255;
+    float a = NS_GET_A(aColor) / 255;
+    aContext->fClearColor(r, g, b, a);
+    aContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
+    aContext->SwapBuffers();
+  }
+}
+
 } // namespace embedlite
 } // namespace mozilla
 

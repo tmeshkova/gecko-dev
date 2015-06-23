@@ -303,6 +303,13 @@ EmbedLiteView::ScheduleUpdate()
 }
 
 void
+EmbedLiteView::ClearContent(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->ClearContent(NS_RGBA(r, g, b, a));
+}
+
+void
 EmbedLiteView::SuspendRendering()
 {
   NS_ENSURE_TRUE(mViewImpl, );

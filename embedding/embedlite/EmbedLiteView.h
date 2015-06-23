@@ -127,6 +127,10 @@ public:
   // Set screen rotation (orientation change).
   virtual void SetScreenRotation(mozilla::ScreenRotation rotation);
   virtual void ScheduleUpdate();
+  // Clear the content of the view compositing surface with a given color.
+  // Calling the function before the view has created it's compositor
+  // (EmbedLiteViewListener::RequestCurrentGLContext was called) is a no-op.
+  virtual void ClearContent(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
