@@ -111,6 +111,8 @@ pref("embedlite.azpc.json.singletap", false);
 pref("embedlite.azpc.json.doubletap", false);
 pref("embedlite.azpc.json.longtap", false);
 pref("embedlite.azpc.json.scroll", false);
+// Make gecko compositor use GL context/surface provided by the application.
+pref("embedlite.compositor.external_gl_context", false);
 pref("extensions.update.enabled", false);
 pref("toolkit.storage.synchronous", 0);
 /* new html5 forms */

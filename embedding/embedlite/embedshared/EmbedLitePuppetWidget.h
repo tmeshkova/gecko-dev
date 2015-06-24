@@ -145,7 +145,6 @@ public:
   virtual void CreateCompositor(int aWidth, int aHeight);
   virtual void CreateCompositor();
   virtual nsIntRect GetNaturalBounds();
-  virtual bool HasGLContext();
 
   /**
    * Called before the LayerManager draws the layer tree.
@@ -172,6 +171,7 @@ protected:
 private:
   nsresult Paint();
   bool ViewIsValid();
+  mozilla::gl::GLContext* GetGLContext() const;
 
   EmbedLitePuppetWidget* TopWindow();
   bool IsTopLevel();
