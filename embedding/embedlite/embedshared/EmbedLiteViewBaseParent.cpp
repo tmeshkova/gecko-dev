@@ -18,7 +18,6 @@
 
 using namespace mozilla::gfx;
 using namespace mozilla::gl;
-
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
@@ -448,6 +447,15 @@ EmbedLiteViewBaseParent::SuspendRendering()
     mCompositor->SuspendRendering();
   }
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewBaseParent::ClearContent(nscolor color)
+{
+  if (mCompositor) {
+    mCompositor->ClearCompositorSurface(color);
+  }
   return NS_OK;
 }
 

@@ -28,7 +28,7 @@ class nsString;
 [ptr] native buffer(unsigned char);
 [ptr] native EmbedLiteView(mozilla::embedlite::EmbedLiteView);
 
-[scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
+[scriptable, uuid(9aab16e8-1992-11e5-b60b-1697f925ec7b)]
 interface EmbedLiteViewIface
 {
     void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
@@ -50,4 +50,5 @@ interface EmbedLiteViewIface
     void SuspendRendering();
     void ResumeRendering();
     void SetEmbedAPIView(in EmbedLiteView aView);
+    void ClearContent(in uint32_t aColor);
 };
