@@ -51,6 +51,7 @@ const size_t EmbedLitePuppetWidget::kMaxDimension = 4000;
 static nsTArray<EmbedLitePuppetWidget*> gTopLevelWindows;
 static bool sFailedToCreateGLContext = false;
 static bool sUseExternalGLContext = false;
+static bool sRequestGLContextEarly = false;
 
 NS_IMPL_ISUPPORTS_INHERITED(EmbedLitePuppetWidget, nsBaseWidget,
                             nsISupportsWeakReference)
@@ -101,6 +102,8 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, ui
   if (!prefsInitialized) {
     Preferences::AddBoolVarCache(&sUseExternalGLContext,
         "embedlite.compositor.external_gl_context", false);
+    Preferences::AddBoolVarCache(&sRequestGLContextEarly,
+        "embedlite.compositor.request_external_gl_context_early", false);
     prefsInitialized = true;
   }
 }
@@ -152,6 +155,13 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
   if (IsTopLevel()) {
     LOGT("Append this to toplevel windows:%p", this);
     gTopLevelWindows.AppendElement(this);
+  }
+
+  if (sUseExternalGLContext && sRequestGLContextEarly) {
+    // GetPlatform() should create compositor loop if it doesn't exist, yet.
+    gfxPlatform::GetPlatform();
+    CompositorParent::CompositorLoop()->PostTask(FROM_HERE,
+        NewRunnableFunction(&CreateGLContextEarly, mId));
   }
 
   return NS_OK;
@@ -456,6 +466,20 @@ EmbedLitePuppetWidget::GetGLContext() const
     }
   }
   return nullptr;
+}
+
+void
+EmbedLitePuppetWidget::CreateGLContextEarly(uint32_t aViewId)
+{
+  LOGT("ViewId:%u", aViewId);
+  MOZ_ASSERT(CompositorParent::IsInCompositorThread());
+  MOZ_ASSERT(sRequestGLContextEarly);
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(aViewId);
+  if (view) {
+    view->GetListener()->RequestCurrentGLContext();
+  } else {
+    NS_WARNING("Trying to early create GL context for non existing view!");
+  }
 }
 
 LayerManager*

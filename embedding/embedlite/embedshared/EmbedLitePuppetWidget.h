@@ -172,6 +172,7 @@ private:
   nsresult Paint();
   bool ViewIsValid();
   mozilla::gl::GLContext* GetGLContext() const;
+  static void CreateGLContextEarly(uint32_t aViewId);
 
   EmbedLitePuppetWidget* TopWindow();
   bool IsTopLevel();
