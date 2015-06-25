@@ -118,6 +118,7 @@ protected:
 
   virtual bool RecvSetIsActive(const bool&) override;
   virtual bool RecvSetIsFocused(const bool&) override;
+  virtual bool RecvSetThrottlePainting(const bool&) override;
   virtual bool RecvSuspendTimeouts() override;
   virtual bool RecvResumeTimeouts() override;
   virtual bool RecvLoadFrameScript(const nsString&) override;

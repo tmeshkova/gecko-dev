@@ -39,6 +39,7 @@ child:
     SetGLViewSize(gfxSize aSize);
     SetIsActive(bool aIsActive);
     SetIsFocused(bool aIsFocused);
+    SetThrottlePainting(bool aThrottle);
     SuspendTimeouts();
     ResumeTimeouts();
     AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);

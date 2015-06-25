@@ -95,6 +95,14 @@ EmbedLiteView::SetIsFocused(bool aIsFocused)
 }
 
 void
+EmbedLiteView::SetThrottlePainting(bool aThrottle)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendSetThrottlePainting(aThrottle);
+}
+
+void
 EmbedLiteView::SuspendTimeouts()
 {
   LOGT();
