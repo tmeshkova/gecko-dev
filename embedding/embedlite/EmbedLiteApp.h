@@ -80,6 +80,7 @@ public:
 
   // Delayed post task helper for delayed functions call in main thread
   virtual void* PostTask(EMBEDTaskCallback callback, void* userData, int timeout = 0);
+  virtual void* PostCompositorTask(EMBEDTaskCallback callback, void* userData, int timeout = 0);
   virtual void CancelTask(void* aTask);
 
   // Setup profile path for embedding, or null if embedding supposed to be profile-less
