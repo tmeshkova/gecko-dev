@@ -11,6 +11,7 @@
 #include "base/at_exit.h"
 #include "mozilla/unused.h"
 #include "base/message_loop.h"               // for MessageLoop
+#include "mozilla/layers/APZCTreeManager.h"  // for APZCTreeManager::SetDPI()
 
 #include "mozilla/embedlite/EmbedLiteAPI.h"
 
@@ -363,6 +364,12 @@ EmbedLiteApp::SetIntPref(const char* aName, int aValue)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
   unused << mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
+}
+
+void
+EmbedLiteApp::SetDPI(const float aDPI)
+{
+  mozilla::layers::APZCTreeManager::SetDPI(aDPI);
 }
 
 void

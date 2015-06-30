@@ -121,6 +121,7 @@ public:
   virtual void SetBoolPref(const char* aName, bool aValue);
   virtual void SetCharPref(const char* aName, const char* aValue);
   virtual void SetIntPref(const char* aName, int aValue);
+  virtual void SetDPI(const float aDPI);
 
   virtual void LoadGlobalStyleSheet(const char* aUri, bool aEnable);
 
