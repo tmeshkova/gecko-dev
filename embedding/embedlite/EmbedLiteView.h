@@ -90,6 +90,7 @@ public:
   virtual void LoadURL(const char* aUrl);
   virtual void SetIsActive(bool);
   virtual void SetIsFocused(bool);
+  virtual void SetThrottlePainting(bool);
   virtual void SuspendTimeouts();
   virtual void ResumeTimeouts();
   virtual void GoBack();
