@@ -19,12 +19,15 @@
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/ipc/MessageChannel.h"
 #include "EmbedLitePuppetWidget.h"
+#include "EmbedLiteView.h"
 #include "nsIWidgetListener.h"
 
 #include "Layers.h"
 #include "BasicLayers.h"
 #include "ClientLayerManager.h"
 #include "GLContextProvider.h"
+#include "GLContext.h"
+#include "GLLibraryEGL.h"
 #include "EmbedLiteCompositorParent.h"
 #include "mozilla/Preferences.h"
 #include "EmbedLiteApp.h"
@@ -33,6 +36,7 @@
 #include "mozilla/BasicEvents.h"
 
 using namespace mozilla::dom;
+using namespace mozilla::gl;
 using namespace mozilla::hal;
 using namespace mozilla::layers;
 using namespace mozilla::widget;
@@ -46,6 +50,8 @@ const size_t EmbedLitePuppetWidget::kMaxDimension = 4000;
 
 static nsTArray<EmbedLitePuppetWidget*> gTopLevelWindows;
 static bool sFailedToCreateGLContext = false;
+static bool sUseExternalGLContext = false;
+static bool sRequestGLContextEarly = false;
 
 NS_IMPL_ISUPPORTS_INHERITED(EmbedLitePuppetWidget, nsBaseWidget,
                             nsISupportsWeakReference)
@@ -92,6 +98,14 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, ui
 {
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
+  static bool prefsInitialized = false;
+  if (!prefsInitialized) {
+    Preferences::AddBoolVarCache(&sUseExternalGLContext,
+        "embedlite.compositor.external_gl_context", false);
+    Preferences::AddBoolVarCache(&sRequestGLContextEarly,
+        "embedlite.compositor.request_external_gl_context_early", false);
+    prefsInitialized = true;
+  }
 }
 
 EmbedLitePuppetWidget::~EmbedLitePuppetWidget()
@@ -141,6 +155,13 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
   if (IsTopLevel()) {
     LOGT("Append this to toplevel windows:%p", this);
     gTopLevelWindows.AppendElement(this);
+  }
+
+  if (sUseExternalGLContext && sRequestGLContextEarly) {
+    // GetPlatform() should create compositor loop if it doesn't exist, yet.
+    gfxPlatform::GetPlatform();
+    CompositorParent::CompositorLoop()->PostTask(FROM_HERE,
+        NewRunnableFunction(&CreateGLContextEarly, mId));
   }
 
   return NS_OK;
@@ -262,6 +283,10 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
     case NS_NATIVE_SHAREABLE_WINDOW: {
       LOGW("aDataType:%i\n", __LINE__, aDataType);
       return (void*)nullptr;
+    }
+    case NS_NATIVE_OPENGL_CONTEXT: {
+      MOZ_ASSERT(!GetParent());
+      return GetGLContext();
     }
     case NS_NATIVE_WINDOW:
     case NS_NATIVE_DISPLAY:
@@ -416,6 +441,45 @@ bool
 EmbedLitePuppetWidget::ViewIsValid()
 {
   return EmbedLiteApp::GetInstance()->GetViewByID(mId) != nullptr;
+}
+
+GLContext*
+EmbedLitePuppetWidget::GetGLContext() const
+{
+  LOGT("this:%p, UseExternalContext:%d", this, sUseExternalGLContext);
+  if (sUseExternalGLContext) {
+    if (!sEGLLibrary.EnsureInitialized()) {
+      return nullptr;
+    }
+
+    EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+    if (view && view->GetListener()->RequestCurrentGLContext()) {
+      void* surface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
+      void* context = sEGLLibrary.fGetCurrentContext();
+      nsRefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface);
+      if (!mozContext->Init()) {
+        return nullptr;
+      }
+      return mozContext.forget().take();
+    } else {
+      NS_ERROR("Embedder wants to use external GL context without actually providing it!");
+    }
+  }
+  return nullptr;
+}
+
+void
+EmbedLitePuppetWidget::CreateGLContextEarly(uint32_t aViewId)
+{
+  LOGT("ViewId:%u", aViewId);
+  MOZ_ASSERT(CompositorParent::IsInCompositorThread());
+  MOZ_ASSERT(sRequestGLContextEarly);
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(aViewId);
+  if (view) {
+    view->GetListener()->RequestCurrentGLContext();
+  } else {
+    NS_WARNING("Trying to early create GL context for non existing view!");
+  }
 }
 
 LayerManager*
@@ -575,14 +639,6 @@ nsIntRect
 EmbedLitePuppetWidget::GetNaturalBounds()
 {
   return nsIntRect();
-}
-
-bool
-EmbedLitePuppetWidget::HasGLContext()
-{
-  EmbedLiteCompositorParent* parent =
-    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
-  return parent->RequestGLContext();
 }
 
 void

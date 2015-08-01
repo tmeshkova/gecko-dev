@@ -37,8 +37,6 @@ public:
   virtual void SuspendRendering();
   virtual void ResumeRendering();
 
-  virtual bool RequestGLContext();
-
   void DrawWindowUnderlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
   void DrawWindowOverlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
 
