@@ -95,6 +95,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, ui
   , mIMEComposing(false)
   , mParent(nullptr)
   , mId(aId)
+  , mDPI(-1.0)
 {
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
@@ -560,6 +561,21 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
 
   return mLayerManager;
 }
+
+float
+EmbedLitePuppetWidget::GetDPI()
+{
+  if (mDPI < 0) {
+    if (mEmbed) {
+      mEmbed->GetDPI(&mDPI);
+    } else {
+      mDPI = nsBaseWidget::GetDPI();
+    }
+  }
+
+  return mDPI;
+}
+
 
 CompositorParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)

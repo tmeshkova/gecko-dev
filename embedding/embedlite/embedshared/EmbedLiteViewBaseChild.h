@@ -63,6 +63,7 @@ public:
 
   virtual nsIWebNavigation* WebNavigation() override;
   virtual nsIWidget* WebWidget() override;
+  virtual bool GetDPI(float* aDPI) override;
 
 /*---------TabChildIface---------------*/
 

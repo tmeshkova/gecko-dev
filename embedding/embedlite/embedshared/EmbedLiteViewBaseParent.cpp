@@ -29,6 +29,7 @@ EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& id, const uint3
   : mId(id)
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
+  , mDPI(-1.0)
   , mRotation(ROTATION_0)
   , mPendingRotation(false)
   , mUILoop(MessageLoop::current())
@@ -87,6 +88,9 @@ EmbedLiteViewBaseParent::UpdateScrollController()
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
     mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
+    if (mDPI > 0) {
+      mController->GetManager()->SetDPI(mDPI);
+    }
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
 
@@ -390,10 +394,31 @@ EmbedLiteViewBaseParent::SetViewSize(int width, int height)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteViewBaseParent::SetDPI(float dpi)
+{
+  mDPI = dpi;
+
+  if (mController->GetManager()) {
+    mController->GetManager()->SetDPI(mDPI);
+  }
+
+  return NS_OK;
+}
+
 bool
 EmbedLiteViewBaseParent::RecvGetGLViewSize(gfxSize* aSize)
 {
   *aSize = mGLViewPortSize;
+  return true;
+}
+
+bool
+EmbedLiteViewBaseParent::RecvGetDPI(float* aValue)
+{
+  NS_ENSURE_TRUE((mDPI > 0), false);
+
+  *aValue = mDPI;
   return true;
 }
 

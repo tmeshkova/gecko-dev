@@ -33,6 +33,7 @@ interface EmbedLiteViewIface
 {
     void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
     void SetViewSize(in int32_t aWidth, in int32_t aHeight);
+    void SetDPI(in float dpi);
     void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
     void SetScreenRotation([const] in ScreenRotation rotation);
     void ScheduleUpdate();

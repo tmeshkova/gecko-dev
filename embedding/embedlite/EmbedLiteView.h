@@ -115,6 +115,9 @@ public:
   // Setup renderable view size
   virtual void SetViewSize(int width, int height);
 
+  // Set DPI for the view (views placed on different screens may get different DPI).
+  virtual void SetDPI(const float& dpi);
+
   // Compositor Interface
   //   PNG Decoded data
   virtual char* GetImageAsURL(int aWidth = -1, int aHeight = -1);

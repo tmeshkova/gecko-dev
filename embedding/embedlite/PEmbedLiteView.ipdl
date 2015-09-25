@@ -101,6 +101,11 @@ parent:
     sync GetGLViewSize()
       returns (gfxSize aSize);
 
+    /*
+     * Gets the DPI of the screen corresponding to this view.
+     */
+    sync GetDPI() returns (float value);
+
     sync SyncMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);
 

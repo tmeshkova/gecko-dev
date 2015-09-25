@@ -216,6 +216,13 @@ EmbedLiteView::SetViewSize(int width, int height)
 }
 
 void
+EmbedLiteView::SetDPI(const float& dpi)
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->SetDPI(dpi);
+}
+
+void
 EmbedLiteView::SetGLViewPortSize(int width, int height)
 {
   LOGNI("sz[%i,%i]", width, height);

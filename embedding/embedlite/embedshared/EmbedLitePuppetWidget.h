@@ -145,6 +145,7 @@ public:
   virtual void CreateCompositor(int aWidth, int aHeight);
   virtual void CreateCompositor();
   virtual nsIntRect GetNaturalBounds();
+  virtual float GetDPI() override;
 
   /**
    * Called before the LayerManager draws the layer tree.
@@ -189,6 +190,7 @@ private:
   nsCOMPtr<nsIWidget> mParent;
 
   uint32_t mId;
+  float mDPI;
 };
 
 }  // namespace widget

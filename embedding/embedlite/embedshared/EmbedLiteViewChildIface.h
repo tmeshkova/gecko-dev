@@ -53,6 +53,7 @@ public:
   virtual bool DoCallRpcMessage(const char16_t* aMessageName,
                                 const char16_t* aMessage,
                                 InfallibleTArray<nsString>* aJSONRetVal) = 0;
+  virtual bool GetDPI(float* aDPI) = 0;
 
   /**
    * Relay given frame metrics to listeners subscribed via EmbedLiteAppService

@@ -332,6 +332,12 @@ EmbedLiteViewBaseChild::ZoomToRect(const uint32_t& aPresShellId,
 }
 
 bool
+EmbedLiteViewBaseChild::GetDPI(float* aDPI)
+{
+  return SendGetDPI(aDPI);
+}
+
+bool
 EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
                                                 const ViewID& aViewId,
                                                 const bool& aIsRoot,
