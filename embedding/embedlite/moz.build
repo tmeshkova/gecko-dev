@@ -19,6 +19,7 @@ FINAL_LIBRARY = 'xul'
 XPIDL_SOURCES += [
     'embedshared/EmbedLiteViewIface.idl',
     'modules/nsIEmbedAppService.idl',
+    'modules/nsIEmbedFrame.idl',
     'modules/nsIEmbedLiteJSON.idl',
     'utils/nsIEmbedBrowserChromeListener.idl',
 ]
@@ -62,6 +63,7 @@ UNIFIED_SOURCES += [
     'embedthread/EmbedLiteAppThreadChild.cpp',
     'embedthread/EmbedLiteAppThreadParent.cpp',
     'embedthread/EmbedLiteViewThreadChild.cpp',
+    'modules/EmbedFrame.cpp',
     'modules/EmbedLiteAppService.cpp',
     'modules/EmbedLiteJSON.cpp',
     'utils/DirProvider.cpp',

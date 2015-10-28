@@ -12,6 +12,9 @@
 #include <stdio.h>
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteAppChildIface.h"
+#include "nsCOMPtr.h"
+#include "nsIThread.h"
+#include "nsThreadUtils.h"           // for NS_GetCurrentThread
 
 using namespace mozilla::embedlite;
 
