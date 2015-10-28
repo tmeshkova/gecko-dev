@@ -30,6 +30,7 @@
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
 #include "ScriptSettings.h" // for AutoNoJSAPI
+#include "TabChildHelper.h"
 
 #define MOZ_AFTER_PAINT_LITERAL "MozAfterPaint"
 #define MOZ_scroll "scroll"
@@ -58,6 +59,7 @@ WebBrowserChrome::~WebBrowserChrome()
 
 NS_IMPL_ISUPPORTS(WebBrowserChrome,
                   nsIWebBrowserChrome,
+                  nsIWebBrowserChrome2,
                   nsIWebBrowserChromeFocus,
                   nsIInterfaceRequestor,
                   nsIEmbeddingSiteWindow,
@@ -67,6 +69,13 @@ NS_IMPL_ISUPPORTS(WebBrowserChrome,
 NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstancePtr)
 {
   NS_ENSURE_ARG_POINTER(aInstancePtr);
+
+  if (aIID.Equals(NS_GET_IID(nsITabChild))) {
+    nsCOMPtr<nsITabChild> tabChildHelper;
+    tabChildHelper = mHelper;
+    tabChildHelper.forget(aInstancePtr);
+    return NS_OK;
+  }
 
   *aInstancePtr = 0;
   if (aIID.Equals(NS_GET_IID(nsIDOMWindow))) {
@@ -79,7 +88,17 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
   return QueryInterface(aIID, aInstancePtr);
 }
 
-NS_IMETHODIMP WebBrowserChrome::SetStatus(uint32_t /* statusType*/, const char16_t* /*status*/)
+NS_IMETHODIMP WebBrowserChrome::SetStatus(uint32_t aStatusType, const char16_t* aStatus)
+{
+  return SetStatusWithContext(aStatusType,
+      aStatus ? static_cast<const nsString &>(nsDependentString(aStatus))
+              : EmptyString(),
+      nullptr);
+}
+
+NS_IMETHODIMP WebBrowserChrome::SetStatusWithContext(uint32_t aStatusType,
+                                                     const nsAString& aStatusText,
+                                                     nsISupports* aStatusContext)
 {
   LOGNI();
   return NS_OK;
@@ -655,4 +674,12 @@ void WebBrowserChrome::RemoveEventHandler()
   target->RemoveEventListener(NS_LITERAL_STRING("pagehide"), this,  PR_FALSE);
   target->RemoveEventListener(NS_LITERAL_STRING(MOZ_scroll), this,  PR_FALSE);
   target->RemoveEventListener(NS_LITERAL_STRING(MOZ_AFTER_PAINT_LITERAL), this,  PR_FALSE);
+}
+
+void WebBrowserChrome::SetTabChildHelper(TabChildHelper* aHelper)
+{
+  NS_ASSERTION(aHelper, "TabChildHelper can't be unset");
+  NS_ASSERTION(!mHelper, "TabChildHelper can be set only once");
+
+  mHelper = aHelper;
 }

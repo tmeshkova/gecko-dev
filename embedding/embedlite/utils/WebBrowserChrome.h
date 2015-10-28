@@ -8,7 +8,7 @@
 
 #include "nsCOMPtr.h"
 #include "nsIWebBrowser.h"
-#include "nsIWebBrowserChrome.h"
+#include "nsIWebBrowserChrome2.h"
 #include "nsIWebBrowserChromeFocus.h"
 #include "nsIWebProgressListener.h"
 #include "nsIEmbeddingSiteWindow.h"
@@ -23,8 +23,14 @@
 
 #define kNotFound -1
 
+namespace mozilla {
+namespace embedlite {
+  class TabChildHelper;
+}
+}
+
 class nsIEmbedBrowserChromeListener;
-class WebBrowserChrome : public nsIWebBrowserChrome,
+class WebBrowserChrome : public nsIWebBrowserChrome2,
                          public nsIWebProgressListener,
                          public nsIWebBrowserChromeFocus,
                          public nsIEmbeddingSiteWindow,
@@ -35,6 +41,7 @@ class WebBrowserChrome : public nsIWebBrowserChrome,
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIWEBBROWSERCHROME
+  NS_DECL_NSIWEBBROWSERCHROME2
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIWEBBROWSERCHROMEFOCUS
   NS_DECL_NSIEMBEDDINGSITEWINDOW
@@ -46,6 +53,8 @@ public:
 
   void SetEventHandler();
   void RemoveEventHandler();
+
+  void SetTabChildHelper(mozilla::embedlite::TabChildHelper* aHelper);
 
 protected:
   virtual ~WebBrowserChrome();
@@ -71,6 +80,7 @@ private:
   nsCOMPtr<nsIObserverService> mObserverService;
   nsIEmbedBrowserChromeListener* mListener;
   nsString mTitle;
+  nsRefPtr<mozilla::embedlite::TabChildHelper> mHelper;
 };
 
 #endif /* Header guard */
