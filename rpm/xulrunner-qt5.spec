@@ -5,7 +5,7 @@ Summary:    XUL runner
 Version:    %{greversion}
 Release:    1
 Group:      Applications/Internet
-License:    Mozilla License
+License:    MPLv2
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 BuildRequires:  pkgconfig(Qt5Quick)
@@ -39,7 +39,6 @@ BuildRequires:  fdupes
 Mozilla XUL runner
 
 %package devel
-Group: Applications/Internet
 Requires: %{name} = %{version}-%{release}
 Conflicts: xulrunner-devel
 Summary: Headers for xulrunner
@@ -48,7 +47,6 @@ Summary: Headers for xulrunner
 Development files for xulrunner.
 
 %package misc
-Group: Applications/Internet
 Requires: %{name} = %{version}-%{release}
 Summary: Misc files for xulrunner
 
